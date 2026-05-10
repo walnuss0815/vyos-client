@@ -1,109 +1,103 @@
 import { create } from 'zustand';
 import type { AuthState, DraftOperation, JsonValue } from './types';
 
-const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
+const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 
-function pathToKey(path: string[]) {
+function pathKey(path: string[]) {
   return path.join('\u001f');
 }
 
-function isObject(value: JsonValue): value is Record<string, JsonValue> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+function isObject(v: JsonValue): v is Record<string, JsonValue> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
-function setAtPath(target: JsonValue, path: string[], input?: string): JsonValue {
-  const root = clone(target);
-  if (path.length === 0) return root;
-
-  let cursor: any = root;
-  for (let index = 0; index < path.length - 1; index += 1) {
-    const segment = path[index];
-    if (!isObject(cursor[segment] as JsonValue)) {
-      cursor[segment] = {};
-    }
-    cursor = cursor[segment];
+function setAtPath(root: JsonValue, path: string[], value?: string): JsonValue {
+  const next = clone(root);
+  if (path.length === 0) return next;
+  let cursor: any = next;
+  for (let i = 0; i < path.length - 1; i++) {
+    if (!isObject(cursor[path[i]] as JsonValue)) cursor[path[i]] = {};
+    cursor = cursor[path[i]];
   }
-
-  const last = path[path.length - 1];
-  cursor[last] = input === undefined || input === '' ? {} : input;
-  return root;
+  cursor[path[path.length - 1]] = value === undefined || value === '' ? {} : value;
+  return next;
 }
 
-function deleteAtPath(target: JsonValue, path: string[]): JsonValue {
-  const root = clone(target);
-  if (path.length === 0) return root;
-
-  const trail: any[] = [];
-  let cursor: any = root;
-
-  for (let index = 0; index < path.length - 1; index += 1) {
-    trail.push([cursor, path[index]]);
-    cursor = cursor?.[path[index]];
-    if (cursor === undefined || cursor === null) return root;
+function deleteAtPath(root: JsonValue, path: string[]): JsonValue {
+  const next = clone(root);
+  if (path.length === 0) return next;
+  const trail: [any, string][] = [];
+  let cursor: any = next;
+  for (let i = 0; i < path.length - 1; i++) {
+    trail.push([cursor, path[i]]);
+    cursor = cursor?.[path[i]];
+    if (cursor == null) return next;
   }
-
   delete cursor[path[path.length - 1]];
-
-  for (let index = trail.length - 1; index >= 0; index -= 1) {
-    const [parent, key] = trail[index];
-    const value = parent[key];
-    if (value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0) {
+  for (let i = trail.length - 1; i >= 0; i--) {
+    const [parent, key] = trail[i];
+    const child = parent[key];
+    if (child && typeof child === 'object' && !Array.isArray(child) && Object.keys(child).length === 0) {
       delete parent[key];
     }
   }
-
-  return root;
+  return next;
 }
 
 export type AppStore = {
-  auth: AuthState | null;
-  config: JsonValue | null;
-  committedConfig: JsonValue | null;
-  draftOps: DraftOperation[];
-  setAuth: (auth: AuthState | null) => void;
-  setConfig: (config: JsonValue) => void;
-  queueSet: (path: string[], value?: string) => void;
-  queueDelete: (path: string[]) => void;
-  resetDraft: () => void;
-  markCommitted: (config: JsonValue) => void;
-  dirtyKeys: Set<string>;
-  isDirtyPath: (path: string[]) => boolean;
+  auth:             AuthState | null;
+  config:           JsonValue | null;
+  committedConfig:  JsonValue | null;
+  draftOps:         DraftOperation[];
+  dirtyKeys:        Set<string>;
+  setAuth:          (auth: AuthState | null) => void;
+  setConfig:        (config: JsonValue)      => void;
+  queueSet:         (path: string[], value?: string) => void;
+  queueDelete:      (path: string[])         => void;
+  resetDraft:       ()                       => void;
+  markCommitted:    (config: JsonValue)      => void;
+  isDirtyPath:      (path: string[])         => boolean;
 };
 
 export const useAppStore = create<AppStore>((set, get) => ({
-  auth: null,
-  config: null,
+  auth:            null,
+  config:          null,
   committedConfig: null,
-  draftOps: [],
-  dirtyKeys: new Set<string>(),
+  draftOps:        [],
+  dirtyKeys:       new Set<string>(),
+
   setAuth: (auth) => set({ auth }),
-  setConfig: (config) => set({ config, committedConfig: clone(config), draftOps: [], dirtyKeys: new Set<string>() }),
+
+  setConfig: (config) =>
+    set({ config, committedConfig: clone(config), draftOps: [], dirtyKeys: new Set() }),
+
   queueSet: (path, value) => {
     const current = get().config;
     if (!current) return;
-    const updated = setAtPath(current, path, value);
+    const updated   = setAtPath(current, path, value);
     const op: DraftOperation = { id: crypto.randomUUID(), type: 'set', path, value };
     const dirtyKeys = new Set(get().dirtyKeys);
-    for (let index = 1; index <= path.length; index += 1) {
-      dirtyKeys.add(pathToKey(path.slice(0, index)));
-    }
+    for (let i = 1; i <= path.length; i++) dirtyKeys.add(pathKey(path.slice(0, i)));
     set({ config: updated, draftOps: [...get().draftOps, op], dirtyKeys });
   },
+
   queueDelete: (path) => {
     const current = get().config;
     if (!current) return;
-    const updated = deleteAtPath(current, path);
+    const updated   = deleteAtPath(current, path);
     const op: DraftOperation = { id: crypto.randomUUID(), type: 'delete', path };
     const dirtyKeys = new Set(get().dirtyKeys);
-    for (let index = 1; index <= path.length; index += 1) {
-      dirtyKeys.add(pathToKey(path.slice(0, index)));
-    }
+    for (let i = 1; i <= path.length; i++) dirtyKeys.add(pathKey(path.slice(0, i)));
     set({ config: updated, draftOps: [...get().draftOps, op], dirtyKeys });
   },
+
   resetDraft: () => {
-    const committedConfig = get().committedConfig;
-    set({ config: committedConfig ? clone(committedConfig) : null, draftOps: [], dirtyKeys: new Set<string>() });
+    const base = get().committedConfig;
+    set({ config: base ? clone(base) : null, draftOps: [], dirtyKeys: new Set() });
   },
-  markCommitted: (config) => set({ config: clone(config), committedConfig: clone(config), draftOps: [], dirtyKeys: new Set<string>() }),
-  isDirtyPath: (path) => get().dirtyKeys.has(pathToKey(path))
+
+  markCommitted: (config) =>
+    set({ config: clone(config), committedConfig: clone(config), draftOps: [], dirtyKeys: new Set() }),
+
+  isDirtyPath: (path) => get().dirtyKeys.has(pathKey(path)),
 }));

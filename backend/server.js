@@ -2,27 +2,27 @@
 
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 
-const express    = require('express');
-const path       = require('path');
-const https      = require('https');
-const helmet     = require('helmet');
-const cors       = require('cors');
-const rateLimit  = require('express-rate-limit');
-const jwt        = require('jsonwebtoken');
-const bcrypt     = require('bcryptjs');
-const fetch      = require('node-fetch');
-const FormData   = require('form-data');
-const morgan     = require('morgan');
+const express   = require('express');
+const path      = require('path');
+const https     = require('https');
+const helmet    = require('helmet');
+const cors      = require('cors');
+const rateLimit = require('express-rate-limit');
+const jwt       = require('jsonwebtoken');
+const bcrypt    = require('bcryptjs');
+const fetch     = require('node-fetch');
+const FormData  = require('form-data');
+const morgan    = require('morgan');
 
-const PORT        = Number(process.env.PORT        || 3001);
-const APP_USER    = process.env.APP_USER            || 'admin';
-const APP_PASSWORD= process.env.APP_PASSWORD        || 'changeme';
-const JWT_SECRET  = process.env.JWT_SECRET          || 'replace-me';
-const JWT_EXPIRES = process.env.JWT_EXPIRES         || '8h';
-const VYOS_HOST   = (process.env.VYOS_HOST          || 'https://vyos').replace(/\/$/, '');
-const VYOS_KEY    = process.env.VYOS_KEY            || '';
-const VERIFY_TLS  = process.env.VYOS_VERIFY_TLS     === 'true';
-const CORS_ORIGIN = process.env.CORS_ORIGIN         || '*';
+const PORT        = Number(process.env.PORT             || 3001);
+const APP_USER    = process.env.APP_USER                || 'admin';
+const APP_PASSWORD= process.env.APP_PASSWORD            || 'changeme';
+const JWT_SECRET  = process.env.JWT_SECRET              || 'replace-me';
+const JWT_EXPIRES = process.env.JWT_EXPIRES             || '8h';
+const VYOS_HOST   = (process.env.VYOS_HOST              || 'https://vyos').replace(/\/$/, '');
+const VYOS_KEY    = process.env.VYOS_KEY                || '';
+const VERIFY_TLS  = process.env.VYOS_VERIFY_TLS         === 'true';
+const CORS_ORIGIN = process.env.CORS_ORIGIN             || '*';
 
 const app          = express();
 const passwordHash = bcrypt.hashSync(APP_PASSWORD, 10);
@@ -47,7 +47,7 @@ const loginLimiter = rateLimit({
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Zu viele Login-Versuche. Bitte später erneut versuchen.' },
+  message: { error: 'Too many login attempts. Please try again later.' },
 });
 
 app.use('/api',  apiLimiter);
@@ -60,18 +60,18 @@ function createToken(username) {
 function requireAuth(req, res, next) {
   const header = req.headers.authorization;
   if (!header || !header.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Fehlender Bearer-Token.' });
+    return res.status(401).json({ error: 'Missing Bearer token.' });
   }
   try {
     req.user = jwt.verify(header.slice(7), JWT_SECRET);
     return next();
   } catch {
-    return res.status(401).json({ error: 'Ungültiger oder abgelaufener Token.' });
+    return res.status(401).json({ error: 'Invalid or expired token.' });
   }
 }
 
 async function vyosPost(endpoint, payload) {
-  if (!VYOS_KEY) throw new Error('VYOS_KEY ist nicht gesetzt.');
+  if (!VYOS_KEY) throw new Error('VYOS_KEY is not set.');
   const form = new FormData();
   form.append('key',  VYOS_KEY);
   form.append('data', JSON.stringify(payload));
@@ -93,21 +93,21 @@ async function vyosGet(endpoint) {
   return { status: response.status, body };
 }
 
-// ── Health ────────────────────────────────────────────────────────────────────
+// Health
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
 });
 
-// ── Auth ──────────────────────────────────────────────────────────────────────
+// Auth
 app.post('/auth/login', loginLimiter, async (req, res) => {
   const { username, password } = req.body || {};
   if (!username || !password) {
-    return res.status(400).json({ error: 'Benutzername und Passwort sind erforderlich.' });
+    return res.status(400).json({ error: 'Username and password are required.' });
   }
   const userMatches     = username === APP_USER;
   const passwordMatches = await bcrypt.compare(password, passwordHash);
   if (!userMatches || !passwordMatches) {
-    return res.status(401).json({ error: 'Ungültige Zugangsdaten.' });
+    return res.status(401).json({ error: 'Invalid credentials.' });
   }
   return res.json({ token: createToken(username), expiresIn: JWT_EXPIRES, user: username });
 });
@@ -120,7 +120,7 @@ app.post('/auth/logout', requireAuth, (_req, res) => {
   res.json({ success: true });
 });
 
-// ── VyOS Proxy ────────────────────────────────────────────────────────────────
+// VyOS proxy
 app.get('/api/info', requireAuth, async (_req, res) => {
   try {
     const result = await vyosGet('/info');
@@ -132,9 +132,9 @@ app.get('/api/info', requireAuth, async (_req, res) => {
 
 app.post('/api/retrieve', requireAuth, async (req, res) => {
   try {
-    const op   = req.body?.op   || 'showConfig';
+    const op           = req.body?.op || 'showConfig';
     const pathSegments = Array.isArray(req.body?.path) ? req.body.path : [];
-    const result = await vyosPost('/retrieve', { op, path: pathSegments });
+    const result       = await vyosPost('/retrieve', { op, path: pathSegments });
     res.status(result.status).json(result.body);
   } catch (error) {
     res.status(502).json({ error: error.message });
@@ -145,7 +145,7 @@ app.post('/api/configure', requireAuth, async (req, res) => {
   try {
     const commands = req.body?.commands;
     if (!Array.isArray(commands) || commands.length === 0) {
-      return res.status(400).json({ error: 'commands muss ein nicht-leeres Array sein.' });
+      return res.status(400).json({ error: 'commands must be a non-empty array.' });
     }
     const result = await vyosPost('/configure', commands);
     return res.status(result.status).json(result.body);
@@ -169,7 +169,7 @@ app.post('/api/save', requireAuth, async (req, res) => {
 app.post('/api/load', requireAuth, async (req, res) => {
   try {
     const file = req.body?.file;
-    if (!file) return res.status(400).json({ error: 'file ist erforderlich.' });
+    if (!file) return res.status(400).json({ error: 'file is required.' });
     const result = await vyosPost('/config-file', { op: 'load', file });
     return res.status(result.status).json(result.body);
   } catch (error) {
@@ -180,7 +180,7 @@ app.post('/api/load', requireAuth, async (req, res) => {
 app.post('/api/reset-node', requireAuth, async (req, res) => {
   try {
     const pathSegments = Array.isArray(req.body?.path) ? req.body.path : [];
-    const result = await vyosPost('/reset', { op: 'reset', path: pathSegments });
+    const result       = await vyosPost('/reset', { op: 'reset', path: pathSegments });
     return res.status(result.status).json(result.body);
   } catch (error) {
     return res.status(502).json({ error: error.message });
@@ -190,20 +190,19 @@ app.post('/api/reset-node', requireAuth, async (req, res) => {
 app.post('/api/show', requireAuth, async (req, res) => {
   try {
     const pathSegments = Array.isArray(req.body?.path) ? req.body.path : [];
-    const result = await vyosPost('/show', { op: 'show', path: pathSegments });
+    const result       = await vyosPost('/show', { op: 'show', path: pathSegments });
     return res.status(result.status).json(result.body);
   } catch (error) {
     return res.status(502).json({ error: error.message });
   }
 });
 
-// ── SPA Static Hosting ────────────────────────────────────────────────────────
+// SPA static hosting
 app.use(express.static(frontendDist));
 app.get('*', (_req, res) => {
   res.sendFile(path.join(frontendDist, 'index.html'));
 });
 
-// ── Start ─────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(JSON.stringify({
     event:     'startup',
