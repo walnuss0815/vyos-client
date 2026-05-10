@@ -56,9 +56,9 @@ export default function App() {
 
   // ── Commit ────────────────────────────────────────────────────────────────
   const commitMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (): Promise<void> => {
       if (!auth?.token) throw new Error('Not authenticated.');
-      return commitDraft(auth.token, buildCommands());
+      await commitDraft(auth.token, buildCommands());
     },
     onSuccess: async () => {
       if (!auth?.token) return;
@@ -72,10 +72,10 @@ export default function App() {
 
   // ── Save ──────────────────────────────────────────────────────────────────
   const saveMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (): Promise<void> => {
       if (!auth?.token) throw new Error('Not authenticated.');
       if (draftOps.length > 0) await commitDraft(auth.token, buildCommands());
-      return saveRunningConfig(auth.token);
+      await saveRunningConfig(auth.token);
     },
     onSuccess: async () => {
       if (!auth?.token) return;
@@ -106,7 +106,7 @@ export default function App() {
   if (!auth) {
     return (
       <LoginForm
-        onSubmit={(u, p) => loginMutation.mutateAsync({ username: u, password: p })}
+        onSubmit={async (u, p): Promise<void> => { await loginMutation.mutateAsync({ username: u, password: p }); }}
         busy={loginMutation.isPending}
         error={error}
       />
@@ -220,8 +220,8 @@ export default function App() {
       <ActionBar
         pendingCount={draftOps.length}
         busy={busy}
-        onCommit={() => commitMutation.mutateAsync()}
-        onSave={() => saveMutation.mutateAsync()}
+        onCommit={async (): Promise<void> => { await commitMutation.mutateAsync(); }}
+        onSave={async (): Promise<void> => { await saveMutation.mutateAsync(); }}
         onReset={() => {
           resetDraft();
           setNotice('Local drafts have been reset.');
