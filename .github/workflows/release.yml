@@ -28,11 +28,19 @@ jobs:
       # the GitHub Release with those notes. No package.json/lockfile
       # needed - only the default commit-analyzer/release-notes-
       # generator/github plugins are used (no npm publish).
+      #
+      # conventional-changelog-conventionalcommits is not bundled with
+      # semantic-release itself - it's the separate package backing
+      # .releaserc.json's `"preset": "conventionalcommits"` (needed for
+      # the custom type-to-section mapping, e.g. the "security" type),
+      # so it must be explicitly installed here.
       - name: Semantic Release
         id: semantic
         uses: cycjimmy/semantic-release-action@v6
         with:
           semantic_version: 25
+          extra_plugins: |
+            conventional-changelog-conventionalcommits@10
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
