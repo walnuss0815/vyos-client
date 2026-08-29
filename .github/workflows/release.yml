@@ -33,14 +33,20 @@ jobs:
       # semantic-release itself - it's the separate package backing
       # .releaserc.json's `"preset": "conventionalcommits"` (needed for
       # the custom type-to-section mapping, e.g. the "security" type),
-      # so it must be explicitly installed here.
+      # so it must be explicitly installed here. Pinned to major 9, not
+      # the latest (10): v10 added a runtime check requiring
+      # conventional-changelog-writer@9+, but @semantic-release/release-
+      # notes-generator@25 still bundles writer@^8, so v10 fails with
+      # "Missing helper" while rendering notes. v9 has no such
+      # requirement and works with the writer this action's
+      # semantic-release version actually ships.
       - name: Semantic Release
         id: semantic
         uses: cycjimmy/semantic-release-action@v6
         with:
           semantic_version: 25
           extra_plugins: |
-            conventional-changelog-conventionalcommits@10
+            conventional-changelog-conventionalcommits@9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
