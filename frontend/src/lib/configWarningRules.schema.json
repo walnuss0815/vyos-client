@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/walnuss0815/vyos-client/configWarningRules.schema.json",
+  "title": "VyOS Client configuration warning rules",
+  "description": "Data-driven rules for the persistent 'configuration warnings' banner (see components/ConfigWarningsBanner.tsx). Each rule's `query` is a JMESPath expression (https://jmespath.org) evaluated against a `facts` object built from already-loaded, typed config (see lib/configWarnings.ts's buildConfigWarningFacts) and MUST evaluate to an array - every element of that array produces one warning, with the element's own fields available for `{fieldName}` interpolation in `id`/`message`. A rule whose condition never matches anything should have a query that evaluates to an empty array, not null/a scalar - see lib/configWarningRules.ts's evaluateConfigWarningRules for how a non-array result is handled (treated as zero matches, logged, never thrown).",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["id", "query", "message"],
+    "properties": {
+      "id": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Stable identifier template, not shown to the user - lets the banner key its list and gives tests something stable to assert on. May reference a matched element's own fields as {fieldName} (e.g. \"snmp-weak-community-{name}\") so multiple matches of the same rule get distinct ids."
+      },
+      "query": {
+        "type": "string",
+        "minLength": 1,
+        "description": "A JMESPath expression evaluated against the facts object (see lib/configWarnings.ts's buildConfigWarningFacts for exactly what's available: rulesets, ssh, https, snmp, users). Must evaluate to an array."
+      },
+      "message": {
+        "type": "string",
+        "minLength": 1,
+        "description": "User-facing warning text, shown in the banner's expanded list. May reference a matched element's own fields as {fieldName}, same as `id`."
+      },
+      "description": {
+        "type": "string",
+        "description": "Optional internal note explaining the rule's rationale (e.g. why this is a security concern, or what VyOS behavior it's based on) - never shown to the user, purely for whoever edits this file next."
+      }
+    }
+  }
+}

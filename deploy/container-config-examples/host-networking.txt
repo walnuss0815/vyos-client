@@ -1,0 +1,82 @@
+# vyos-client container config: host networking (recommended default)
+#
+# The container shares the router's network namespace, so it can
+# always reach the HTTPS API at 127.0.0.1 regardless of any
+# `service https listen-address` restriction, and binds its own HTTPS
+# listener directly to a host port. Paste these into configure mode,
+# adjusting the values marked <...>.
+
+# 1. Enable the VyOS HTTPS API and create a dedicated key for vyos-client.
+#    Note: VyOS API keys are NOT scoped/permissioned - this key grants
+#    full configuration access, same as any other API key. Give it a
+#    name that makes that obvious in `show configuration`.
+set service https api rest
+set service https api keys id vyos-client key '<GENERATE-A-LONG-RANDOM-KEY>'
+
+# 2. Pull and configure the container.
+set container name vyos-client image 'ghcr.io/<org>/vyos-client:latest'
+set container name vyos-client allow-host-networks
+set container name vyos-client restart 'always'
+set container name vyos-client memory '256'
+
+# 3. Configuration (env vars). See docs/configuration-reference.md for
+#    the full list. LISTEN_ADDR picks the host port the UI listens on;
+#    pick something that doesn't collide with the API's own port 443.
+#
+#    Bind LISTEN_ADDR to your LAN-side interface's own address (not
+#    ':8443', which binds every interface including WAN) so the UI is
+#    only reachable from the LAN in the first place - Go's net.Listen
+#    accepts "IP:port" natively, no code/app support needed for this.
+#    Replace 192.168.1.1 with your router's actual LAN interface
+#    address (`show interfaces` if unsure).
+set container name vyos-client environment LISTEN_ADDR value '192.168.1.1:8443'
+set container name vyos-client environment VYOS_API_URL value 'https://127.0.0.1'
+set container name vyos-client environment VYOS_API_KEY value '<SAME-KEY-AS-ABOVE>'
+# Nothing else needed for login: AUTH_MODE defaults to vyos-users, so
+# you log in with any existing `system login user` account's own
+# password (see docs/get-started.md step 4). Uncomment the three lines
+# below instead if you want a single shared UI account independent of
+# VyOS's own user database (e.g. as a break-glass login that doesn't
+# depend on VyOS's API being reachable):
+#
+# set container name vyos-client environment AUTH_MODE value 'static'
+# set container name vyos-client environment UI_ADMIN_USER value 'admin'
+# # Generate this with: docker run --rm ghcr.io/<org>/vyos-client:latest hash-password
+# # Never put a plaintext password here - VyOS does not mask container
+# # environment values in `show configuration`.
+# set container name vyos-client environment UI_ADMIN_PASSWORD_HASH value '<BCRYPT-HASH>'
+#
+# Set this explicitly so sessions survive container restarts; if
+# unset, a random secret is generated at each startup and all sessions
+# are invalidated on restart.
+set container name vyos-client environment SESSION_SECRET value '<GENERATE-A-LONG-RANDOM-STRING>'
+
+# 4. Belt-and-suspenders: an explicit firewall rule blocking WAN access
+#    to the UI's port, on top of step 3's LISTEN_ADDR binding - so a
+#    LAN-only setup doesn't depend on LISTEN_ADDR alone (e.g. if it's
+#    ever accidentally reset to ':8443'). This assumes zone-based
+#    firewall is already configured with LAN/WAN zones (see this app's
+#    own Firewall > Zones page) - adjust the zone/ruleset names below
+#    to match your own setup.
+#
+#    The router itself (where vyos-client listens) is VyOS's implicit
+#    "local" zone - traffic from WAN destined for the router, not
+#    routed through it, is what a `WAN -> local` zone pairing's
+#    ruleset filters. If you already have one (e.g. for SSH/the HTTPS
+#    API), just add this rule to that existing ruleset instead of
+#    creating WAN-LOCAL from scratch; the `set firewall zone local
+#    from WAN firewall name WAN-LOCAL` binding below is only needed if
+#    no such pairing exists yet. If that ruleset's own default-action
+#    is already `drop`/`reject`, this explicit rule is redundant but
+#    still worth having - it's a clear, self-documenting statement of
+#    intent rather than an implicit consequence of "nothing else
+#    allowed it either."
+set firewall ipv4 name WAN-LOCAL rule 10 description 'Block WAN access to vyos-client'
+set firewall ipv4 name WAN-LOCAL rule 10 destination port '8443'
+set firewall ipv4 name WAN-LOCAL rule 10 protocol 'tcp'
+set firewall ipv4 name WAN-LOCAL rule 10 action 'drop'
+set firewall zone local local-zone
+set firewall zone local from WAN firewall name WAN-LOCAL
+
+commit
+save

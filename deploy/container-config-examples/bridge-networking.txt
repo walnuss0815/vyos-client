@@ -1,0 +1,41 @@
+# vyos-client container config: dedicated bridge network (more isolated)
+#
+# The container gets its own network namespace and a published port,
+# rather than sharing the host's. This is more isolated than host
+# networking, but has one prerequisite: `service https` must be
+# reachable from the container-network gateway address. By default (no
+# `listen-address` configured), VyOS's HTTPS API listens on all local
+# addresses, so this works out of the box; if you've restricted
+# `service https listen-address`, add the container network's gateway
+# address to that list too.
+
+set container network vyos-client-net prefix '172.20.0.0/24'
+set container network vyos-client-net description 'vyos-client management network'
+
+set service https api rest
+set service https api keys id vyos-client key '<GENERATE-A-LONG-RANDOM-KEY>'
+
+set container name vyos-client image 'ghcr.io/<org>/vyos-client:latest'
+set container name vyos-client network vyos-client-net
+set container name vyos-client restart 'always'
+set container name vyos-client memory '256'
+
+# Publish the UI's HTTPS port to the host.
+set container name vyos-client port https source '8443'
+set container name vyos-client port https destination '8443'
+set container name vyos-client port https protocol 'tcp'
+
+# The container reaches VyOS's HTTPS API via the bridge network's
+# gateway address, which podman assigns automatically as the first
+# usable address in the prefix - here, 172.20.0.1.
+set container name vyos-client environment LISTEN_ADDR value ':8443'
+set container name vyos-client environment VYOS_API_URL value 'https://172.20.0.1'
+set container name vyos-client environment VYOS_API_KEY value '<SAME-KEY-AS-ABOVE>'
+# Nothing else needed for login: AUTH_MODE defaults to vyos-users, so
+# you log in with any existing `system login user` account's own
+# password. See host-networking.txt's comments for the AUTH_MODE=static
+# alternative (a single shared UI account) if you want that instead.
+set container name vyos-client environment SESSION_SECRET value '<GENERATE-A-LONG-RANDOM-STRING>'
+
+commit
+save

@@ -1,0 +1,117 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'JetBrains Mono', Consolas, monospace;
+
+  /* Values here just need to exist so Tailwind generates the utility
+   * classes (bg-surface-950, text-accent-500, ...) - the values that
+   * actually render come from the `:root` / `.dark` overrides below.
+   * Kept equal to the dark palette as a harmless fallback. */
+  --color-surface-950: #0b0d12;
+  --color-surface-900: #10131a;
+  --color-surface-800: #161a23;
+  --color-surface-700: #1f2430;
+  --color-surface-600: #2a3140;
+  --color-surface-border: #262c38;
+
+  --color-accent-500: #3b82f6;
+  --color-accent-600: #2563eb;
+
+  --color-danger-500: #ef4444;
+  --color-warning-500: #f59e0b;
+  --color-success-500: #22c55e;
+}
+
+/*
+ * Light/dark theming via CSS custom-property overrides, not `dark:`
+ * variants. Tailwind v4 compiles every @theme entry (plus its own
+ * built-in palette, e.g. `slate` and `white`) into CSS variables inside
+ * `@layer theme`, and every utility class reads its color through
+ * `var(--color-...)` rather than a literal value. Cascade layers give
+ * *unlayered* rules priority over *any* layered rule regardless of
+ * source order or selector specificity, so redeclaring the same
+ * variable names here - outside of any @layer - overrides them
+ * application-wide without touching a single component's className.
+ *
+ * `:root` holds the light values (the default). `.dark`, applied to
+ * <html> by store/theme.ts, overrides them for dark mode. Every file in
+ * this codebase was written against the original dark-only palette
+ * using plain semantic classes (bg-surface-900, text-slate-400, ...),
+ * so the `.dark` block below simply restates those original values -
+ * dark mode looks pixel-identical to before this system existed.
+ *
+ * `white` (used only as `text-white`/`hover:text-white` throughout the
+ * app, always for the strongest/primary text color) is intentionally
+ * repurposed here as this app's "primary text" token rather than left
+ * as a literal color - do not use `text-white` for anything that must
+ * stay white regardless of theme.
+ */
+:root {
+  --color-surface-950: #f1f5f9;
+  --color-surface-900: #ffffff;
+  --color-surface-800: #f1f5f9;
+  --color-surface-700: #e2e8f0;
+  --color-surface-600: #cbd5e1;
+  --color-surface-border: #e2e8f0;
+
+  --color-accent-500: #2563eb;
+  --color-accent-600: #2563eb;
+
+  --color-danger-500: #dc2626;
+  --color-warning-500: #d97706;
+  --color-success-500: #16a34a;
+
+  --color-white: #0f172a;
+  --color-slate-200: #1e293b;
+  --color-slate-300: #334155;
+  --color-slate-400: #64748b;
+  --color-slate-500: #94a3b8;
+  --color-slate-600: #cbd5e1;
+}
+
+.dark {
+  --color-surface-950: #0b0d12;
+  --color-surface-900: #10131a;
+  --color-surface-800: #161a23;
+  --color-surface-700: #1f2430;
+  --color-surface-600: #2a3140;
+  --color-surface-border: #262c38;
+
+  --color-accent-500: #3b82f6;
+  --color-accent-600: #2563eb;
+
+  --color-danger-500: #ef4444;
+  --color-warning-500: #f59e0b;
+  --color-success-500: #22c55e;
+
+  --color-white: #fff;
+  --color-slate-200: oklch(92.9% 0.013 255.508);
+  --color-slate-300: oklch(86.9% 0.022 252.894);
+  --color-slate-400: oklch(70.4% 0.04 256.788);
+  --color-slate-500: oklch(55.4% 0.046 257.417);
+  --color-slate-600: oklch(44.6% 0.043 257.281);
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-surface-950 text-slate-200 antialiased;
+    font-feature-settings: 'tnum';
+  }
+
+  ::selection {
+    @apply bg-accent-500/30;
+  }
+}
+
+@layer utilities {
+  .font-mono-tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}

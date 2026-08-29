@@ -1,0 +1,24 @@
+{
+  "$comment": "Single source of truth for which VyOS config leaf names are treated as secrets and masked in the UI, in logs, and anywhere else config is rendered. Consumed identically by the Go backend (internal/mask, via go:embed) and the frontend (src/lib/masking.ts). Matching is against the *last path segment only*, case-insensitive, after normalizing underscores to hyphens. The list is intentionally broad: it is safe (if mildly inconvenient) to mask a value that isn't actually secret, but unsafe to leave a real secret unmasked, so err on the side of over-matching. Extend this list, not the code, when VyOS adds a new kind of secret leaf.",
+  "sensitiveLeafNames": [
+    "password",
+    "plaintext-password",
+    "encrypted-password",
+    "passphrase",
+    "pre-shared-key",
+    "preshared-key",
+    "pre-shared-secret",
+    "private-key",
+    "secret",
+    "secret-key",
+    "api-key",
+    "community",
+    "credential",
+    "credentials",
+    "pin",
+    "token",
+    "key",
+    "md5-key",
+    "psk"
+  ]
+}

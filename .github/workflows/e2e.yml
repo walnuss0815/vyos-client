@@ -1,0 +1,90 @@
+name: E2E (real VyOS)
+
+# Runs the real-VyOS end-to-end suite (see e2e/README.md) against every
+# pinned VyOS build - the current rolling release plus the last 4 VyOS
+# Stream releases (e2e/vyos-versions.env) - one matrix job per build:
+# boots it under QEMU, bootstraps it over the serial console, and
+# drives the actual production vyos-client build against it with
+# Playwright. Deliberately NOT run on every push/PR (see ci.yml for
+# that) - booting 5 VMs is much slower than the unit/integration suite,
+# and this is meant to catch drift against real VyOS instances over
+# time, not gate every commit.
+
+on:
+  schedule:
+    # Weekly, Monday 06:00 UTC - frequent enough to catch drift against
+    # VyOS rolling/Stream without being noisy; the pinned builds
+    # (e2e/vyos-versions.env) only change when Renovate bumps rolling/
+    # the newest Stream release, or a human re-pins an older Stream
+    # slot, regardless of this schedule.
+    - cron: '0 6 * * 1'
+  workflow_dispatch: {}
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: Real-VyOS end-to-end (${{ matrix.version_key }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      # No fail-fast: each pinned build is an independent, equally
+      # interesting data point (e.g. "broken against stream-2 but fine
+      # everywhere else" is exactly the kind of drift this suite exists
+      # to catch) - one failing shouldn't hide the others' results.
+      fail-fast: false
+      matrix:
+        version_key: [rolling, stream-0, stream-1, stream-2, stream-3]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            e2e/tests/package-lock.json
+
+      - name: Install QEMU, minisign, expect
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 qemu-utils minisign expect
+
+      - name: Ensure KVM is accessible
+        run: |
+          if [ ! -e /dev/kvm ]; then
+            echo "::error::/dev/kvm not present on this runner - this suite needs KVM acceleration to boot in a reasonable time"
+            exit 1
+          fi
+          sudo chmod 666 /dev/kvm
+          ls -la /dev/kvm
+
+      - name: Run end-to-end suite
+        env:
+          VYOS_E2E_VERSION_KEY: ${{ matrix.version_key }}
+        run: e2e/run.sh
+
+      - name: Upload Playwright report and traces
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-playwright-results-${{ matrix.version_key }}
+          path: |
+            e2e/tests/playwright-report/
+            e2e/tests/test-results/
+          retention-days: 14
+          if-no-files-found: ignore

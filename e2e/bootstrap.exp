@@ -1,0 +1,135 @@
+#!/usr/bin/env expect
+#
+# Boots the given VyOS ISO under QEMU and bootstraps it over the
+# serial console (not SSH - see e2e/README.md for why): logs in with
+# VyOS's default live-ISO credentials, DHCP-configures the QEMU NIC so
+# the REST API is reachable via the hostfwd port mapping, enables
+# `service https api rest`, adds a test API key, and adds a real
+# `system login user` (via plaintext-password, which VyOS itself
+# hashes into encrypted-password on commit - not a pre-computed
+# fixture hash) so the Playwright suite can exercise vyos-client's
+# AUTH_MODE=vyos-users login against a genuinely VyOS-hashed password,
+# not just the fake VyOS server unit/integration tests already cover.
+#
+# Verified interactively against a real VyOS 2026.08.25-0014-rolling
+# live ISO before being scripted here - see the commit message for
+# this file for the transcript.
+#
+# Once bootstrapped, this process (and the QEMU child it spawned)
+# stays alive until externally killed - see run.sh, which reads
+# VYOS_E2E_QEMU_PID_FILE to do that once the test suite is done.
+#
+# Required environment variables:
+#   VYOS_E2E_ISO_PATH       path to a verified VyOS ISO
+#   VYOS_E2E_API_KEY        API key to configure
+#   VYOS_E2E_API_PORT       host port to forward to the guest's :443
+#   VYOS_E2E_LOGIN_USER     system login user to create
+#   VYOS_E2E_LOGIN_PASSWORD plaintext-password to set for that user
+#   VYOS_E2E_QEMU_PID_FILE  written with the QEMU process's PID once spawned
+# Optional:
+#   VYOS_E2E_QEMU_MEM  (default 2048, MB)
+#   VYOS_E2E_QEMU_SMP  (default 2, vCPUs)
+
+set iso_path $env(VYOS_E2E_ISO_PATH)
+set api_key $env(VYOS_E2E_API_KEY)
+set host_port $env(VYOS_E2E_API_PORT)
+set login_user $env(VYOS_E2E_LOGIN_USER)
+set login_password $env(VYOS_E2E_LOGIN_PASSWORD)
+set pid_file $env(VYOS_E2E_QEMU_PID_FILE)
+set mem [expr {[info exists env(VYOS_E2E_QEMU_MEM)] ? $env(VYOS_E2E_QEMU_MEM) : "2048"}]
+set smp [expr {[info exists env(VYOS_E2E_QEMU_SMP)] ? $env(VYOS_E2E_QEMU_SMP) : "2"}]
+
+log_user 1
+set timeout 180
+
+# Fails loudly (rather than silently falling through to the next
+# `expect`, which would otherwise send input into whatever unexpected
+# state the console is actually in) on a timeout or an unexpected
+# QEMU exit.
+proc expect_or_die {pattern description} {
+    expect {
+        -re $pattern {}
+        timeout {
+            puts stderr "TIMEOUT waiting for: $description"
+            exit 1
+        }
+        eof {
+            puts stderr "QEMU exited unexpectedly while waiting for: $description"
+            exit 1
+        }
+    }
+}
+
+spawn qemu-system-x86_64 \
+    -machine pc -m $mem -smp $smp -enable-kvm \
+    -cdrom $iso_path \
+    -boot d -display none -serial stdio -monitor none \
+    -netdev user,id=net0,hostfwd=tcp::${host_port}-:443 \
+    -device virtio-net-pci,netdev=net0 \
+    -no-reboot
+
+set fp [open $pid_file w]
+puts $fp [exp_pid]
+close $fp
+
+expect_or_die "vyos login:" "the login prompt (VyOS boot)"
+send "vyos\r"
+expect_or_die "Password:" "the password prompt"
+send "vyos\r"
+expect_or_die {vyos@vyos:~\$ } "the operational-mode shell prompt"
+
+send "configure\r"
+expect_or_die {vyos@vyos# } "the configure-mode prompt"
+
+send "set interfaces ethernet eth0 address dhcp\r"
+expect_or_die {vyos@vyos# } "after configuring DHCP on eth0"
+
+send "set service https api rest\r"
+expect_or_die {vyos@vyos# } "after enabling the REST API"
+
+# log_user 0 around these two commands only: this is a real serial
+# console session, so the plaintext API key/password aren't just in
+# the command we send - the console echoes the typed characters back,
+# so they'd appear in expect's own transcript too, not merely in
+# something we could redact after the fact. Both run.sh and
+# dev-vm.sh's `start` capture this whole script's stdout to a log
+# file, and run.sh's cleanup() prints that log's tail to CI output on
+# any failure - so leaving this on would put both secrets in plain
+# text into CI logs on any later, unrelated test failure, not just a
+# failure of this bootstrap step itself. expect_or_die still fails
+# loudly to stderr regardless of log_user, so turning transcript
+# logging off here doesn't hide a real bootstrap failure.
+log_user 0
+send "set service https api keys id e2etest key $api_key\r"
+expect_or_die {vyos@vyos# } "after adding the test API key"
+log_user 1
+
+log_user 0
+send "set system login user $login_user authentication plaintext-password $login_password\r"
+expect_or_die {vyos@vyos# } "after adding the test login user"
+log_user 1
+
+send "commit\r"
+expect {
+    -re "Commit failed" {
+        puts stderr "VyOS commit failed during bootstrap"
+        exit 1
+    }
+    -re {vyos@vyos# } {}
+    timeout {
+        puts stderr "TIMEOUT waiting for commit to finish"
+        exit 1
+    }
+    eof {
+        puts stderr "QEMU exited unexpectedly during commit"
+        exit 1
+    }
+}
+
+puts "===VYOS_E2E_BOOTSTRAP_READY==="
+
+# Block here (rather than exiting) so this process - and the QEMU
+# child it's still attached to - stays alive for the test suite to run
+# against. Returns once QEMU exits (killed by run.sh's cleanup, or a
+# crash).
+expect eof

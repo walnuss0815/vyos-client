@@ -1,0 +1,99 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "timezone": "UTC",
+  "schedule": ["before 6am on monday"],
+  "dependencyDashboard": true,
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 8,
+  "prHourlyLimit": 4,
+  "minimumReleaseAge": "3 days",
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on monday"],
+    "automerge": true
+  },
+  "vulnerabilityAlerts": {
+    "labels": ["dependencies", "security"],
+    "minimumReleaseAge": "0 days"
+  },
+  "packageRules": [
+    {
+      "description": "Auto-merge minor/patch/digest updates once CI passes - this repo's branch protection already requires a green CI run to merge (see CONTRIBUTING.md), so Renovate is only adding the 'wait for checks, then merge' step on top of that existing gate. Major updates always need a human look, given they can carry breaking changes.",
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
+    },
+    {
+      "description": "Major updates are never auto-merged, regardless of manager - always left for manual review.",
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "labels": ["dependencies", "major-update"]
+    },
+    {
+      "description": "frontend/'s dependencies (React, Vite, Tailwind, TanStack Query, Zustand, Playwright's own @playwright/test in e2e/tests/, ...) grouped into one PR per update type, rather than one PR per package - this app has no monorepo tooling, so each individual bump would otherwise be its own noisy PR.",
+      "matchManagers": ["npm"],
+      "matchFileNames": ["frontend/**"],
+      "groupName": "frontend npm dependencies"
+    },
+    {
+      "description": "e2e/tests/ is a deliberately separate npm project from frontend/ (see e2e/README.md) - kept in its own group so a Playwright bump there doesn't get bundled with unrelated frontend dependency noise.",
+      "matchManagers": ["npm"],
+      "matchFileNames": ["e2e/tests/**"],
+      "groupName": "e2e npm dependencies"
+    },
+    {
+      "description": "Go module dependencies (backend/go.mod) grouped into one PR per update type.",
+      "matchManagers": ["gomod"],
+      "groupName": "Go dependencies"
+    },
+    {
+      "description": "GitHub Actions used across .github/workflows/ - pinned to major-version tags today (e.g. actions/checkout@v7), so most updates here are 'major' by Renovate's own versioning judgment even for routine bumps; pinDigests additionally tracks the exact commit each tag points to, so a same-tag security fix upstream still produces an auto-mergeable 'digest' update rather than nothing at all.",
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions",
+      "pinDigests": true
+    },
+    {
+      "description": "Base images in deploy/Dockerfile and deploy/mock-vyos.Dockerfile (node, golang, gcr.io/distroless/static-debian12) grouped into one PR per update type.",
+      "matchManagers": ["dockerfile"],
+      "groupName": "Docker base images"
+    },
+    {
+      "description": "The real-VyOS e2e suite's pinned rolling/Stream builds (e2e/vyos-versions.env) never auto-merge, regardless of update type - unlike this repo's other dependencies, e2e.yml only runs on a schedule/tag-push/workflow_dispatch, not on every PR (see e2e/README.md), so a PR bumping one of these has no automated confirmation that the new pinned build actually boots and passes the suite before merge. A human should either run e2e.yml manually against the bumped version first, or accept the (bounded, next-Monday) delay before the scheduled run surfaces a problem.",
+      "matchFileNames": ["e2e/vyos-versions.env"],
+      "automerge": false,
+      "labels": ["dependencies", "e2e-vyos-version"]
+    },
+    {
+      "description": "VyOS Stream's tag format has changed over the channel's own history (older releases: '1.5-stream-YYYY-QN'; current: 'YYYY.MM') - 'loose' versioning compares these as dot/hyphen-separated segments, which happens to still sort every real release chronologically today (numeric year always outranks the old '1.5' prefix), but re-verify this against https://vyos.net/get/stream/ if VyOS ever changes the format again and a bump looks wrong.",
+      "matchDatasources": ["custom.vyos-stream"],
+      "extractVersion": "/stream/(?<version>[^/]+)/vyos-[^/]+-generic-amd64\\.iso$",
+      "versioning": "loose"
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Tracks e2e/vyos-versions.env's pinned rolling-release tag against vyos/vyos-nightly-build's real GitHub Releases feed - always kept at the actual latest rolling build.",
+      "managerFilePatterns": ["/^e2e/vyos-versions\\.env$/"],
+      "matchStrings": ["VYOS_ROLLING_TAG=(?<currentValue>\\S+)"],
+      "depNameTemplate": "vyos/vyos-nightly-build",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "description": "Tracks e2e/vyos-versions.env's pinned newest-Stream-release tag (VYOS_STREAM_0_TAG only - the other 3 Stream slots are manually curated, see that file's own doc comment) against a custom HTML-scrape datasource, since VyOS Stream has no structured release feed/API at all.",
+      "managerFilePatterns": ["/^e2e/vyos-versions\\.env$/"],
+      "matchStrings": ["VYOS_STREAM_0_TAG=(?<currentValue>\\S+)"],
+      "depNameTemplate": "vyos-stream",
+      "datasourceTemplate": "custom.vyos-stream"
+    }
+  ],
+  "customDatasources": {
+    "vyos-stream": {
+      "defaultRegistryUrlTemplate": "https://vyos.net/get/stream/",
+      "format": "html"
+    }
+  }
+}

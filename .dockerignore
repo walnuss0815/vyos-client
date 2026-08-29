@@ -1,0 +1,11 @@
+.git
+**/node_modules
+frontend/dist
+backend/internal/webapp/dist/*
+!backend/internal/webapp/dist/index.html
+**/*.md
+e2e
+docs
+.direnv
+result
+result-*

@@ -1,0 +1,50 @@
+# --- Go ---
+/backend/vyos-client
+/backend/bin/
+/backend/dist/
+*.test
+*.out
+coverage.txt
+coverage.html
+
+# --- Node / frontend ---
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.local
+npm-debug.log*
+pnpm-debug.log*
+
+# --- Embedded frontend build output (copied in at build time) ---
+backend/internal/webapp/dist/*
+!backend/internal/webapp/dist/index.html
+
+# --- Playwright / e2e ---
+e2e/**/test-results/
+e2e/**/playwright-report/
+e2e/**/.cache/
+e2e/vm/artifacts/
+e2e/vm/*.iso
+e2e/vm/*.qcow2
+
+# --- Nix ---
+.direnv/
+result
+result-*
+
+# --- Env / secrets ---
+.env
+.env.*
+!.env.example
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# --- Build artifacts ---
+/dist/
+/build/
+*.log

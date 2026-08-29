@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Applies the dark/light class before first paint, so there's no
+         flash of the wrong theme. Mirrors store/theme.ts's resolveTheme()
+         and reads the same localStorage key zustand's `persist`
+         middleware writes to (THEME_STORAGE_KEY there) - keep both in
+         sync if either changes. Can't import the TS module here since
+         this has to run synchronously, before any script bundle loads. -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('vyos-client-theme')
+          var mode = stored ? JSON.parse(stored).state.mode : 'auto'
+          var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+          var dark = mode === 'dark' || (mode === 'auto' && prefersDark)
+          if (dark) document.documentElement.classList.add('dark')
+        } catch (e) {
+          // Storage disabled/corrupt/etc. - fall through to the light
+          // default rather than block rendering.
+        }
+      })()
+    </script>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Overridden at runtime to the router's hostname once known,
+         see Layout.tsx's DEFAULT_DOCUMENT_TITLE. -->
+    <title>VyOS Client</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

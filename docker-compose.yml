@@ -1,0 +1,37 @@
+# Local testing stack for VyOS Client.
+#
+# Usage:
+#   cp .env.example .env      # then edit .env if needed
+#   docker compose up --build
+#   open https://localhost:8443  (self-signed cert warning is expected)
+#
+# By default this also starts `mock-vyos`, a real (non-httptest) HTTP
+# server wrapping backend/internal/testutil's fake VyOS REST API - the
+# same one the Go test suite uses - pre-seeded with a small example
+# configuration. It is NOT a faithful VyOS emulator, just enough of the
+# real wire protocol to exercise VyOS Client's login, config read/write,
+# and commit/save flows locally without a router. Its state is
+# in-memory only and resets every restart.
+#
+# To test against a REAL VyOS router instead: set VYOS_API_URL and
+# VYOS_API_KEY in .env to point at it, then run:
+#   docker compose up vyos-client --no-deps --build
+
+services:
+  mock-vyos:
+    build:
+      context: .
+      dockerfile: deploy/mock-vyos.Dockerfile
+    environment:
+      VYOS_API_KEY: ${VYOS_API_KEY:-dev-key}
+
+  vyos-client:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+    env_file:
+      - .env
+    ports:
+      - '${HOST_PORT:-8443}:8443'
+    depends_on:
+      - mock-vyos

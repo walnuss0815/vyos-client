@@ -1,0 +1,32 @@
+[
+  {
+    "id": "firewall-default-accept-{family}-{id}",
+    "query": "rulesets[?kind=='base' && (id=='input' || id=='forward') && (defaultAction=='accept' || defaultAction==null)]",
+    "message": "Firewall {family} {id} chain's default action is \"accept\" - traffic not matched by any rule is allowed through.",
+    "description": "VyOS's own documented behavior: an unset default-action on a base chain defaults to accept, exactly as permissive as an explicit one, not a safer 'no policy yet' state (docs.vyos.io/.../firewall/ipv4.html). Custom chains and the output base chain (traffic the router itself originates, not traffic reaching it) are deliberately excluded - output defaulting to accept is the normal, expected case for nearly every router."
+  },
+  {
+    "id": "ssh-password-auth",
+    "query": "[ssh][?enabled && !disablePasswordAuthentication]",
+    "message": "SSH password authentication is enabled - consider key-only login (service ssh disable-password-authentication).",
+    "description": "Flags SSH password authentication being allowed (VyOS's own disable-password-authentication flag not set) while SSH is actually enabled. Wrapped in [ssh][...] (a one-element multiselect list) since `ssh` in the facts object is a single object, not an array - every rule's query must return an array so the same one-match-per-array-element evaluation model applies uniformly."
+  },
+  {
+    "id": "https-api-no-restriction",
+    "query": "[https][?enabled && length(allowClientAddresses) == `0`]",
+    "message": "The HTTPS API has no client address restriction configured (service https allow-client address).",
+    "description": "Flags the HTTPS API being enabled with no client address restriction at all - any host that can reach the API port can attempt to authenticate against it."
+  },
+  {
+    "id": "snmp-weak-community-{name}",
+    "query": "snmp.communities[?contains(`[\"public\",\"private\"]`, nameLower)]",
+    "message": "SNMP community \"{name}\" is a well-known default string.",
+    "description": "Flags any SNMP v1/v2c community using a well-known default string, checked case-insensitively via the precomputed `nameLower` field (JMESPath has no built-in lower-case function - see buildConfigWarningFacts). A community's name is the tagNode identifier itself, not a masked leaf value, so it's fully readable here."
+  },
+  {
+    "id": "user-no-auth-{username}",
+    "query": "users[?!disabled && !hasPassword && length(publicKeys[?hasKey]) == `0`]",
+    "message": "User \"{username}\" has no password and no SSH key configured.",
+    "description": "Flags any enabled local user account with no authentication factor configured at all - no password hash and no SSH public key with actual key data. This is the checkable subset of 'empty secrets': every secret this app models is write-only (values never sent back), so 'no secret configured for an account that isn't disabled' is the only checkable form."
+  }
+]
