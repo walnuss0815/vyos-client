@@ -133,3 +133,129 @@ func TestListReleases_MalformedJSON(t *testing.T) {
 		t.Fatal("expected an error for a malformed response")
 	}
 }
+
+// TestListReleases_ServesStaleCacheOnError guards against turning a
+// transient GitHub outage/rate-limit into a worse user-facing failure
+// than necessary: once a successful result has been cached at all, a
+// later failed refresh should fall back to serving that stale result
+// rather than propagating the error.
+func TestListReleases_ServesStaleCacheOnError(t *testing.T) {
+	var failing bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if failing {
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"message": "API rate limit exceeded"}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"tag_name": "v1.0.0", "name": "1.0.0", "draft": false, "prerelease": false}]`))
+	}))
+	defer server.Close()
+
+	client, err := New(Config{
+		Repo:       "example/repo",
+		BaseURL:    server.URL,
+		HTTPClient: server.Client(),
+		CacheTTL:   1 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	releases, err := client.ListReleases(context.Background())
+	if err != nil {
+		t.Fatalf("ListReleases (first, successful): %v", err)
+	}
+	if len(releases) != 1 || releases[0].Version != "1.0.0" {
+		t.Fatalf("unexpected first result: %+v", releases)
+	}
+
+	// Let the cache expire, then make every subsequent request fail.
+	time.Sleep(5 * time.Millisecond)
+	failing = true
+
+	staleReleases, err := client.ListReleases(context.Background())
+	if err != nil {
+		t.Fatalf("expected the stale cache to be served without an error, got: %v", err)
+	}
+	if len(staleReleases) != 1 || staleReleases[0].Version != "1.0.0" {
+		t.Errorf("expected the stale cached result to be returned, got: %+v", staleReleases)
+	}
+}
+
+// TestListReleases_NegativeCacheAvoidsRepeatedRequests guards against
+// hammering (and further prolonging) a rate limit/outage: when there
+// is no previous successful result to fall back to, a failed fetch
+// should be remembered for NegativeCacheTTL rather than retried on
+// every call.
+func TestListReleases_NegativeCacheAvoidsRepeatedRequests(t *testing.T) {
+	var requestCount int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"message": "API rate limit exceeded"}`))
+	}))
+	defer server.Close()
+
+	client, err := New(Config{
+		Repo:             "example/repo",
+		BaseURL:          server.URL,
+		HTTPClient:       server.Client(),
+		NegativeCacheTTL: 1 * time.Hour,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	if _, err := client.ListReleases(context.Background()); err == nil {
+		t.Fatal("expected an error for the first, failing request")
+	}
+	if requestCount != 1 {
+		t.Fatalf("expected exactly 1 HTTP request, got %d", requestCount)
+	}
+
+	// A second call within NegativeCacheTTL must not hit the server
+	// again - it should return the same remembered error immediately.
+	if _, err := client.ListReleases(context.Background()); err == nil {
+		t.Fatal("expected the remembered error to be returned")
+	}
+	if requestCount != 1 {
+		t.Errorf("expected the negative cache to suppress a second request, got %d requests", requestCount)
+	}
+}
+
+// TestListReleases_NegativeCacheExpires guards the other half of
+// TestListReleases_NegativeCacheAvoidsRepeatedRequests: once
+// NegativeCacheTTL elapses, the next call must actually retry rather
+// than being suppressed forever.
+func TestListReleases_NegativeCacheExpires(t *testing.T) {
+	var requestCount int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"message": "API rate limit exceeded"}`))
+	}))
+	defer server.Close()
+
+	client, err := New(Config{
+		Repo:             "example/repo",
+		BaseURL:          server.URL,
+		HTTPClient:       server.Client(),
+		NegativeCacheTTL: 1 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	if _, err := client.ListReleases(context.Background()); err == nil {
+		t.Fatal("expected an error for the first, failing request")
+	}
+	time.Sleep(5 * time.Millisecond)
+	if _, err := client.ListReleases(context.Background()); err == nil {
+		t.Fatal("expected an error for the second, failing request")
+	}
+
+	if requestCount != 2 {
+		t.Errorf("expected the expired negative cache to trigger a second request, got %d", requestCount)
+	}
+}
