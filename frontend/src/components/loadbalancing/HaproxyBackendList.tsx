@@ -147,6 +147,8 @@ function HaproxyBackendFormPanel({
   const [initialServerName, setInitialServerName] = useState('')
   const [initialServerAddress, setInitialServerAddress] = useState('')
   const [initialServerPort, setInitialServerPort] = useState('')
+  const [firstRuleDomainNames, setFirstRuleDomainNames] = useState('')
+  const [firstRuleSetServer, setFirstRuleSetServer] = useState('')
 
   function update<K extends keyof HAProxyBackendFormValues>(key: K, value: HAProxyBackendFormValues[K]) {
     setValues((v) => ({ ...v, [key]: value }))
@@ -172,6 +174,28 @@ function HaproxyBackendFormPanel({
         sendProxyV2: false,
       })
       for (const op of serverOps) {
+        add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+      }
+    }
+    // A backend's routing rules used to only be addable AFTER the
+    // backend already existed - HaproxyBackendRulesSection only ever
+    // operates on an already-fetched backend. Not a VyOS commit-
+    // blocking requirement (unlike the initial server above), but
+    // avoids a detour through commit+refetch just to add the first
+    // one.
+    if (!backend && (firstRuleDomainNames.trim() || firstRuleSetServer.trim())) {
+      const ruleOps = addHAProxyBackendRuleOps(name, '1', {
+        domainNames: firstRuleDomainNames,
+        wildcardDomain: false,
+        ssl: '',
+        urlPathBegin: '',
+        urlPathEnd: '',
+        urlPathExact: '',
+        setRedirectLocation: '',
+        setBackend: '',
+        setServer: firstRuleSetServer,
+      })
+      for (const op of ruleOps) {
         add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
       }
     }
@@ -390,6 +414,30 @@ function HaproxyBackendFormPanel({
               onChange={(e) => setInitialServerPort(e.target.value)}
               placeholder="8080"
               className={inputClass}
+            />
+          </div>
+        </div>
+      )}
+
+      {!backend && (
+        <div className="mb-3">
+          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">
+            First routing rule (optional)
+          </p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <input
+              {...noExtensionInputProps}
+              value={firstRuleDomainNames}
+              onChange={(e) => setFirstRuleDomainNames(e.target.value)}
+              placeholder="example.com"
+              className={inputClass}
+            />
+            <input
+              {...noExtensionInputProps}
+              value={firstRuleSetServer}
+              onChange={(e) => setFirstRuleSetServer(e.target.value)}
+              placeholder="route to server name"
+              className={`font-mono ${inputClass}`}
             />
           </div>
         </div>
