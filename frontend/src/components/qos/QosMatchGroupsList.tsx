@@ -48,6 +48,10 @@ export default function QosMatchGroupsList({ groups }: { groups: QosMatchGroup[]
     }
     setShowAdd(false)
     setEditing(trimmed)
+    setNewName('')
+    setFirstMatchId('')
+    setFirstMatchDestAddress('')
+    setFirstMatchDestPort('')
   }
 
   return (
@@ -62,6 +66,12 @@ export default function QosMatchGroupsList({ groups }: { groups: QosMatchGroup[]
             setShowAdd((v) => !v)
             setEditing(null)
             setNewName('')
+            // A previous, abandoned draft (first match rule fields)
+            // must not survive into the next "+ Add group" click -
+            // see the regression test guarding this.
+            setFirstMatchId('')
+            setFirstMatchDestAddress('')
+            setFirstMatchDestPort('')
           }}
           className={`bg-accent-600 ${buttonClass}`}
         >

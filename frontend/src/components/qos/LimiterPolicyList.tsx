@@ -73,6 +73,10 @@ export default function LimiterPolicyList({
     }
     setShowAdd(false)
     setEditing(trimmed)
+    setNewName('')
+    setFirstClassId('')
+    setFirstClassBandwidth('')
+    setDefaultBandwidth('')
   }
 
   return (
@@ -84,6 +88,12 @@ export default function LimiterPolicyList({
             setShowAdd((v) => !v)
             setEditing(null)
             setNewName('')
+            // A previous, abandoned draft (first class/default class
+            // fields) must not survive into the next "+ Add policy"
+            // click - see the regression test guarding this.
+            setFirstClassId('')
+            setFirstClassBandwidth('')
+            setDefaultBandwidth('')
           }}
           className={`bg-accent-600 ${buttonClass}`}
         >
