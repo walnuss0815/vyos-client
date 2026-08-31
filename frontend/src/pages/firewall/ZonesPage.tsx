@@ -82,6 +82,8 @@ function CreateZoneForm({ onDone }: { onDone: () => void }) {
   const [interfaces, setInterfaces] = useState('')
   const [localZone, setLocalZone] = useState(false)
   const [defaultAction, setDefaultAction] = useState<'drop' | 'reject'>('drop')
+  const [firstFromZone, setFirstFromZone] = useState('')
+  const [firstFromRuleset, setFirstFromRuleset] = useState('')
   const add = usePendingChangesStore((s) => s.add)
 
   const ifaceList = interfaces
@@ -107,6 +109,22 @@ function CreateZoneForm({ onDone }: { onDone: () => void }) {
       op: { op: 'set', path: zonePath(zoneName, 'default-action'), value: defaultAction },
       label: `set zone ${zoneName} default-action '${defaultAction}'`,
     })
+    // Source-zone ruleset assignments used to only be addable AFTER
+    // the zone already existed - ZoneCard's "from" list only ever
+    // operates on an already-fetched zone. Not a VyOS commit-blocking
+    // requirement, but this zone's own name is already known here, so
+    // queuing a first assignment avoids a detour through commit+
+    // refetch just to add one.
+    if (firstFromZone.trim() && firstFromRuleset.trim()) {
+      add({
+        op: {
+          op: 'set',
+          path: zonePath(zoneName, 'from', firstFromZone.trim(), 'firewall', 'name'),
+          value: firstFromRuleset.trim(),
+        },
+        label: `set zone ${zoneName} from ${firstFromZone.trim()} firewall name '${firstFromRuleset.trim()}'`,
+      })
+    }
     onDone()
   }
 
@@ -159,6 +177,26 @@ function CreateZoneForm({ onDone }: { onDone: () => void }) {
           />
         </label>
       )}
+
+      <div className="mt-3 border-t border-surface-border pt-3">
+        <p className="mb-2 text-xs text-slate-500">First ruleset assignment (optional)</p>
+        <div className="flex items-center gap-2">
+          <input
+            {...noExtensionInputProps}
+            value={firstFromZone}
+            onChange={(e) => setFirstFromZone(e.target.value)}
+            placeholder="source zone"
+            className={`w-28 ${inputClass}`}
+          />
+          <input
+            {...noExtensionInputProps}
+            value={firstFromRuleset}
+            onChange={(e) => setFirstFromRuleset(e.target.value)}
+            placeholder="ruleset name"
+            className={inputClass}
+          />
+        </div>
+      </div>
 
       <button
         onClick={submit}
