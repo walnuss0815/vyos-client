@@ -79,6 +79,7 @@ import SystemImagesPage from './pages/system/ImagesPage'
 import PowerPage from './pages/system/PowerPage'
 import SyslogPage from './pages/system/SyslogPage'
 import SystemLayout from './pages/system/SystemLayout'
+import UpgradesPage from './pages/system/UpgradesPage'
 import UsersPage from './pages/system/UsersPage'
 import IpsecCryptoPage from './pages/vpn/IpsecCryptoPage'
 import IpsecRemoteAccessPage from './pages/vpn/IpsecRemoteAccessPage'
@@ -205,6 +206,7 @@ export default function App() {
             <Route path="syslog" element={<SyslogPage />} />
             <Route path="power" element={<PowerPage />} />
             <Route path="images" element={<SystemImagesPage />} />
+            <Route path="upgrades" element={<UpgradesPage />} />
           </Route>
           <Route path="/container" element={<ContainerLayout />}>
             <Route index element={<Navigate to="containers" replace />} />
