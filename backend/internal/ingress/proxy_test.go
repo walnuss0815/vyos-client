@@ -101,6 +101,40 @@ func TestProxy_RequestToIngressRootHasSlashPath(t *testing.T) {
 	}
 }
 
+// TestProxy_RewritesHostHeaderToTarget guards against the outbound
+// request carrying the browser's original Host header (this app's own
+// hostname) instead of the target's, which some servers validate or
+// otherwise depend on. httputil.ProxyRequest.SetURL already handles
+// this correctly on its own (it clears Out.Host, so Transport falls
+// back to the now-rewritten Out.URL.Host) - this test exists to catch
+// a regression if that call is ever removed or reordered, not because
+// an extra explicit fix was needed here.
+func TestProxy_RewritesHostHeaderToTarget(t *testing.T) {
+	var gotHost, gotXForwardedHost string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHost = r.Host
+		gotXForwardedHost = r.Header.Get("X-Forwarded-Host")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+	upstreamURL, _ := url.Parse(upstream.URL)
+
+	store := newTestStore(t, ingress.Entry{Name: "nas", TargetURL: upstream.URL})
+	proxy := ingress.NewProxy(store, testLogger())
+
+	req := httptest.NewRequest(http.MethodGet, "/ingress/nas/", nil)
+	req.Host = "vyos-client.example:8443"
+	rec := httptest.NewRecorder()
+	proxy.ServeHTTP(rec, req)
+
+	if gotHost != upstreamURL.Host {
+		t.Errorf("upstream saw Host %q, want the target's own host %q", gotHost, upstreamURL.Host)
+	}
+	if gotXForwardedHost != "vyos-client.example:8443" {
+		t.Errorf("X-Forwarded-Host = %q, want the original client-facing host preserved", gotXForwardedHost)
+	}
+}
+
 func TestProxy_InjectsConfiguredHeaders(t *testing.T) {
 	var gotAuth, gotOverride string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
