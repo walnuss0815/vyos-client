@@ -75,6 +75,31 @@ describe('RouteMapsPage', () => {
     expect(changes[0].op).toEqual({ op: 'set', path: ['policy', 'route-map', 'BARE'] })
   })
 
+  it('also queues a first rule when creating a route-map with its optional fields filled in', async () => {
+    // Regression test: a route-map's rules used to only be
+    // configurable AFTER the route-map already existed -
+    // RulesSection/RouteMapRuleForm only ever operate on an
+    // already-fetched route-map.
+    const user = userEvent.setup()
+    renderWithProviders(<RouteMapsPage />)
+    await screen.findByText('EXPORT')
+
+    await user.click(screen.getByRole('button', { name: /\+ new route-map/i }))
+    await user.type(screen.getByLabelText(/^name/i), 'IMPORT')
+    await user.selectOptions(screen.getByLabelText(/^action/i), 'deny')
+    await user.type(screen.getByLabelText(/match protocol/i), 'ospf')
+    await user.click(screen.getByRole('button', { name: /queue route-map creation/i }))
+
+    const { changes } = usePendingChangesStore.getState()
+    const ops = changes.map((c) => c.op)
+    expect(ops).toContainEqual({ op: 'set', path: ['policy', 'route-map', 'IMPORT', 'rule', '10', 'action'], value: 'deny' })
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['policy', 'route-map', 'IMPORT', 'rule', '10', 'match', 'protocol'],
+      value: 'ospf',
+    })
+  })
+
   it('deletes a route-map', async () => {
     const user = userEvent.setup()
     renderWithProviders(<RouteMapsPage />)

@@ -1,6 +1,12 @@
 import { useState } from 'react'
 import RouteMapRuleForm from './RouteMapRuleForm'
-import { deleteRouteMapOp, deleteRouteMapRuleOp, routeMapFormToOps } from '../../lib/routeMapForm'
+import {
+  blankRouteMapRuleFormValues,
+  deleteRouteMapOp,
+  deleteRouteMapRuleOp,
+  routeMapFormToOps,
+  routeMapRuleFormToOps,
+} from '../../lib/routeMapForm'
 import type { RouteMap } from '../../lib/policyTypes'
 import { buttonClass, inputClass, labelClass } from '../../lib/formStyles'
 import { noExtensionInputProps } from '../../lib/inputProtection'
@@ -10,6 +16,8 @@ export default function RouteMapSection({ routeMaps }: { routeMaps: RouteMap[] }
   const [showCreate, setShowCreate] = useState(false)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [firstRuleAction, setFirstRuleAction] = useState<'' | 'permit' | 'deny'>('')
+  const [firstRuleProtocol, setFirstRuleProtocol] = useState('')
   const add = usePendingChangesStore((s) => s.add)
 
   const trimmedName = name.trim()
@@ -33,8 +41,23 @@ export default function RouteMapSection({ routeMaps }: { routeMaps: RouteMap[] }
         add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
       }
     }
+    // A route-map's rules used to only be configurable AFTER the
+    // route-map already existed - RulesSection/RouteMapRuleForm only
+    // ever operate on an already-fetched route-map. Queuing a first
+    // one here, in the same commit as the route-map itself, avoids a
+    // detour through commit+refetch.
+    if (firstRuleAction || firstRuleProtocol.trim()) {
+      const ruleOps = routeMapRuleFormToOps(trimmedName, '10', undefined, {
+        ...blankRouteMapRuleFormValues(),
+        action: firstRuleAction,
+        match: { ...blankRouteMapRuleFormValues().match, protocol: firstRuleProtocol.trim() },
+      })
+      for (const op of ruleOps) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    }
     setName('')
     setDescription('')
+    setFirstRuleAction('')
+    setFirstRuleProtocol('')
     setShowCreate(false)
   }
 
@@ -79,6 +102,33 @@ export default function RouteMapSection({ routeMaps }: { routeMaps: RouteMap[] }
                 className={inputClass}
               />
             </label>
+          </div>
+          <div className="mt-3">
+            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">First rule #10 (optional)</p>
+            <div className="grid grid-cols-2 gap-3">
+              <label className={labelClass}>
+                Action
+                <select
+                  value={firstRuleAction}
+                  onChange={(e) => setFirstRuleAction(e.target.value as '' | 'permit' | 'deny')}
+                  className={inputClass}
+                >
+                  <option value="">(default: permit)</option>
+                  <option value="permit">permit</option>
+                  <option value="deny">deny</option>
+                </select>
+              </label>
+              <label className={labelClass}>
+                Match protocol
+                <input
+                  {...noExtensionInputProps}
+                  value={firstRuleProtocol}
+                  onChange={(e) => setFirstRuleProtocol(e.target.value)}
+                  placeholder="bgp, ospf, connected, static..."
+                  className={inputClass}
+                />
+              </label>
+            </div>
           </div>
           <button onClick={submitCreate} disabled={!valid} className={`mt-3 bg-accent-600 ${buttonClass}`}>
             Queue route-map creation
