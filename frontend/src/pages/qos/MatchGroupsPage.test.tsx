@@ -48,6 +48,37 @@ describe('MatchGroupsPage', () => {
     expect(changes.some((c) => c.op.op === 'set' && c.op.path.join(' ') === 'qos traffic-match-group VOIP')).toBe(true)
   })
 
+  it('also queues a first match rule when creating a group with its optional fields filled in', async () => {
+    // Regression test: a group's match rules used to only be
+    // configurable AFTER the group already existed - QosMatchList
+    // only ever operates on an already-fetched group.
+    const user = userEvent.setup()
+    renderWithProviders(<MatchGroupsPage />)
+    await screen.findByText('WEB')
+
+    await user.click(screen.getByRole('button', { name: '+ Add group' }))
+    await user.type(screen.getByPlaceholderText('WEB'), 'VOIP')
+    await user.type(screen.getByPlaceholderText('match name'), 'sip')
+    await user.type(screen.getByPlaceholderText('destination address'), '203.0.113.5')
+    await user.type(screen.getByPlaceholderText('destination port'), '5060')
+    await user.click(screen.getByRole('button', { name: 'Add group' }))
+
+    const { changes } = usePendingChangesStore.getState()
+    const ops = changes.map((c) => c.op)
+    expect(ops).toContainEqual({ op: 'set', path: ['qos', 'traffic-match-group', 'VOIP'] })
+    expect(ops).toContainEqual({ op: 'set', path: ['qos', 'traffic-match-group', 'VOIP', 'match', 'sip'] })
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['qos', 'traffic-match-group', 'VOIP', 'match', 'sip', 'ip', 'destination', 'address'],
+      value: '203.0.113.5',
+    })
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['qos', 'traffic-match-group', 'VOIP', 'match', 'sip', 'ip', 'destination', 'port'],
+      value: '5060',
+    })
+  })
+
   it('deletes a match group', async () => {
     const user = userEvent.setup()
     renderWithProviders(<MatchGroupsPage />)
