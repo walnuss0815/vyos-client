@@ -155,4 +155,29 @@ describe('L2tpPage', () => {
     const { changes } = usePendingChangesStore.getState()
     expect(changes.map((c) => c.op)).toContainEqual({ op: 'delete', path: ['vpn', 'l2tp'] })
   })
+
+  // Regression test: see store/pendingChanges.ts's withPendingEnable.
+  it('shows the settings form immediately after clicking Enable, without committing', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))
+    const user = userEvent.setup()
+    renderWithProviders(<L2tpPage />)
+
+    await user.click(await screen.findByRole('button', { name: /enable l2tp/i }))
+
+    expect(await screen.findByLabelText(/outside address/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /disable l2tp entirely/i })).toBeInTheDocument()
+  })
+
+  it('reverts to the enable prompt immediately after clicking Disable, without committing', async () => {
+    const vpn = { l2tp: { 'remote-access': {} } }
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: vpn })))
+    const user = userEvent.setup()
+    renderWithProviders(<L2tpPage />)
+    await screen.findByRole('button', { name: /disable l2tp entirely/i })
+
+    await user.click(screen.getByRole('button', { name: /disable l2tp entirely/i }))
+
+    expect(await screen.findByText(/l2tp is not configured/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /enable l2tp/i })).toBeInTheDocument()
+  })
 })

@@ -90,4 +90,29 @@ describe('SstpPage', () => {
     const { changes } = usePendingChangesStore.getState()
     expect(changes.map((c) => c.op)).toContainEqual({ op: 'delete', path: ['vpn', 'sstp'] })
   })
+
+  // Regression test: see store/pendingChanges.ts's withPendingEnable.
+  it('shows the settings form immediately after clicking Enable, without committing', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))
+    const user = userEvent.setup()
+    renderWithProviders(<SstpPage />)
+
+    await user.click(await screen.findByRole('button', { name: /enable sstp/i }))
+
+    expect(await screen.findByLabelText(/ca certificate/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /disable sstp entirely/i })).toBeInTheDocument()
+  })
+
+  it('reverts to the enable prompt immediately after clicking Disable, without committing', async () => {
+    const vpn = { sstp: {} }
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: vpn })))
+    const user = userEvent.setup()
+    renderWithProviders(<SstpPage />)
+    await screen.findByRole('button', { name: /disable sstp entirely/i })
+
+    await user.click(screen.getByRole('button', { name: /disable sstp entirely/i }))
+
+    expect(await screen.findByText(/sstp is not configured/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /enable sstp/i })).toBeInTheDocument()
+  })
 })

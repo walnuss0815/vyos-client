@@ -52,4 +52,28 @@ describe('ConsoleServerPage', () => {
       path: ['service', 'console-server', 'device', 'ttyS1'],
     })
   })
+
+  // Regression test: see store/pendingChanges.ts's withPendingEnable.
+  it('shows the full list UI immediately after clicking Enable, without committing', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))
+    const user = userEvent.setup()
+    renderWithProviders(<ConsoleServerPage />)
+
+    await user.click(await screen.findByRole('button', { name: /enable console server/i }))
+
+    expect(await screen.findByRole('button', { name: /\+ new device/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /disable console server entirely/i })).toBeInTheDocument()
+  })
+
+  it('reverts to the enable prompt immediately after clicking Disable, without committing', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: { 'console-server': {} } })))
+    const user = userEvent.setup()
+    renderWithProviders(<ConsoleServerPage />)
+    await screen.findByRole('button', { name: /\+ new device/i })
+
+    await user.click(screen.getByRole('button', { name: /disable console server entirely/i }))
+
+    expect(await screen.findByText(/console server is not configured/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /enable console server/i })).toBeInTheDocument()
+  })
 })

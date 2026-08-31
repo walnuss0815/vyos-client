@@ -82,4 +82,100 @@ describe('MonitoringPage', () => {
       path: ['service', 'monitoring', 'network-event', 'event', 'route'],
     })
   })
+
+  // Regression tests: see store/pendingChanges.ts's withPendingEnable.
+  // Each of Monitoring's 4 sub-areas is gated independently, so each
+  // needs its own enable/disable-immediacy coverage.
+  it('shows the Node Exporter form immediately after clicking its Enable button, without committing', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))
+    const user = userEvent.setup()
+    renderWithProviders(<MonitoringPage />)
+
+    await user.click(await screen.findByRole('button', { name: /^enable node exporter$/i }))
+
+    expect(await screen.findByText(/collect textfile metrics/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^disable node exporter$/i })).toBeInTheDocument()
+  })
+
+  it('reverts Node Exporter to its enable prompt immediately after clicking Disable, without committing', async () => {
+    const monitoring = { monitoring: { prometheus: { 'node-exporter': {} } } }
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: monitoring })))
+    const user = userEvent.setup()
+    renderWithProviders(<MonitoringPage />)
+    await screen.findByRole('button', { name: /^disable node exporter$/i })
+
+    await user.click(screen.getByRole('button', { name: /^disable node exporter$/i }))
+
+    expect(await screen.findByText(/node exporter is not configured/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^enable node exporter$/i })).toBeInTheDocument()
+  })
+
+  it('shows the FRR Exporter form immediately after clicking its Enable button, without committing', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))
+    const user = userEvent.setup()
+    renderWithProviders(<MonitoringPage />)
+
+    await user.click(await screen.findByRole('button', { name: /^enable frr exporter$/i }))
+
+    expect(await screen.findByRole('button', { name: /^disable frr exporter$/i })).toBeInTheDocument()
+  })
+
+  it('reverts FRR Exporter to its enable prompt immediately after clicking Disable, without committing', async () => {
+    const monitoring = { monitoring: { prometheus: { 'frr-exporter': {} } } }
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: monitoring })))
+    const user = userEvent.setup()
+    renderWithProviders(<MonitoringPage />)
+    await screen.findByRole('button', { name: /^disable frr exporter$/i })
+
+    await user.click(screen.getByRole('button', { name: /^disable frr exporter$/i }))
+
+    expect(await screen.findByText(/frr exporter is not configured/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^enable frr exporter$/i })).toBeInTheDocument()
+  })
+
+  it('shows the Zabbix Agent form immediately after clicking its Enable button, without committing', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))
+    const user = userEvent.setup()
+    renderWithProviders(<MonitoringPage />)
+
+    await user.click(await screen.findByRole('button', { name: /^enable zabbix agent$/i }))
+
+    expect(await screen.findByRole('button', { name: /^disable zabbix agent$/i })).toBeInTheDocument()
+  })
+
+  it('reverts Zabbix Agent to its enable prompt immediately after clicking Disable, without committing', async () => {
+    const monitoring = { monitoring: { 'zabbix-agent': {} } }
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: monitoring })))
+    const user = userEvent.setup()
+    renderWithProviders(<MonitoringPage />)
+    await screen.findByRole('button', { name: /^disable zabbix agent$/i })
+
+    await user.click(screen.getByRole('button', { name: /^disable zabbix agent$/i }))
+
+    expect(await screen.findByText(/zabbix agent is not configured/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^enable zabbix agent$/i })).toBeInTheDocument()
+  })
+
+  it('shows the Network Events form immediately after clicking its Enable button, without committing', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))
+    const user = userEvent.setup()
+    renderWithProviders(<MonitoringPage />)
+
+    await user.click(await screen.findByRole('button', { name: /^enable network events$/i }))
+
+    expect(await screen.findByRole('button', { name: /^disable network events$/i })).toBeInTheDocument()
+  })
+
+  it('reverts Network Events to its enable prompt immediately after clicking Disable, without committing', async () => {
+    const monitoring = { monitoring: { 'network-event': {} } }
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: monitoring })))
+    const user = userEvent.setup()
+    renderWithProviders(<MonitoringPage />)
+    await screen.findByRole('button', { name: /^disable network events$/i })
+
+    await user.click(screen.getByRole('button', { name: /^disable network events$/i }))
+
+    expect(await screen.findByText(/network event monitoring is not configured/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^enable network events$/i })).toBeInTheDocument()
+  })
 })

@@ -92,6 +92,18 @@ describe('SnmpPage', () => {
     expect(changes).toHaveLength(1)
     expect(changes[0].op).toEqual({ op: 'delete', path: ['service', 'snmp'] })
   })
+
+  // Regression test: see store/pendingChanges.ts's withPendingEnable.
+  it('shows the settings form immediately after clicking Enable, without committing', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))
+    const user = userEvent.setup()
+    renderWithProviders(<SnmpPage />)
+
+    await user.click(await screen.findByRole('button', { name: /enable snmp/i }))
+
+    expect(await screen.findByRole('button', { name: /save settings/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /disable snmp entirely/i })).toBeInTheDocument()
+  })
 })
 
 describe('SnmpPage - v3', () => {

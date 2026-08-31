@@ -72,4 +72,28 @@ describe('EventHandlerPage', () => {
       path: ['service', 'event-handler', 'event', 'link-up'],
     })
   })
+
+  // Regression test: see store/pendingChanges.ts's withPendingEnable.
+  it('shows the full list UI immediately after clicking Enable, without committing', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))
+    const user = userEvent.setup()
+    renderWithProviders(<EventHandlerPage />)
+
+    await user.click(await screen.findByRole('button', { name: /enable event handler/i }))
+
+    expect(await screen.findByRole('button', { name: /\+ new event/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /disable event handler entirely/i })).toBeInTheDocument()
+  })
+
+  it('reverts to the enable prompt immediately after clicking Disable, without committing', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: { 'event-handler': {} } })))
+    const user = userEvent.setup()
+    renderWithProviders(<EventHandlerPage />)
+    await screen.findByRole('button', { name: /\+ new event/i })
+
+    await user.click(screen.getByRole('button', { name: /disable event handler entirely/i }))
+
+    expect(await screen.findByText(/event handler is not configured/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /enable event handler/i })).toBeInTheDocument()
+  })
 })

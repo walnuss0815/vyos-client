@@ -50,4 +50,28 @@ describe('TftpPage', () => {
       value: '/srv/tftp',
     })
   })
+
+  // Regression test: see store/pendingChanges.ts's withPendingEnable.
+  it('shows the settings form immediately after clicking Enable, without committing', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))
+    const user = userEvent.setup()
+    renderWithProviders(<TftpPage />)
+
+    await user.click(await screen.findByRole('button', { name: /enable tftp server/i }))
+
+    expect(await screen.findByRole('button', { name: /save settings/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /disable tftp server entirely/i })).toBeInTheDocument()
+  })
+
+  it('reverts to the enable prompt immediately after clicking Disable, without committing', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: { 'tftp-server': {} } })))
+    const user = userEvent.setup()
+    renderWithProviders(<TftpPage />)
+    await screen.findByRole('button', { name: /save settings/i })
+
+    await user.click(screen.getByRole('button', { name: /disable tftp server entirely/i }))
+
+    expect(await screen.findByText(/tftp server is not configured/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /enable tftp server/i })).toBeInTheDocument()
+  })
 })

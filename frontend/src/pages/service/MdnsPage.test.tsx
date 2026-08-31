@@ -52,4 +52,28 @@ describe('MdnsPage', () => {
       value: 'ipv4',
     })
   })
+
+  // Regression test: see store/pendingChanges.ts's withPendingEnable.
+  it('shows the settings form immediately after clicking Enable, without committing', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))
+    const user = userEvent.setup()
+    renderWithProviders(<MdnsPage />)
+
+    await user.click(await screen.findByRole('button', { name: /enable mdns repeater/i }))
+
+    expect(await screen.findByRole('button', { name: /save settings/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /disable mdns repeater entirely/i })).toBeInTheDocument()
+  })
+
+  it('reverts to the enable prompt immediately after clicking Disable, without committing', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: { mdns: { repeater: {} } } })))
+    const user = userEvent.setup()
+    renderWithProviders(<MdnsPage />)
+    await screen.findByRole('button', { name: /save settings/i })
+
+    await user.click(screen.getByRole('button', { name: /disable mdns repeater entirely/i }))
+
+    expect(await screen.findByText(/mdns repeater is not configured/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /enable mdns repeater/i })).toBeInTheDocument()
+  })
 })

@@ -30,6 +30,47 @@ interface PendingChangesState {
  * session/tab rather than shared across the app like a server-side
  * draft store would be).
  */
+/** Whether `changes` contains a queued `set` for exactly `path` (not a
+ * descendant/ancestor - an exact match only). Used by
+ * useServiceConfig.ts/useVpnConfig.ts so a feature gated behind an
+ * "Enable X" button (which queues `set <path>`) becomes immediately
+ * configurable, without waiting for a commit + refetch to see it
+ * reflected in the fetched config. Path comparison via `.join(' ')`,
+ * the same stringification PendingChangesBar.tsx already uses for
+ * display - simpler than a generic array-equality helper for the
+ * short paths involved here. */
+export function hasPendingSet(changes: PendingChange[], path: string[]): boolean {
+  const target = path.join(' ')
+  return changes.some((c) => c.op.op === 'set' && c.op.path.join(' ') === target)
+}
+
+/** The mirror of hasPendingSet: whether `changes` contains a queued
+ * `delete` for exactly `path`. Used for the reverse case - a "Disable
+ * X entirely" button (which queues `delete <path>`) should
+ * immediately revert the UI to the "not configured" view, rather than
+ * keep showing the settings form with stale values until commit. */
+export function hasPendingDelete(changes: PendingChange[], path: string[]): boolean {
+  const target = path.join(' ')
+  return changes.some((c) => c.op.op === 'delete' && c.op.path.join(' ') === target)
+}
+
+/** Overrides `parsed.enabled` so a feature gated behind an "Enable X"/
+ * "Disable X entirely" button pair (which queue `set <path>`/
+ * `delete <path>` respectively) is immediately reflected in the UI,
+ * without waiting for a commit + refetch. A pending delete always
+ * wins over a pending set (shouldn't be possible to queue both for
+ * the same exact path from the UI, but delete-wins is the safer
+ * interpretation if it ever happens) and over the fetched value. */
+export function withPendingEnable<T extends { enabled: boolean }>(
+  parsed: T,
+  path: string[],
+  changes: PendingChange[],
+): T {
+  if (hasPendingDelete(changes, path)) return parsed.enabled ? { ...parsed, enabled: false } : parsed
+  if (!parsed.enabled && hasPendingSet(changes, path)) return { ...parsed, enabled: true }
+  return parsed
+}
+
 export const usePendingChangesStore = create<PendingChangesState>()(
   persist(
     (set) => ({
