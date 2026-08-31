@@ -24,6 +24,8 @@ export default function PrefixListSection({
   const [showCreate, setShowCreate] = useState(false)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [firstRulePrefix, setFirstRulePrefix] = useState('')
+  const [firstRuleAction, setFirstRuleAction] = useState<'' | 'permit' | 'deny'>('')
   const add = usePendingChangesStore((s) => s.add)
 
   const trimmedName = name.trim()
@@ -38,8 +40,23 @@ export default function PrefixListSection({
     for (const op of ops) {
       add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
     }
+    // A list's rules used to only be configurable AFTER the list
+    // already existed - RulesSection only ever operates on an
+    // already-fetched list. Queuing a first one here, in the same
+    // commit as the list itself, avoids a detour through
+    // commit+refetch.
+    if (firstRulePrefix.trim()) {
+      const ruleOps = prefixListRuleFormToOps(family, trimmedName, '10', undefined, {
+        ...blankPrefixListRuleFormValues(),
+        action: firstRuleAction,
+        prefix: firstRulePrefix.trim(),
+      })
+      for (const op of ruleOps) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    }
     setName('')
     setDescription('')
+    setFirstRulePrefix('')
+    setFirstRuleAction('')
     setShowCreate(false)
   }
 
@@ -83,6 +100,33 @@ export default function PrefixListSection({
                 className={inputClass}
               />
             </label>
+          </div>
+          <div className="mt-3">
+            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">First rule #10 (optional)</p>
+            <div className="grid grid-cols-3 gap-3">
+              <label className={labelClass}>
+                Action
+                <select
+                  value={firstRuleAction}
+                  onChange={(e) => setFirstRuleAction(e.target.value as '' | 'permit' | 'deny')}
+                  className={inputClass}
+                >
+                  <option value="">(default: permit)</option>
+                  <option value="permit">permit</option>
+                  <option value="deny">deny</option>
+                </select>
+              </label>
+              <label className={`col-span-2 ${labelClass}`}>
+                Prefix
+                <input
+                  {...noExtensionInputProps}
+                  value={firstRulePrefix}
+                  onChange={(e) => setFirstRulePrefix(e.target.value)}
+                  placeholder={family === 'ipv6' ? '2001:db8::/32' : '192.0.2.0/24'}
+                  className={inputClass}
+                />
+              </label>
+            </div>
           </div>
           <button onClick={submitCreate} disabled={!valid} className={`mt-3 bg-accent-600 ${buttonClass}`}>
             Queue list creation

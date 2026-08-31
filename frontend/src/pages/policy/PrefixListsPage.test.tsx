@@ -71,6 +71,35 @@ describe('PrefixListsPage', () => {
     })
   })
 
+  it('also queues a first rule when creating a prefix list with its optional fields filled in', async () => {
+    // Regression test: a list's rules used to only be configurable
+    // AFTER the list already existed - RulesSection only ever
+    // operates on an already-fetched list.
+    const user = userEvent.setup()
+    renderWithProviders(<PrefixListsPage />)
+    await screen.findByText('PL4-EXAMPLE')
+
+    await user.click(screen.getByRole('button', { name: /\+ new list/i }))
+    await user.type(screen.getByLabelText(/^name/i), 'PL4-NEW')
+    await user.type(screen.getByLabelText(/^description/i), 'a new list')
+    await user.selectOptions(screen.getByLabelText(/^action/i), 'deny')
+    await user.type(screen.getByLabelText(/^prefix/i), '198.51.100.0/24')
+    await user.click(screen.getByRole('button', { name: /queue list creation/i }))
+
+    const { changes } = usePendingChangesStore.getState()
+    const ops = changes.map((c) => c.op)
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['policy', 'prefix-list', 'PL4-NEW', 'rule', '10', 'action'],
+      value: 'deny',
+    })
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['policy', 'prefix-list', 'PL4-NEW', 'rule', '10', 'prefix'],
+      value: '198.51.100.0/24',
+    })
+  })
+
   it('deletes a prefix list', async () => {
     const user = userEvent.setup()
     renderWithProviders(<PrefixListsPage />)
