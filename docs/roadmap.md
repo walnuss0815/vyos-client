@@ -705,6 +705,21 @@ not a silently-missing gap.
     stays scoped to the future Service work instead, correcting this
     roadmap's own earlier "System" gap description, which had
     mis-listed it.)
+- **System > Upgrades (self-upgrade)**: a fourth System tab that checks
+  this app's own GitHub releases against the running version
+  (`main.version`, the same one `/healthz` already reports) and, when
+  a newer one is published, lets you pull the new container image and
+  queue the `container name <NAME> image <ref>` config change in one
+  click - the actual commit still goes through the normal
+  pending-changes review/commit flow (Safe apply available, not
+  forced), same as any other change. Disabled by default
+  (`SELF_UPGRADE_ENABLED`) - it's the only place this backend ever
+  calls a service other than VyOS's own API. See
+  [architecture.md](architecture.md#self-upgrade) for the full design,
+  including the two constraints that shaped it (a distroless,
+  shell-less container with no docker/podman access of its own; no
+  built-in way for the backend to know its own VyOS container name,
+  hence the new required `SELF_UPGRADE_CONTAINER_NAME`).
 - **NAT configuration UI**: NAT44 only - source (SNAT/masquerading),
   destination (DNAT/port-forwards, including redirect-to-localhost),
   and static (1-to-1) rules. Picked next per this roadmap's own

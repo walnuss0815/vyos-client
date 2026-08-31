@@ -50,6 +50,14 @@ set container name vyos-client environment VYOS_API_KEY value '<SAME-KEY-AS-ABOV
 # unset, a random secret is generated at each startup and all sessions
 # are invalidated on restart.
 set container name vyos-client environment SESSION_SECRET value '<GENERATE-A-LONG-RANDOM-STRING>'
+#
+# Optional: lets System > Upgrades check this app's own GitHub
+# releases and pull/queue a new image for you - the only feature in
+# this app that calls anything other than VyOS's own API, so it's
+# disabled by default. SELF_UPGRADE_CONTAINER_NAME must match the
+# container name used above ("vyos-client" in this example).
+# set container name vyos-client environment SELF_UPGRADE_ENABLED value 'true'
+# set container name vyos-client environment SELF_UPGRADE_CONTAINER_NAME value 'vyos-client'
 
 # 4. Belt-and-suspenders: an explicit firewall rule blocking WAN access
 #    to the UI's port, on top of step 3's LISTEN_ADDR binding - so a

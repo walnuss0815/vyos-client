@@ -351,6 +351,73 @@ interpolated directly into a shell command by VyOS's own op-mode
 script, so this backend rejects anything but a conservative
 image-reference-shaped pattern before it ever reaches VyOS.
 
+## Self-upgrade
+
+System > Upgrades (`backend/internal/selfupgrade`,
+`backend/internal/api/self_upgrade_handlers.go`,
+`frontend/src/pages/system/UpgradesPage.tsx`) checks this app's own
+GitHub releases for a newer version and, on request, upgrades this
+very container - deliberately disabled by default
+(`SELF_UPGRADE_ENABLED`, see
+[configuration-reference.md](configuration-reference.md)), since it's
+the **only** place this backend ever calls a service other than
+VyOS's own API. Every other outbound request this app makes,
+everywhere else in the codebase, stays entirely within the router.
+
+Two constraints shaped how this works:
+
+- **This app runs in a distroless, shell-less container** (see
+  `deploy/Dockerfile`) - no `docker`/`podman` CLI, no `os/exec`
+  anywhere in this codebase. It has no way to pull or restart itself
+  directly.
+- **The backend has no built-in way to know its own VyOS `container
+  name`** - `SELF_UPGRADE_CONTAINER_NAME` exists purely to supply
+  that (matching whatever `NAME` the operator used in `set container
+  name <NAME> image ...`), the same "everything comes from the
+  environment, nothing is auto-detected" principle as the rest of
+  `internal/config`.
+
+So self-upgrade is built entirely out of primitives this app already
+had, rather than any new privileged access:
+
+1. `internal/selfupgrade.Client` fetches `GET /repos/<repo>/releases`
+   from the GitHub REST API (unauthenticated - GitHub's own rate
+   limit is 60 req/hr per source IP, so results are cached in-process
+   for ~30 minutes), filters out drafts/prereleases, and compares
+   against `main.version` (the same ldflags-embedded version
+   `/healthz` already reports) using a small hand-rolled
+   major.minor.patch comparator - no semver-parsing dependency added
+   for this.
+2. `GET /api/system/self-upgrade` surfaces that comparison plus the
+   notes for every release newer than current. When disabled, it
+   returns `{"enabled": false}` immediately without ever calling
+   GitHub.
+3. Clicking "Upgrade to X" in the frontend does two things, reusing
+   existing endpoints rather than adding new ones: pulls
+   `ghcr.io/<repo>:<X>` via the existing `POST /api/container/images`
+   (the same synchronous, multi-minute-capable pull described above),
+   then queues `set container name <NAME> image ghcr.io/<repo>:<X>`
+   into the normal pending-changes cart - exactly what editing a
+   container's own `image` field already produces
+   (`containerForm.ts`).
+4. Applying that change still goes through the ordinary
+   `PendingChangesBar` review/commit flow, same as any other change -
+   self-upgrade does not auto-commit. Safe apply (commit-confirm) is
+   available there but not forced; given that this specific commit
+   recreates the very container serving the page, using it is
+   strongly recommended (the UI says so), since VyOS will
+   automatically revert to the previous image if the new one doesn't
+   come back up healthy within the confirm window.
+
+One assumption underlies step 4 that this project could not verify in
+CI (there is no container-lifecycle simulation in
+`internal/testutil`'s fake VyOS, only config-tree/op-mode response
+faking): that committing a changed `container name <NAME> image`
+value actually causes VyOS/Podman to recreate the container with the
+new image. This matches VyOS's documented declarative container
+management model, but should be confirmed against real hardware
+before relying on it operationally.
+
 ## Files: a curated, read-only viewer over `show file <path>`
 
 `GET /api/files`/`GET /api/files/roots` (`backend/internal/api/

@@ -36,6 +36,11 @@ set container name vyos-client environment VYOS_API_KEY value '<SAME-KEY-AS-ABOV
 # password. See host-networking.txt's comments for the AUTH_MODE=static
 # alternative (a single shared UI account) if you want that instead.
 set container name vyos-client environment SESSION_SECRET value '<GENERATE-A-LONG-RANDOM-STRING>'
+#
+# Optional: see host-networking.txt's comments - lets System >
+# Upgrades check for and pull/queue new releases. Disabled by default.
+# set container name vyos-client environment SELF_UPGRADE_ENABLED value 'true'
+# set container name vyos-client environment SELF_UPGRADE_CONTAINER_NAME value 'vyos-client'
 
 commit
 save

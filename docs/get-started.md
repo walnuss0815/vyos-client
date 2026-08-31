@@ -144,8 +144,11 @@ password (the default `vyos-users` auth mode from step 2) — or with
   domain search order, time zone, and static host mappings; a Users
   tab for local `system login user` accounts (password, SSH keys,
   disable) - real synergy with `AUTH_MODE=vyos-users`, since those are
-  the accounts that can log into this app; and a Syslog tab for local
-  and remote logging.
+  the accounts that can log into this app; a Syslog tab for local
+  and remote logging; and an Upgrades tab that can check this app's
+  own GitHub releases for updates and pull/queue a new version for
+  you - disabled by default, see
+  [configuration-reference.md](configuration-reference.md).
 - **Container** — Podman-based container definitions (image,
   entrypoint/command/arguments, capabilities, networking, port and
   volume mappings, environment variables, resource limits, health
