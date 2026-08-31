@@ -54,6 +54,41 @@ describe('NdpProxyPage', () => {
     })
   })
 
+  it('also queues a first prefix when creating an interface with its optional fields filled in', async () => {
+    // Regression test: an interface's proxied prefixes used to only
+    // be configurable AFTER the interface already existed -
+    // PrefixesSection only ever operates on an already-fetched
+    // interface.
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: { 'ndp-proxy': {} } })))
+    const user = userEvent.setup()
+    renderWithProviders(<NdpProxyPage />)
+    await screen.findByRole('button', { name: /\+ new interface/i })
+
+    await user.click(screen.getByRole('button', { name: /\+ new interface/i }))
+    await user.type(screen.getByLabelText(/^interface/i), 'eth0')
+    await user.type(screen.getByPlaceholderText('2001:db8::/64'), '2001:db8::/64')
+    await user.selectOptions(screen.getByRole('combobox'), 'interface')
+    await user.type(screen.getByPlaceholderText('target interface'), 'eth1')
+    await user.click(screen.getByRole('button', { name: /queue creation/i }))
+
+    const { changes } = usePendingChangesStore.getState()
+    const ops = changes.map((c) => c.op)
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['service', 'ndp-proxy', 'interface', 'eth0', 'prefix', '2001:db8::/64'],
+    })
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['service', 'ndp-proxy', 'interface', 'eth0', 'prefix', '2001:db8::/64', 'mode'],
+      value: 'interface',
+    })
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['service', 'ndp-proxy', 'interface', 'eth0', 'prefix', '2001:db8::/64', 'interface'],
+      value: 'eth1',
+    })
+  })
+
   // Regression test: see store/pendingChanges.ts's withPendingEnable.
   it('shows the full list UI immediately after clicking Enable, without committing', async () => {
     server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))

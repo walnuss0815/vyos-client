@@ -169,6 +169,9 @@ function InterfaceForm({
   const [values, setValues] = useState<NDPProxyInterfaceFormValues>(
     iface ? ndpProxyInterfaceToFormValues(iface) : blankNDPProxyInterfaceFormValues(),
   )
+  const [firstPrefix, setFirstPrefix] = useState('')
+  const [firstPrefixMode, setFirstPrefixMode] = useState('')
+  const [firstPrefixInterfaceRef, setFirstPrefixInterfaceRef] = useState('')
   const add = usePendingChangesStore((s) => s.add)
 
   const isCreate = iface === undefined
@@ -184,6 +187,19 @@ function InterfaceForm({
     if (!canSubmit) return
     const ops = ndpProxyInterfaceFormToOps(trimmedName, iface, values)
     for (const op of ops) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    // An interface's proxied prefixes used to only be configurable
+    // AFTER the interface already existed - PrefixesSection only
+    // ever operates on an already-fetched interface. Queuing a first
+    // one here, in the same commit as the interface itself, avoids a
+    // detour through commit+refetch.
+    if (isCreate && firstPrefix.trim()) {
+      const prefixOps = addNDPProxyPrefixOps(trimmedName, firstPrefix.trim(), {
+        mode: firstPrefixMode,
+        interfaceRef: firstPrefixInterfaceRef,
+        disabled: false,
+      })
+      for (const op of prefixOps) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    }
     onDone()
   }
 
@@ -223,6 +239,39 @@ function InterfaceForm({
           <InfoTooltip text="Sets the 'R' flag in the proxied neighbor advertisements, telling receiving hosts this proxy can also act as their default gateway." />
         </label>
       </div>
+
+      {isCreate && (
+        <div className="mt-3 border-t border-surface-border pt-3">
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">First proxied prefix (optional)</p>
+          <div className="grid grid-cols-3 gap-2">
+            <input
+              {...noExtensionInputProps}
+              value={firstPrefix}
+              onChange={(e) => setFirstPrefix(e.target.value)}
+              placeholder="2001:db8::/64"
+              className={`font-mono ${inputClass}`}
+            />
+            <select value={firstPrefixMode} onChange={(e) => setFirstPrefixMode(e.target.value)} className={inputClass}>
+              <option value="">Default (static)</option>
+              {NDP_PROXY_MODES.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+            {firstPrefixMode === 'interface' && (
+              <input
+                {...noExtensionInputProps}
+                value={firstPrefixInterfaceRef}
+                onChange={(e) => setFirstPrefixInterfaceRef(e.target.value)}
+                placeholder="target interface"
+                className={`font-mono ${inputClass}`}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="mt-4 flex items-center gap-2">
         <button onClick={submit} disabled={!canSubmit} className={`bg-accent-600 ${buttonClass}`}>
           {isCreate ? 'Queue creation' : 'Save changes'}
