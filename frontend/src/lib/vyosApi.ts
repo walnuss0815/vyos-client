@@ -65,6 +65,12 @@ export interface SystemInfo {
    * deployment setting, not VyOS state. ConfigWarningsBanner.tsx reads
    * this to decide whether to run its checks at all. */
   configWarningsEnabled: boolean
+  /** Mirrors the backend's SELF_UPGRADE_ENABLED env var (see
+   * docs/configuration-reference.md) - an opt-in, disabled-by-default
+   * deployment setting, not VyOS state. SystemLayout.tsx reads this to
+   * decide whether to render the Upgrades tab as enabled or
+   * disabled-with-instructions. */
+  selfUpgradeEnabled: boolean
 }
 
 /** Live system identity (hostname + VyOS version), sourced from VyOS's
@@ -85,6 +91,53 @@ export function rebootSystem(): Promise<void> {
 /** `poweroff now`. See rebootSystem's doc comment. */
 export function poweroffSystem(): Promise<void> {
   return apiRequest<void>('/api/system/poweroff', { method: 'POST' })
+}
+
+/** One GitHub release newer than the currently-running version - see
+ * UpgradesPage.tsx under System. `body` is GitHub-flavored Markdown,
+ * rendered as-is (react-markdown) rather than reshaped. */
+export interface SelfUpgradeRelease {
+  version: string
+  name: string
+  body: string
+  /** ISO 8601, or '' if GitHub didn't report one. */
+  publishedAt: string
+  htmlUrl: string
+}
+
+/** GET /api/system/self-upgrade's response. When `enabled` is false
+ * (the SELF_UPGRADE_ENABLED default), every other field is left at
+ * its zero value and the backend never called GitHub at all - see
+ * UpgradesPage.tsx's disabled-state rendering. */
+export interface SelfUpgradeStatus {
+  enabled: boolean
+  containerName: string
+  /** "ghcr.io/<owner>/<repo>" - append ":<version>" to build the full
+   * image reference to pull. */
+  imageRepo: string
+  currentVersion: string
+  /** '' if no published releases were found at all. */
+  latestVersion: string
+  /** False when currentVersion isn't a recognizable version (e.g.
+   * "dev", a local/non-release build) - no comparison against
+   * available releases was possible at all. Distinguishes "checked,
+   * you're up to date" from "can't check updates for this build",
+   * which otherwise look identical (updateAvailable=false, empty
+   * releases). */
+  currentVersionRecognized: boolean
+  /** Only ever true when currentVersionRecognized is also true. */
+  updateAvailable: boolean
+  /** Every release newer than currentVersion, newest first. */
+  releases: SelfUpgradeRelease[]
+}
+
+/** Checks this app's own GitHub releases for an available update -
+ * see docs/architecture.md's "Self-upgrade" section. Cached
+ * server-side for a while (internal/selfupgrade.Client), so calling
+ * this repeatedly (e.g. a manual "Refresh" button) doesn't hammer
+ * GitHub's API. */
+export function getSelfUpgradeStatus(): Promise<SelfUpgradeStatus> {
+  return apiRequest<SelfUpgradeStatus>('/api/system/self-upgrade')
 }
 
 /** One entry from `show system image` - a VyOS release installed on

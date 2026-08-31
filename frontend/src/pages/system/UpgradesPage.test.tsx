@@ -1,0 +1,137 @@
+import { screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { http, HttpResponse } from 'msw'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { server } from '../../test/mocks/server'
+import { renderWithProviders } from '../../test/testUtils'
+import { usePendingChangesStore } from '../../store/pendingChanges'
+import UpgradesPage from './UpgradesPage'
+
+const DISABLED_STATUS = { enabled: false }
+
+const UP_TO_DATE_STATUS = {
+  enabled: true,
+  containerName: 'vyos-client',
+  imageRepo: 'ghcr.io/walnuss0815/vyos-client',
+  currentVersion: '1.2.0',
+  latestVersion: '1.2.0',
+  currentVersionRecognized: true,
+  updateAvailable: false,
+  releases: [],
+}
+
+const UPDATE_AVAILABLE_STATUS = {
+  enabled: true,
+  containerName: 'vyos-client',
+  imageRepo: 'ghcr.io/walnuss0815/vyos-client',
+  currentVersion: '1.2.0',
+  latestVersion: '1.3.0',
+  currentVersionRecognized: true,
+  updateAvailable: true,
+  releases: [
+    {
+      version: '1.3.0',
+      name: '1.3.0',
+      body: '## Features\n\n- Added a thing\n\nSee [the diff](https://example.com) for more.',
+      publishedAt: '2026-02-01T00:00:00Z',
+      htmlUrl: 'https://github.com/walnuss0815/vyos-client/releases/tag/v1.3.0',
+    },
+  ],
+}
+
+const DEV_BUILD_STATUS = {
+  enabled: true,
+  containerName: 'vyos-client',
+  imageRepo: 'ghcr.io/walnuss0815/vyos-client',
+  currentVersion: 'dev',
+  latestVersion: '1.3.0',
+  currentVersionRecognized: false,
+  updateAvailable: false,
+  releases: [],
+}
+
+beforeEach(() => {
+  usePendingChangesStore.setState({ changes: [] })
+  sessionStorage.clear()
+})
+
+describe('UpgradesPage', () => {
+  it('shows a disabled explanation when self-upgrade is not enabled', async () => {
+    server.use(http.get('/api/system/self-upgrade', () => HttpResponse.json(DISABLED_STATUS)))
+    renderWithProviders(<UpgradesPage />)
+    expect(await screen.findByText(/self-upgrade is disabled/i)).toBeInTheDocument()
+    expect(screen.getByText('SELF_UPGRADE_ENABLED=true')).toBeInTheDocument()
+  })
+
+  it('shows an error message when the check fails', async () => {
+    server.use(http.get('/api/system/self-upgrade', () => HttpResponse.json({ error: 'unreachable' }, { status: 502 })))
+    renderWithProviders(<UpgradesPage />)
+    expect(await screen.findByText(/failed to check for updates/i)).toBeInTheDocument()
+  })
+
+  it('shows the current version and an up-to-date message when there is no newer release', async () => {
+    server.use(http.get('/api/system/self-upgrade', () => HttpResponse.json(UP_TO_DATE_STATUS)))
+    renderWithProviders(<UpgradesPage />)
+    expect(await screen.findByText(/running the latest published release/i)).toBeInTheDocument()
+    expect(screen.getAllByText('1.2.0')).toHaveLength(2)
+  })
+
+  it('shows a message when the current build\'s version cannot be checked', async () => {
+    server.use(http.get('/api/system/self-upgrade', () => HttpResponse.json(DEV_BUILD_STATUS)))
+    renderWithProviders(<UpgradesPage />)
+    await screen.findByText(/latest published release/i)
+    expect(screen.getByText(/isn't a recognized release version/i)).toBeInTheDocument()
+    expect(screen.queryByText(/running the latest published release/i)).not.toBeInTheDocument()
+  })
+
+  it('lists a newer release with its rendered notes and an Upgrade button', async () => {
+    server.use(http.get('/api/system/self-upgrade', () => HttpResponse.json(UPDATE_AVAILABLE_STATUS)))
+    renderWithProviders(<UpgradesPage />)
+
+    expect(await screen.findByText(/1 update available/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Upgrade to 1.3.0' })).toBeInTheDocument()
+    // The Markdown body should be rendered, not shown as raw source.
+    expect(screen.getByRole('heading', { name: 'Features' })).toBeInTheDocument()
+    expect(screen.getByText('Added a thing')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'the diff' })).toHaveAttribute('href', 'https://example.com')
+  })
+
+  it('pulls the image and queues the config change when Upgrade is clicked', async () => {
+    server.use(
+      http.get('/api/system/self-upgrade', () => HttpResponse.json(UPDATE_AVAILABLE_STATUS)),
+      http.post('/api/container/images', async ({ request }) => {
+        const body = (await request.json()) as { name: string }
+        expect(body.name).toBe('ghcr.io/walnuss0815/vyos-client:1.3.0')
+        return HttpResponse.json({ message: 'pulled' })
+      }),
+    )
+    const user = userEvent.setup()
+    renderWithProviders(<UpgradesPage />)
+
+    await user.click(await screen.findByRole('button', { name: 'Upgrade to 1.3.0' }))
+    await screen.findByText(/pulled and queued image/i)
+
+    const { changes } = usePendingChangesStore.getState()
+    expect(changes).toHaveLength(1)
+    expect(changes[0].op).toEqual({
+      op: 'set',
+      path: ['container', 'name', 'vyos-client', 'image'],
+      value: 'ghcr.io/walnuss0815/vyos-client:1.3.0',
+    })
+  })
+
+  it('shows an error message when the pull fails, without queuing anything', async () => {
+    server.use(
+      http.get('/api/system/self-upgrade', () => HttpResponse.json(UPDATE_AVAILABLE_STATUS)),
+      http.post('/api/container/images', () => HttpResponse.json({ error: 'no space left on device' }, { status: 502 })),
+    )
+    const user = userEvent.setup()
+    renderWithProviders(<UpgradesPage />)
+
+    await user.click(await screen.findByRole('button', { name: 'Upgrade to 1.3.0' }))
+    expect(await screen.findByText(/no space left on device/i)).toBeInTheDocument()
+
+    const { changes } = usePendingChangesStore.getState()
+    expect(changes).toHaveLength(0)
+  })
+})
