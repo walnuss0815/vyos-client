@@ -174,6 +174,9 @@ function MatchFields({
 function WanRuleFormPanel({ ruleId, rule, onDone }: { ruleId: string; rule?: WANRule; onDone: () => void }) {
   const add = usePendingChangesStore((s) => s.add)
   const [values, setValues] = useState<WANRuleFormValues>(rule ? wanRuleToFormValues(rule) : blankWANRuleFormValues())
+  const isCreate = rule === undefined
+  const [firstInterfaceName, setFirstInterfaceName] = useState('')
+  const [firstInterfaceWeight, setFirstInterfaceWeight] = useState('')
 
   function update<K extends keyof WANRuleFormValues>(key: K, value: WANRuleFormValues[K]) {
     setValues((v) => ({ ...v, [key]: value }))
@@ -182,6 +185,15 @@ function WanRuleFormPanel({ ruleId, rule, onDone }: { ruleId: string; rule?: WAN
   function submit() {
     const ops = wanRuleFormToOps(ruleId, rule, values)
     for (const op of ops) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    // A rule's egress interfaces used to only be addable AFTER the
+    // rule already existed - WanRuleInterfacesSection only ever
+    // operates on an already-fetched rule. Queuing a first one here,
+    // in the same commit as the rule itself, avoids a detour through
+    // commit+refetch.
+    if (isCreate && firstInterfaceName.trim()) {
+      const interfaceOps = addWANRuleInterfaceOps(ruleId, firstInterfaceName.trim(), firstInterfaceWeight.trim())
+      for (const op of interfaceOps) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    }
     onDone()
   }
 
@@ -296,6 +308,28 @@ function WanRuleFormPanel({ ruleId, rule, onDone }: { ruleId: string; rule?: WAN
           </select>
         </div>
       </div>
+
+      {isCreate && (
+        <div className="mb-3 border-t border-surface-border pt-3">
+          <p className="mb-2 text-xs text-slate-500">First egress interface (optional)</p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <input
+              {...noExtensionInputProps}
+              value={firstInterfaceName}
+              onChange={(e) => setFirstInterfaceName(e.target.value)}
+              placeholder="eth0"
+              className={`font-mono ${inputClass}`}
+            />
+            <input
+              {...noExtensionInputProps}
+              value={firstInterfaceWeight}
+              onChange={(e) => setFirstInterfaceWeight(e.target.value)}
+              placeholder="weight (default 1)"
+              className={inputClass}
+            />
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center gap-2">
         <button onClick={submit} className={`bg-accent-600 ${buttonClass}`}>

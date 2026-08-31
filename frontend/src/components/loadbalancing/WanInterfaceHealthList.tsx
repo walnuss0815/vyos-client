@@ -115,6 +115,9 @@ function InterfaceHealthForm({
   const [values, setValues] = useState<InterfaceHealthFormValues>(
     health ? interfaceHealthToFormValues(health) : blankInterfaceHealthFormValues(),
   )
+  const isCreate = health === undefined
+  const [firstTestType, setFirstTestType] = useState<string>('ping')
+  const [firstTestTarget, setFirstTestTarget] = useState('')
 
   const trimmed = ifname.trim()
   const taken = !health && existingNames.includes(trimmed)
@@ -128,6 +131,21 @@ function InterfaceHealthForm({
     if (!valid) return
     const ops = interfaceHealthFormToOps(trimmed, health, values)
     for (const op of ops) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    // An interface-health entry's tests used to only be addable AFTER
+    // the entry already existed - WanHealthTestsSection only ever
+    // operates on an already-fetched entry. Queuing a first one here,
+    // in the same commit as the entry itself, avoids a detour through
+    // commit+refetch.
+    if (isCreate && firstTestTarget.trim()) {
+      const testOps = addWANHealthTestOps(trimmed, '0', {
+        type: firstTestType,
+        target: firstTestTarget.trim(),
+        testScript: '',
+        respTime: '',
+        ttlLimit: '',
+      })
+      for (const op of testOps) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    }
     onDone()
   }
 
@@ -176,6 +194,29 @@ function InterfaceHealthForm({
           />
         </label>
       </div>
+
+      {isCreate && (
+        <div className="mt-3 border-t border-surface-border pt-3">
+          <p className="mb-2 text-xs text-slate-500">First health test (optional)</p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <select value={firstTestType} onChange={(e) => setFirstTestType(e.target.value)} className={inputClass}>
+              {WAN_HEALTH_TEST_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+            <input
+              {...noExtensionInputProps}
+              value={firstTestTarget}
+              onChange={(e) => setFirstTestTarget(e.target.value)}
+              placeholder="target address"
+              className={`font-mono ${inputClass}`}
+            />
+          </div>
+        </div>
+      )}
+
       <div className="mt-2 flex items-center gap-2">
         <button onClick={submit} disabled={!valid} className={`bg-accent-600 ${buttonClass}`}>
           {health ? 'Save' : 'Add interface'}
