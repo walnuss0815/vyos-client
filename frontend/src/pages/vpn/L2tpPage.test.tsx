@@ -125,6 +125,30 @@ describe('L2tpPage', () => {
     })
   })
 
+  it('also queues a first prefix when creating a client IPv6 pool with its optional field filled in', async () => {
+    // Regression test: a pool's prefixes used to only be addable
+    // AFTER the pool already existed - AccelPppIpv6PoolPrefixList
+    // only ever operates on an already-fetched pool.
+    const vpn = { l2tp: { 'remote-access': {} } }
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: vpn })))
+    const user = userEvent.setup()
+    renderWithProviders(<L2tpPage />)
+    await screen.findByRole('button', { name: /\+ new pool/i })
+
+    await user.click(screen.getByRole('button', { name: /\+ new pool/i }))
+    await user.type(screen.getByPlaceholderText('pool name'), 'POOL6-B')
+    await user.type(screen.getByPlaceholderText(/first prefix/i), '2001:db8:1::/64')
+    await user.click(screen.getByRole('button', { name: /^create$/i }))
+
+    const { changes } = usePendingChangesStore.getState()
+    const ops = changes.map((c) => c.op)
+    expect(ops).toContainEqual({ op: 'set', path: ['vpn', 'l2tp', 'remote-access', 'client-ipv6-pool', 'POOL6-B'] })
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['vpn', 'l2tp', 'remote-access', 'client-ipv6-pool', 'POOL6-B', 'prefix', '2001:db8:1::/64'],
+    })
+  })
+
   it('adds a prefix to an existing client IPv6 pool', async () => {
     const vpn = { l2tp: { 'remote-access': { 'client-ipv6-pool': { 'POOL6-A': {} } } } }
     server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: vpn })))
