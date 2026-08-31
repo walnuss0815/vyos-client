@@ -126,6 +126,9 @@ function PeerForm({
   const [name, setName] = useState(peer?.name ?? '')
   const [remoteAddress, setRemoteAddress] = useState(peer?.remoteAddresses[0] ?? '')
   const [values, setValues] = useState<PeerFormValues>(peer ? peerToFormValues(peer) : blankPeerFormValues())
+  const [firstTunnelId, setFirstTunnelId] = useState('')
+  const [firstTunnelLocalPrefix, setFirstTunnelLocalPrefix] = useState('')
+  const [firstTunnelRemotePrefix, setFirstTunnelRemotePrefix] = useState('')
   const add = usePendingChangesStore((s) => s.add)
 
   const isCreate = peer === undefined
@@ -144,6 +147,29 @@ function PeerForm({
     if (isCreate && remoteAddress.trim()) {
       const path = [...ipsecPeerPath(trimmedName), 'remote-address']
       add({ op: { op: 'set', path, value: remoteAddress.trim() }, label: `set ${path.join(' ')} '${remoteAddress.trim()}'` })
+    }
+    // A peer's tunnels (traffic selectors) used to only be addable
+    // AFTER the peer already existed - TunnelsSection only ever
+    // operates on an already-fetched peer. Not a VyOS commit-blocking
+    // requirement, but avoids a detour through commit+refetch just to
+    // add the first one.
+    const trimmedTunnelId = firstTunnelId.trim()
+    if (isCreate && trimmedTunnelId) {
+      const tunnelOps = addTunnelOps(trimmedName, trimmedTunnelId, { espGroup: '', protocol: '' })
+      for (const op of tunnelOps) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+      const base = [...ipsecPeerPath(trimmedName), 'tunnel', trimmedTunnelId]
+      if (firstTunnelLocalPrefix.trim()) {
+        add({
+          op: { op: 'set', path: [...base, 'local', 'prefix'], value: firstTunnelLocalPrefix.trim() },
+          label: `set ${base.join(' ')} local prefix '${firstTunnelLocalPrefix.trim()}'`,
+        })
+      }
+      if (firstTunnelRemotePrefix.trim()) {
+        add({
+          op: { op: 'set', path: [...base, 'remote', 'prefix'], value: firstTunnelRemotePrefix.trim() },
+          label: `set ${base.join(' ')} remote prefix '${firstTunnelRemotePrefix.trim()}'`,
+        })
+      }
     }
     onDone()
   }
@@ -260,6 +286,27 @@ function PeerForm({
           Force UDP encapsulation
         </label>
       </div>
+
+      {isCreate && (
+        <div className="mt-3 border-t border-surface-border pt-3">
+          <p className="mb-2 text-xs text-slate-500">First tunnel (optional)</p>
+          <div className="grid grid-cols-3 gap-3">
+            <label className={labelClass}>
+              Tunnel #
+              <input {...noExtensionInputProps} value={firstTunnelId} onChange={(e) => setFirstTunnelId(e.target.value)} placeholder="0" className={inputClass} />
+            </label>
+            <label className={labelClass}>
+              Local prefix
+              <input {...noExtensionInputProps} value={firstTunnelLocalPrefix} onChange={(e) => setFirstTunnelLocalPrefix(e.target.value)} placeholder="192.168.1.0/24" className={inputClass} />
+            </label>
+            <label className={labelClass}>
+              Remote prefix
+              <input {...noExtensionInputProps} value={firstTunnelRemotePrefix} onChange={(e) => setFirstTunnelRemotePrefix(e.target.value)} placeholder="10.0.0.0/24" className={inputClass} />
+            </label>
+          </div>
+        </div>
+      )}
+
       <div className="mt-4 flex items-center gap-2">
         <button onClick={submit} disabled={!canSubmit} className={`bg-accent-600 ${buttonClass}`}>
           {isCreate ? 'Queue creation' : 'Save changes'}

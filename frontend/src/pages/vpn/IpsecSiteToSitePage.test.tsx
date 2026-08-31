@@ -50,6 +50,39 @@ describe('IpsecSiteToSitePage', () => {
     })
   })
 
+  // Regression test: a peer's first tunnel used to only be addable
+  // AFTER the peer already existed - TunnelsSection only ever
+  // operates on an already-fetched peer.
+  it('creates a new peer with a first tunnel, all in one commit', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))
+    const user = userEvent.setup()
+    renderWithProviders(<IpsecSiteToSitePage />)
+    await screen.findByRole('button', { name: /\+ new peer/i })
+
+    await user.click(screen.getByRole('button', { name: /\+ new peer/i }))
+    await user.type(screen.getByLabelText(/^name/i), 'peer-1')
+    await user.type(screen.getByLabelText(/tunnel #/i), '0')
+    await user.type(screen.getByLabelText(/^local prefix/i), '192.168.1.0/24')
+    await user.type(screen.getByLabelText(/^remote prefix/i), '10.0.0.0/24')
+    await user.click(screen.getByRole('button', { name: /queue creation/i }))
+
+    const ops = usePendingChangesStore.getState().changes.map((c) => c.op)
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['vpn', 'ipsec', 'site-to-site', 'peer', 'peer-1', 'tunnel', '0'],
+    })
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['vpn', 'ipsec', 'site-to-site', 'peer', 'peer-1', 'tunnel', '0', 'local', 'prefix'],
+      value: '192.168.1.0/24',
+    })
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['vpn', 'ipsec', 'site-to-site', 'peer', 'peer-1', 'tunnel', '0', 'remote', 'prefix'],
+      value: '10.0.0.0/24',
+    })
+  })
+
   it('shows peer details and adds a tunnel', async () => {
     const vpn = { ipsec: { 'site-to-site': { peer: { 'peer-1': { 'remote-address': ['203.0.113.1'] } } } } }
     server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: vpn })))
