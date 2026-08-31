@@ -1,11 +1,11 @@
 import { useState, type ComponentPropsWithoutRef } from 'react'
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { type ExtraProps } from 'react-markdown'
 import { useQueryClient } from '@tanstack/react-query'
 import { useSelfUpgrade } from '../../hooks/useSelfUpgrade'
 import { containerNamePath } from '../../lib/containerParse'
 import { buttonClass } from '../../lib/formStyles'
 import { pullContainerImage } from '../../lib/vyosApi'
-import { usePendingChangesStore } from '../../store/pendingChanges'
+import { hasPendingSet, usePendingChangesStore } from '../../store/pendingChanges'
 
 const codeClass = 'rounded bg-surface-800 px-1 py-0.5 font-mono text-xs text-slate-300'
 
@@ -16,23 +16,45 @@ const codeClass = 'rounded bg-surface-800 px-1 py-0.5 font-mono text-xs text-sla
  * matching the app's existing dark theme. Only the handful of
  * elements semantic-release's own release-notes-generator actually
  * produces (headings, paragraphs, lists, links, inline/block code)
- * need an entry here. */
+ * need an entry here.
+ *
+ * react-markdown always passes a `node` prop (the underlying hast
+ * Element) alongside the usual DOM attributes - every entry here
+ * destructures it out rather than spreading it onto the DOM tag,
+ * which React would otherwise warn about ("does not recognize the
+ * `node` prop") for every element in every rendered release's notes. */
 const markdownComponents = {
-  h1: (props: ComponentPropsWithoutRef<'h1'>) => <h3 className="mt-4 mb-2 text-sm font-semibold text-white first:mt-0" {...props} />,
-  h2: (props: ComponentPropsWithoutRef<'h2'>) => <h3 className="mt-4 mb-2 text-sm font-semibold text-white first:mt-0" {...props} />,
-  h3: (props: ComponentPropsWithoutRef<'h3'>) => <h4 className="mt-3 mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400 first:mt-0" {...props} />,
-  p: (props: ComponentPropsWithoutRef<'p'>) => <p className="mb-2 text-sm text-slate-300 last:mb-0" {...props} />,
-  ul: (props: ComponentPropsWithoutRef<'ul'>) => <ul className="mb-2 list-disc space-y-1 pl-5 text-sm text-slate-300 last:mb-0" {...props} />,
-  ol: (props: ComponentPropsWithoutRef<'ol'>) => <ol className="mb-2 list-decimal space-y-1 pl-5 text-sm text-slate-300 last:mb-0" {...props} />,
-  li: (props: ComponentPropsWithoutRef<'li'>) => <li {...props} />,
-  a: (props: ComponentPropsWithoutRef<'a'>) => (
+  h1: ({ node: _node, ...props }: ComponentPropsWithoutRef<'h1'> & ExtraProps) => (
+    <h3 className="mt-4 mb-2 text-sm font-semibold text-white first:mt-0" {...props} />
+  ),
+  h2: ({ node: _node, ...props }: ComponentPropsWithoutRef<'h2'> & ExtraProps) => (
+    <h3 className="mt-4 mb-2 text-sm font-semibold text-white first:mt-0" {...props} />
+  ),
+  h3: ({ node: _node, ...props }: ComponentPropsWithoutRef<'h3'> & ExtraProps) => (
+    <h4 className="mt-3 mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400 first:mt-0" {...props} />
+  ),
+  p: ({ node: _node, ...props }: ComponentPropsWithoutRef<'p'> & ExtraProps) => (
+    <p className="mb-2 text-sm text-slate-300 last:mb-0" {...props} />
+  ),
+  ul: ({ node: _node, ...props }: ComponentPropsWithoutRef<'ul'> & ExtraProps) => (
+    <ul className="mb-2 list-disc space-y-1 pl-5 text-sm text-slate-300 last:mb-0" {...props} />
+  ),
+  ol: ({ node: _node, ...props }: ComponentPropsWithoutRef<'ol'> & ExtraProps) => (
+    <ol className="mb-2 list-decimal space-y-1 pl-5 text-sm text-slate-300 last:mb-0" {...props} />
+  ),
+  li: ({ node: _node, ...props }: ComponentPropsWithoutRef<'li'> & ExtraProps) => <li {...props} />,
+  a: ({ node: _node, ...props }: ComponentPropsWithoutRef<'a'> & ExtraProps) => (
     <a target="_blank" rel="noreferrer" className="text-accent-500 hover:text-accent-400" {...props} />
   ),
-  code: (props: ComponentPropsWithoutRef<'code'>) => <code className="rounded bg-surface-800 px-1 py-0.5 font-mono text-xs text-slate-300" {...props} />,
-  pre: (props: ComponentPropsWithoutRef<'pre'>) => (
+  code: ({ node: _node, ...props }: ComponentPropsWithoutRef<'code'> & ExtraProps) => (
+    <code className={codeClass} {...props} />
+  ),
+  pre: ({ node: _node, ...props }: ComponentPropsWithoutRef<'pre'> & ExtraProps) => (
     <pre className="mb-2 overflow-x-auto rounded bg-surface-800 p-2 font-mono text-xs text-slate-300 last:mb-0" {...props} />
   ),
-  strong: (props: ComponentPropsWithoutRef<'strong'>) => <strong className="font-semibold text-white" {...props} />,
+  strong: ({ node: _node, ...props }: ComponentPropsWithoutRef<'strong'> & ExtraProps) => (
+    <strong className="font-semibold text-white" {...props} />
+  ),
 }
 
 /** System > Upgrades - checks this app's own GitHub releases for an
@@ -56,6 +78,7 @@ export default function UpgradesPage() {
   const query = useSelfUpgrade()
   const queryClient = useQueryClient()
   const add = usePendingChangesStore((s) => s.add)
+  const changes = usePendingChangesStore((s) => s.changes)
 
   const [pullingVersion, setPullingVersion] = useState<string | null>(null)
   const [pullError, setPullError] = useState<string | null>(null)
@@ -84,16 +107,28 @@ export default function UpgradesPage() {
     )
   }
 
+  // The pending-changes store is append-only (see its own doc
+  // comment) - if the container image `set` op is already queued
+  // (from a previous "Upgrade" click, possibly in an earlier page
+  // visit that's since been navigated away from and back to), queuing
+  // another one on top would leave two contradictory-looking entries
+  // in the review cart instead of replacing the first. Deriving this
+  // from the store on every render (rather than only from this
+  // component's own local queuedVersion state) also means the
+  // "already queued" state correctly clears itself if the user
+  // discards or commits that change from PendingChangesBar elsewhere.
+  const imagePath = containerNamePath(status.containerName, 'image')
+  const upgradeAlreadyQueued = hasPendingSet(changes, imagePath)
+
   async function handleUpgrade(version: string) {
-    if (!status.enabled) return
+    if (upgradeAlreadyQueued) return
     const imageRef = `${status.imageRepo}:${version}`
     setPullingVersion(version)
     setPullError(null)
     setQueuedVersion(null)
     try {
       await pullContainerImage(imageRef)
-      const path = containerNamePath(status.containerName, 'image')
-      add({ op: { op: 'set', path, value: imageRef }, label: `set ${path.join(' ')} '${imageRef}'` })
+      add({ op: { op: 'set', path: imagePath, value: imageRef }, label: `set ${imagePath.join(' ')} '${imageRef}'` })
       setQueuedVersion(version)
     } catch (err) {
       setPullError(err instanceof Error ? err.message : 'Failed to pull the new image.')
@@ -152,10 +187,15 @@ export default function UpgradesPage() {
           container, and Safe apply automatically reverts if the new image doesn&apos;t come back up).
         </p>
       )}
+      {upgradeAlreadyQueued && !queuedVersion && (
+        <p className="text-sm text-slate-400">
+          An upgrade is already queued - commit or discard it in the pending changes bar before queuing another.
+        </p>
+      )}
 
       <div className="space-y-3">
         {status.releases.map((release) => (
-          <div key={release.version} className="rounded-xl border border-surface-border bg-surface-900 p-4">
+          <div key={release.htmlUrl || release.version} className="rounded-xl border border-surface-border bg-surface-900 p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <span className="font-mono text-sm font-medium text-white">{release.name || release.version}</span>
@@ -177,7 +217,7 @@ export default function UpgradesPage() {
               </div>
               <button
                 onClick={() => void handleUpgrade(release.version)}
-                disabled={pullingVersion !== null}
+                disabled={pullingVersion !== null || upgradeAlreadyQueued}
                 className={`bg-accent-600 ${buttonClass}`}
               >
                 {pullingVersion === release.version ? 'Pulling…' : `Upgrade to ${release.version}`}

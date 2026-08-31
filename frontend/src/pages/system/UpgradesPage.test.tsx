@@ -1,7 +1,7 @@
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../../test/mocks/server'
 import { renderWithProviders } from '../../test/testUtils'
 import { usePendingChangesStore } from '../../store/pendingChanges'
@@ -53,6 +53,10 @@ const DEV_BUILD_STATUS = {
 beforeEach(() => {
   usePendingChangesStore.setState({ changes: [] })
   sessionStorage.clear()
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
 })
 
 describe('UpgradesPage', () => {
@@ -118,6 +122,52 @@ describe('UpgradesPage', () => {
       path: ['container', 'name', 'vyos-client', 'image'],
       value: 'ghcr.io/walnuss0815/vyos-client:1.3.0',
     })
+  })
+
+  it('does not warn about an unrecognized "node" DOM prop when rendering release notes', async () => {
+    // Regression test: react-markdown always passes a `node` prop to
+    // custom element components; spreading it straight onto the DOM
+    // tag (as markdownComponents used to) makes React log a
+    // "does not recognize the `node` prop" warning for every element
+    // in every rendered release's notes.
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    server.use(http.get('/api/system/self-upgrade', () => HttpResponse.json(UPDATE_AVAILABLE_STATUS)))
+    renderWithProviders(<UpgradesPage />)
+
+    await screen.findByRole('heading', { name: 'Features' })
+
+    const nodePropWarning = consoleError.mock.calls.find((call) =>
+      call.some((arg) => typeof arg === 'string' && arg.includes('node') && arg.includes('DOM element')),
+    )
+    expect(nodePropWarning).toBeUndefined()
+  })
+
+  it('disables Upgrade and shows a message when an upgrade is already queued', async () => {
+    // Regression test: the pending-changes store is append-only, so
+    // clicking "Upgrade" again (e.g. after navigating away and back)
+    // while a previous upgrade's `set container name ... image ...`
+    // op is still queued used to add a second, contradictory-looking
+    // entry instead of being blocked.
+    usePendingChangesStore.setState({
+      changes: [
+        {
+          id: '1',
+          op: { op: 'set', path: ['container', 'name', 'vyos-client', 'image'], value: 'ghcr.io/walnuss0815/vyos-client:1.3.0' },
+          label: 'already queued',
+        },
+      ],
+    })
+    server.use(http.get('/api/system/self-upgrade', () => HttpResponse.json(UPDATE_AVAILABLE_STATUS)))
+    const user = userEvent.setup()
+    renderWithProviders(<UpgradesPage />)
+
+    const upgradeButton = await screen.findByRole('button', { name: 'Upgrade to 1.3.0' })
+    expect(upgradeButton).toBeDisabled()
+    expect(screen.getByText(/an upgrade is already queued/i)).toBeInTheDocument()
+
+    await user.click(upgradeButton)
+    const { changes } = usePendingChangesStore.getState()
+    expect(changes).toHaveLength(1)
   })
 
   it('shows an error message when the pull fails, without queuing anything', async () => {
