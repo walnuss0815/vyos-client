@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/walnuss0815/vyos-client/backend/internal/auth"
+	"github.com/walnuss0815/vyos-client/backend/internal/selfupgrade"
 	"github.com/walnuss0815/vyos-client/backend/internal/vyos"
 )
 
@@ -42,6 +43,24 @@ type Server struct {
 	// warnings banner at all - see config.Config.ConfigWarningsEnabled
 	// for the full rationale on why this is opt-in.
 	ConfigWarningsEnabled bool
+
+	// SelfUpgradeEnabled mirrors config.Config.SelfUpgradeEnabled -
+	// surfaced to the frontend (via handleSystemInfo) so it knows
+	// whether to show the System > Upgrades tab as enabled or
+	// disabled-with-instructions.
+	SelfUpgradeEnabled bool
+	// SelfUpgradeContainerName mirrors
+	// config.Config.SelfUpgradeContainerName. Only meaningful (and
+	// only read) when SelfUpgradeEnabled is true.
+	SelfUpgradeContainerName string
+	// SelfUpgradeGitHub is the GitHub releases client used by
+	// handleSelfUpgradeStatus - nil when SelfUpgradeEnabled is false,
+	// in which case that handler never calls it (see its own doc
+	// comment). Constructed once at startup (cmd/vyos-client/serve.go)
+	// rather than per-request, so its internal cache (see
+	// selfupgrade.Client.ListReleases) is actually shared across
+	// requests.
+	SelfUpgradeGitHub *selfupgrade.Client
 }
 
 // Routes returns the fully-wired HTTP handler for the backend, with all
@@ -81,6 +100,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /api/system/images", authed(s.handleSystemImages))
 	mux.Handle("POST /api/system/images", authed(s.handleAddSystemImage))
 	mux.Handle("DELETE /api/system/images", authed(s.handleDeleteSystemImage))
+	mux.Handle("GET /api/system/self-upgrade", authed(s.handleSelfUpgradeStatus))
 	mux.Handle("GET /api/interfaces", authed(s.handleInterfaces))
 	mux.Handle("GET /api/routes", authed(s.handleRoutes))
 	mux.Handle("GET /api/dhcp/leases", authed(s.handleDHCPLeases))

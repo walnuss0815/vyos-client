@@ -15,6 +15,7 @@ import (
 	"github.com/walnuss0815/vyos-client/backend/internal/api"
 	"github.com/walnuss0815/vyos-client/backend/internal/auth"
 	"github.com/walnuss0815/vyos-client/backend/internal/config"
+	"github.com/walnuss0815/vyos-client/backend/internal/selfupgrade"
 	"github.com/walnuss0815/vyos-client/backend/internal/vyos"
 	"github.com/walnuss0815/vyos-client/backend/internal/webapp"
 )
@@ -51,6 +52,14 @@ func runServer() error {
 			"either unset TLS_ENABLED (or set it to true) to actually use that certificate, or " +
 			"remove the cert/key vars if plain HTTP is intentional.")
 	}
+	if cfg.SelfUpgradeVarsIgnored {
+		logger.Warn("SELF_UPGRADE_CONTAINER_NAME/SELF_UPGRADE_GITHUB_REPO are set but ignored " +
+			"because SELF_UPGRADE_ENABLED is not true; set SELF_UPGRADE_ENABLED=true to actually " +
+			"turn on the System > Upgrades page, or remove these vars if that's not intended.")
+	}
+	if cfg.SelfUpgradeEnabled {
+		logger.Info("self-upgrade enabled", "container_name", cfg.SelfUpgradeContainerName, "github_repo", cfg.SelfUpgradeGitHubRepo)
+	}
 	logger.Info("auth mode", "mode", cfg.AuthMode)
 
 	vyosClient, err := vyos.New(vyos.Config{
@@ -65,6 +74,17 @@ func runServer() error {
 	webappHandler, err := webapp.Handler()
 	if err != nil {
 		return fmt.Errorf("configuring webapp handler: %w", err)
+	}
+
+	// Only constructed (and only ever makes an outbound request) when
+	// the operator has explicitly opted in - see
+	// config.Config.SelfUpgradeEnabled's doc comment.
+	var selfUpgradeGitHub *selfupgrade.Client
+	if cfg.SelfUpgradeEnabled {
+		selfUpgradeGitHub, err = selfupgrade.New(selfupgrade.Config{Repo: cfg.SelfUpgradeGitHubRepo})
+		if err != nil {
+			return fmt.Errorf("configuring self-upgrade client: %w", err)
+		}
 	}
 
 	// A single LoginLimiter instance is shared between the
@@ -98,10 +118,13 @@ func runServer() error {
 		// hardcoded true - or login would appear to succeed yet the
 		// session cookie would never actually be stored when TLS is
 		// disabled.
-		CookiesSecure:           cfg.TLSEnabled,
-		SafeApplyDefaultSeconds: cfg.SafeApplyDefaultSeconds,
-		ConfigWarningsEnabled:   cfg.ConfigWarningsEnabled,
-		Version:                 version,
+		CookiesSecure:            cfg.TLSEnabled,
+		SafeApplyDefaultSeconds:  cfg.SafeApplyDefaultSeconds,
+		ConfigWarningsEnabled:    cfg.ConfigWarningsEnabled,
+		Version:                  version,
+		SelfUpgradeEnabled:       cfg.SelfUpgradeEnabled,
+		SelfUpgradeContainerName: cfg.SelfUpgradeContainerName,
+		SelfUpgradeGitHub:        selfUpgradeGitHub,
 	}
 
 	mux := http.NewServeMux()

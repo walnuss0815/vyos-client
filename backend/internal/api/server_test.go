@@ -949,6 +949,38 @@ func TestSystemInfo_ConfigWarningsEnabledReflectsServerSetting(t *testing.T) {
 	}
 }
 
+func TestSystemInfo_SelfUpgradeEnabledDefaultsToFalse(t *testing.T) {
+	e := newTestEnv(t)
+	resp := e.doJSON(t, http.MethodGet, "/api/system/info", nil)
+	defer func() { _ = resp.Body.Close() }()
+	var out struct {
+		SelfUpgradeEnabled bool `json:"selfUpgradeEnabled"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if out.SelfUpgradeEnabled {
+		t.Error("expected selfUpgradeEnabled to be false by default")
+	}
+}
+
+func TestSystemInfo_SelfUpgradeEnabledReflectsServerSetting(t *testing.T) {
+	e := newTestEnv(t)
+	e.apiServer.SelfUpgradeEnabled = true
+
+	resp := e.doJSON(t, http.MethodGet, "/api/system/info", nil)
+	defer func() { _ = resp.Body.Close() }()
+	var out struct {
+		SelfUpgradeEnabled bool `json:"selfUpgradeEnabled"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !out.SelfUpgradeEnabled {
+		t.Error("expected selfUpgradeEnabled to be true when Server.SelfUpgradeEnabled is set")
+	}
+}
+
 func TestSystemInfo_ReturnsHostnameAndVersion(t *testing.T) {
 	e := newTestEnv(t)
 	e.login(t)
