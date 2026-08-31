@@ -60,6 +60,27 @@ func TestSelfUpgradeStatus_DisabledByDefault(t *testing.T) {
 	}
 }
 
+// TestSelfUpgradeStatus_NilGitHubClientDoesNotPanic guards a
+// misconfiguration that should be structurally impossible in
+// practice (cmd/vyos-client/serve.go always constructs
+// SelfUpgradeGitHub alongside setting SelfUpgradeEnabled=true), but
+// isn't enforced by the type system - if it ever happens anyway
+// (e.g. a future refactor), the handler must fail this one request
+// cleanly rather than panicking the server.
+func TestSelfUpgradeStatus_NilGitHubClientDoesNotPanic(t *testing.T) {
+	e := newTestEnv(t)
+	e.apiServer.SelfUpgradeEnabled = true
+	e.apiServer.SelfUpgradeContainerName = "vyos-client"
+	// SelfUpgradeGitHub deliberately left nil.
+	e.login(t)
+
+	resp := e.doJSON(t, http.MethodGet, "/api/system/self-upgrade", nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", resp.StatusCode)
+	}
+}
+
 func TestSelfUpgradeStatus_RequiresAuth(t *testing.T) {
 	e := newTestEnv(t)
 	// No login - the request should be rejected before even reaching

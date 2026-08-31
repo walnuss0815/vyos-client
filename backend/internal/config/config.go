@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 )
 
@@ -167,6 +168,24 @@ type Config struct {
 // matters.
 const defaultSelfUpgradeGitHubRepo = "walnuss0815/vyos-client"
 
+// selfUpgradeGitHubRepoPattern bounds SELF_UPGRADE_GITHUB_REPO to a
+// structurally valid "owner/repo" shape. This value is interpolated
+// directly into the GitHub API URL path and into the GHCR image
+// reference the frontend tells VyOS to pull (see
+// internal/selfupgrade.Client and UpgradesPage.tsx) - catching a typo
+// (stray spaces, a missing/extra "/", "..") here at startup is far
+// clearer than the opaque 404/malformed-request failure it would
+// otherwise only surface as on the first self-upgrade check.
+var selfUpgradeGitHubRepoPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$`)
+
+// selfUpgradeContainerNamePattern bounds SELF_UPGRADE_CONTAINER_NAME
+// to VyOS's own tag-node identifier charset (alphanumeric, "_"/"-",
+// must start with a letter or digit) - the same reasoning as above:
+// catch a typo at startup rather than only discovering it when the
+// `set container name <NAME> image ...` op the Upgrades page queues
+// silently targets a node that doesn't exist.
+var selfUpgradeContainerNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*$`)
+
 // Load reads configuration from the environment, applying defaults and
 // validating required fields. missing lists any required environment
 // variables that were not set, for a clear startup error.
@@ -293,7 +312,20 @@ func Load(getenv func(string) string) (*Config, error) {
 					"(this must match the name in VyOS's own `set container name <NAME> image ...`)",
 			)
 		}
+		if !selfUpgradeContainerNamePattern.MatchString(cfg.SelfUpgradeContainerName) {
+			return nil, fmt.Errorf(
+				"config: SELF_UPGRADE_CONTAINER_NAME %q is not a valid VyOS container name "+
+					"(letters, digits, \"_\", \"-\" only, must start with a letter or digit)",
+				cfg.SelfUpgradeContainerName,
+			)
+		}
 		cfg.SelfUpgradeGitHubRepo = orDefault(rawSelfUpgradeGitHubRepo, defaultSelfUpgradeGitHubRepo)
+		if !selfUpgradeGitHubRepoPattern.MatchString(cfg.SelfUpgradeGitHubRepo) {
+			return nil, fmt.Errorf(
+				"config: SELF_UPGRADE_GITHUB_REPO %q is not a valid \"owner/repo\" (got via env or the default)",
+				cfg.SelfUpgradeGitHubRepo,
+			)
+		}
 	} else {
 		cfg.SelfUpgradeVarsIgnored = rawSelfUpgradeContainerName != "" || rawSelfUpgradeGitHubRepo != ""
 	}
