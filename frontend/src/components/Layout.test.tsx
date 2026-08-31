@@ -100,6 +100,67 @@ describe('Layout', () => {
     expect(link).toHaveAttribute('rel', 'noreferrer')
   })
 
+  describe('Ingress nav group', () => {
+    it('is absent when ingressEnabled is false (the default)', async () => {
+      renderWithProviders(<Layout />)
+      await screen.findByText('admin')
+      expect(screen.queryByText('Ingress')).not.toBeInTheDocument()
+    })
+
+    it('shows configured entries as new-tab links, plus a Manage link, when enabled', async () => {
+      server.use(
+        http.get('/api/system/info', () =>
+          HttpResponse.json({ hostname: 'test-router', version: '1.5', loginBanner: '', ingressEnabled: true }),
+        ),
+        http.get('/api/ingress', () =>
+          HttpResponse.json({
+            entries: [
+              { name: 'nas', targetUrl: 'http://10.0.0.5', headers: [], skipTlsVerify: false },
+              { name: 'switch', targetUrl: 'http://10.0.0.6', headers: [], skipTlsVerify: false },
+            ],
+          }),
+        ),
+      )
+      renderWithProviders(<Layout />)
+
+      expect(await screen.findByText('Ingress')).toBeInTheDocument()
+      const nasLink = await screen.findByRole('link', { name: /nas/i })
+      expect(nasLink).toHaveAttribute('href', '/ingress/nas/')
+      expect(nasLink).toHaveAttribute('target', '_blank')
+      expect(nasLink).toHaveAttribute('rel', 'noreferrer')
+      expect(screen.getByRole('link', { name: /switch/i })).toHaveAttribute('href', '/ingress/switch/')
+      expect(screen.getByRole('link', { name: 'Manage' })).toHaveAttribute('href', '/ingresses')
+    })
+
+    it('shows a placeholder message when enabled but no entries are configured yet', async () => {
+      server.use(
+        http.get('/api/system/info', () =>
+          HttpResponse.json({ hostname: 'test-router', version: '1.5', loginBanner: '', ingressEnabled: true }),
+        ),
+        http.get('/api/ingress', () => HttpResponse.json({ entries: [] })),
+      )
+      renderWithProviders(<Layout />)
+
+      expect(await screen.findByText('No ingresses configured yet.')).toBeInTheDocument()
+    })
+
+    it('does not fetch the ingress list at all when ingressEnabled is false', async () => {
+      let requested = false
+      server.use(
+        http.get('/api/ingress', () => {
+          requested = true
+          return HttpResponse.json({ entries: [] })
+        }),
+      )
+      renderWithProviders(<Layout />)
+      await screen.findByText('admin')
+      // Give any stray request a moment to have shown up if it were
+      // going to.
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      expect(requested).toBe(false)
+    })
+  })
+
   describe('off-canvas sidebar (below the lg: breakpoint)', () => {
     it('has no backdrop until the hamburger button is clicked', () => {
       renderWithProviders(<Layout />)

@@ -107,4 +107,12 @@ export const handlers = [
   http.get('/api/pki/expiry', () => {
     return HttpResponse.json({ certificates: [], cas: [] })
   }),
+
+  // Layout.tsx's Ingress nav group only fetches this when
+  // ingressEnabled is true (see useIngresses.ts) - default handler for
+  // the rare test that does, so it doesn't need its own if it isn't
+  // exercising ingress entries specifically.
+  http.get('/api/ingress', () => {
+    return HttpResponse.json({ entries: [] })
+  }),
 ]

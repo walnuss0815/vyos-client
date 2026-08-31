@@ -4,6 +4,7 @@ import ProtectedRoute from './components/ProtectedRoute'
 import { useApplyTheme } from './hooks/useApplyTheme'
 import ConfigTreePage from './pages/ConfigTreePage'
 import DashboardPage from './pages/DashboardPage'
+import IngressPage from './pages/IngressPage'
 import ContainerLayout from './pages/container/ContainerLayout'
 import ContainersPage from './pages/container/ContainersPage'
 import ContainerNetworksPage from './pages/container/NetworksPage'
@@ -229,6 +230,7 @@ export default function App() {
           <Route path="/config-tree" element={<ConfigTreePage />} />
           <Route path="/logs" element={<LogsPage />} />
           <Route path="/files" element={<FilesPage />} />
+          <Route path="/ingresses" element={<IngressPage />} />
         </Route>
       </Route>
     </Routes>

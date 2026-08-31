@@ -71,6 +71,11 @@ export interface SystemInfo {
    * decide whether to render the Upgrades tab as enabled or
    * disabled-with-instructions. */
   selfUpgradeEnabled: boolean
+  /** Mirrors the backend's INGRESS_ENABLED env var (see
+   * docs/configuration-reference.md) - an opt-in, disabled-by-default
+   * deployment setting, not VyOS state. Layout.tsx reads this to
+   * decide whether to render the Ingress nav group at all. */
+  ingressEnabled: boolean
 }
 
 /** Live system identity (hostname + VyOS version), sourced from VyOS's
@@ -671,4 +676,80 @@ export interface PKIExpiryResponse {
  * expiry needs real X.509 parsing the frontend doesn't do itself. */
 export function getPKIExpiry(): Promise<PKIExpiryResponse> {
   return apiRequest<PKIExpiryResponse>('/api/pki/expiry')
+}
+
+/** A request header's name only - GET responses never include the
+ * header's actual value (see backend/internal/api/
+ * ingress_handlers.go's ingressHeaderResponse), since header values
+ * commonly carry credentials (a static API key or bearer token an
+ * upstream app expects) that, once configured, are never re-displayed
+ * by this API, only replaced. See IngressHeaderInput for the
+ * create/update request shape. */
+export interface IngressHeader {
+  name: string
+}
+
+/** One configured Ingress entry - lets a logged-in user reach a web
+ * UI on the router's own network through this app
+ * (/ingress/<name>/...), without opening a separate port for it. Not
+ * VyOS configuration: these are managed entirely by this app itself
+ * (see docs/architecture.md's "Ingress" section) and are unrelated to
+ * the pending-changes cart/commit flow every other create/edit form
+ * in this app uses - IngressPage.tsx calls createIngress/
+ * updateIngress/deleteIngress directly, same as e.g. ImagesPage.tsx's
+ * container/system image actions. */
+export interface IngressEntry {
+  name: string
+  description?: string
+  targetUrl: string
+  headers: IngressHeader[]
+  /** Disables TLS certificate verification when targetUrl is
+   * https://, for a target using a self-signed certificate. */
+  skipTlsVerify: boolean
+}
+
+export interface IngressListResponse {
+  entries: IngressEntry[]
+}
+
+/** Every configured ingress entry. Returns an empty list (not an
+ * error) when the feature is disabled - see SystemInfo.ingressEnabled
+ * for the flag IngressPage.tsx actually gates its UI on. */
+export function getIngresses(): Promise<IngressListResponse> {
+  return apiRequest<IngressListResponse>('/api/ingress')
+}
+
+/** A header as submitted in a create/update request body - unlike
+ * IngressHeader (the read shape), value is always present here. On
+ * update, leaving it blank keeps the previously stored value for a
+ * header with this name instead of clearing it (since the UI never
+ * had the real value to begin with - see IngressHeader's doc
+ * comment); a header whose name doesn't match any existing one always
+ * requires a real value, on both create and update. */
+export interface IngressHeaderInput {
+  name: string
+  value: string
+}
+
+export interface IngressEntryInput {
+  description: string
+  targetUrl: string
+  headers: IngressHeaderInput[]
+  skipTlsVerify: boolean
+}
+
+export function createIngress(name: string, input: IngressEntryInput): Promise<IngressEntry> {
+  return apiRequest<IngressEntry>('/api/ingress', { body: { name, ...input } })
+}
+
+/** Updates an existing ingress entry. The name itself can't be
+ * changed this way (it's immutable after creation, same tagNode-
+ * rename restriction VyOS itself effectively has) - delete and
+ * re-create instead. */
+export function updateIngress(name: string, input: IngressEntryInput): Promise<IngressEntry> {
+  return apiRequest<IngressEntry>(`/api/ingress/${encodeURIComponent(name)}`, { method: 'PUT', body: input })
+}
+
+export function deleteIngress(name: string): Promise<void> {
+  return apiRequest<void>(`/api/ingress/${encodeURIComponent(name)}`, { method: 'DELETE' })
 }

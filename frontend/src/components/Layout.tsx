@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { useIngresses } from '../hooks/useIngresses'
 import { useSystemInfo } from '../hooks/useSystemInfo'
 import { DEFAULT_DOCUMENT_TITLE } from '../lib/constants'
 import { useSessionStore } from '../store/session'
@@ -50,6 +51,9 @@ export default function Layout() {
   const user = useSessionStore((s) => s.user)
   const logout = useSessionStore((s) => s.logout)
   const systemInfoQuery = useSystemInfo()
+  const ingressEnabled = systemInfoQuery.data?.ingressEnabled ?? false
+  const ingressesQuery = useIngresses(ingressEnabled)
+  const ingresses = ingressesQuery.data ?? []
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
@@ -139,6 +143,50 @@ export default function Layout() {
               {item.label}
             </NavLink>
           ))}
+
+          {/* A separate, dynamic group (per the feature's own
+           * requirement) rather than folded into navItems above: its
+           * contents depend on runtime data (configured entries), and
+           * it's entirely absent unless an operator has opted in via
+           * INGRESS_ENABLED - see docs/configuration-reference.md. */}
+          {ingressEnabled && (
+            <div className="mt-4 border-t border-surface-border pt-4">
+              <p className="mb-1 px-3 text-xs font-medium uppercase tracking-wide text-slate-500">
+                Ingress
+              </p>
+              {ingresses.map((entry) => (
+                <a
+                  key={entry.name}
+                  href={`/ingress/${encodeURIComponent(entry.name)}/`}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={entry.description || entry.targetUrl}
+                  className="flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-400 transition hover:bg-surface-800 hover:text-slate-200"
+                >
+                  <span className="truncate">{entry.name}</span>
+                  <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5 shrink-0 opacity-60">
+                    <path d="M12.5 3a.75.75 0 0 1 .75-.75h3a.75.75 0 0 1 .75.75v3a.75.75 0 0 1-1.5 0V4.81l-6.22 6.22a.75.75 0 1 1-1.06-1.06L14.19 3.75H12.5a.75.75 0 0 1-.75-.75Z" />
+                    <path d="M4.5 4.75A1.75 1.75 0 0 1 6.25 3h3.5a.75.75 0 0 1 0 1.5h-3.5a.25.25 0 0 0-.25.25v9.5c0 .138.112.25.25.25h9.5a.25.25 0 0 0 .25-.25v-3.5a.75.75 0 0 1 1.5 0v3.5A1.75 1.75 0 0 1 15.75 16h-9.5A1.75 1.75 0 0 1 4.5 14.25v-9.5Z" />
+                  </svg>
+                </a>
+              ))}
+              {ingresses.length === 0 && (
+                <p className="px-3 text-xs text-slate-500">No ingresses configured yet.</p>
+              )}
+              <NavLink
+                to="/ingresses"
+                className={({ isActive }) =>
+                  `block rounded-lg px-3 py-2 text-sm font-medium transition ${
+                    isActive
+                      ? 'bg-accent-600/15 text-accent-500'
+                      : 'text-slate-400 hover:bg-surface-800 hover:text-slate-200'
+                  }`
+                }
+              >
+                Manage
+              </NavLink>
+            </div>
+          )}
         </nav>
 
         <div className="border-t border-surface-border px-4 py-3">
