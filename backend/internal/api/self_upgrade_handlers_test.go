@@ -259,3 +259,42 @@ func TestSelfUpgradeStatus_GitHubErrorReturnsBadGateway(t *testing.T) {
 		t.Errorf("status = %d, want 502", resp.StatusCode)
 	}
 }
+
+// TestSelfUpgradeStatus_LatestVersionSkipsUnparseableNewestRelease
+// guards against reporting an empty latestVersion just because the
+// very newest release happens to have a tag GitHub's API accepted
+// but this app's own semver parser doesn't recognize (e.g. a manual
+// hotfix tag) - the handler should fall through to the next release
+// that does have a recognizable version instead.
+func TestSelfUpgradeStatus_LatestVersionSkipsUnparseableNewestRelease(t *testing.T) {
+	github := newTestGitHubReleasesServer(t, `[
+		{"tag_name": "hotfix-2026-02-01", "name": "unplanned hotfix", "body": "", "draft": false, "prerelease": false, "published_at": "2026-02-01T00:00:00Z", "html_url": "https://example.com/hotfix"},
+		{"tag_name": "v1.5.0", "name": "1.5.0", "body": "", "draft": false, "prerelease": false, "published_at": "2026-01-15T00:00:00Z", "html_url": "https://example.com/1.5.0"},
+		{"tag_name": "v1.0.0", "name": "1.0.0", "body": "", "draft": false, "prerelease": false, "published_at": "2026-01-01T00:00:00Z", "html_url": "https://example.com/1.0.0"}
+	]`)
+	ghClient, err := selfupgrade.New(selfupgrade.Config{Repo: "example/repo", BaseURL: github.URL, HTTPClient: github.Client()})
+	if err != nil {
+		t.Fatalf("selfupgrade.New: %v", err)
+	}
+
+	e := newTestEnv(t)
+	e.apiServer.SelfUpgradeEnabled = true
+	e.apiServer.SelfUpgradeContainerName = "vyos-client"
+	e.apiServer.SelfUpgradeGitHub = ghClient
+	e.apiServer.Version = "1.0.0"
+	e.login(t)
+
+	resp := e.doJSON(t, http.MethodGet, "/api/system/self-upgrade", nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	var out selfUpgradeStatusOut
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if out.LatestVersion != "1.5.0" {
+		t.Errorf("latestVersion = %q, want 1.5.0 (skipping the unparseable newest release)", out.LatestVersion)
+	}
+}

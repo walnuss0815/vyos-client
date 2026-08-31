@@ -16,10 +16,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 // defaultBaseURL is GitHub's REST API base - overridable via
@@ -221,39 +223,26 @@ type rawRelease struct {
 // maxResponseBodyBytes.
 const maxResponseBodyBytes = 4 * 1024 * 1024
 
+// maxPages bounds how many pages of releases fetchReleases will
+// follow via GitHub's Link:...rel="next" pagination header - 100 per
+// page (see nextURL/fetchReleasesPage), so 5 pages covers up to 500
+// releases, comfortably beyond what this project (or a reasonable
+// fork) will publish for a long time, while still keeping this a
+// bounded, predictable number of requests rather than an unbounded
+// loop driven entirely by whatever GitHub's response says.
+const maxPages = 5
+
 func (c *Client) fetchReleases(ctx context.Context) ([]Release, error) {
 	url := fmt.Sprintf("%s/repos/%s/releases?per_page=100", c.baseURL, c.repo)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("selfupgrade: building request: %w", err)
-	}
-	// GitHub rejects requests with no User-Agent, and recommends
-	// pinning Accept/API-Version to the current REST API shape.
-	req.Header.Set("User-Agent", "vyos-client-self-upgrade")
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("selfupgrade: calling GitHub releases API: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	limited := io.LimitReader(resp.Body, maxResponseBodyBytes+1)
-	body, err := io.ReadAll(limited)
-	if err != nil {
-		return nil, fmt.Errorf("selfupgrade: reading GitHub releases response: %w", err)
-	}
-	if len(body) > maxResponseBodyBytes {
-		return nil, fmt.Errorf("selfupgrade: GitHub releases response exceeded %d bytes, aborting read", maxResponseBodyBytes)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("selfupgrade: GitHub releases API returned %d: %s", resp.StatusCode, truncate(string(body), 500))
-	}
 
 	var raw []rawRelease
-	if err := json.Unmarshal(body, &raw); err != nil {
-		return nil, fmt.Errorf("selfupgrade: decoding GitHub releases response: %w", err)
+	for page := 0; page < maxPages && url != ""; page++ {
+		pageRaw, next, err := c.fetchReleasesPage(ctx, url)
+		if err != nil {
+			return nil, err
+		}
+		raw = append(raw, pageRaw...)
+		url = next
 	}
 
 	out := make([]Release, 0, len(raw))
@@ -275,19 +264,90 @@ func (c *Client) fetchReleases(ctx context.Context) ([]Release, error) {
 	sort.Slice(out, func(i, j int) bool {
 		vi, oki := parseSemver(out[i].Version)
 		vj, okj := parseSemver(out[j].Version)
-		if oki && okj {
+		switch {
+		case oki && okj:
 			return vi.compare(vj) > 0
+		case oki != okj:
+			// Parseable versions always sort before unparseable ones,
+			// regardless of publish date - without this tier, mixing
+			// the two comparison strategies (semver vs. publish date)
+			// isn't a strict weak ordering, which sort.Slice requires
+			// for well-defined (as opposed to merely non-panicking)
+			// results.
+			return oki
+		default:
+			// Neither side is parseable (shouldn't normally happen
+			// for this project's own tags) - fall back to publish
+			// date, newest first.
+			return out[i].PublishedAt.After(out[j].PublishedAt)
 		}
-		// Unparseable versions (shouldn't normally happen for this
-		// project's own tags) sort by publish date instead.
-		return out[i].PublishedAt.After(out[j].PublishedAt)
 	})
 	return out, nil
 }
 
+// linkNextPattern extracts the URL of a `rel="next"` entry from a
+// GitHub API response's Link header, e.g.
+// `<https://api.github.com/...&page=2>; rel="next", <...>; rel="last"`.
+// GitHub's own Link header format is consistent enough that a simple
+// pattern match is sufficient here, without pulling in a full RFC 8288
+// Link-header-parsing dependency for this one use.
+var linkNextPattern = regexp.MustCompile(`<([^>]+)>;\s*rel="next"`)
+
+// fetchReleasesPage fetches one page of pageURL, returning its raw
+// releases and the next page's URL (empty if this was the last page).
+func (c *Client) fetchReleasesPage(ctx context.Context, pageURL string) ([]rawRelease, string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pageURL, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("selfupgrade: building request: %w", err)
+	}
+	// GitHub rejects requests with no User-Agent, and recommends
+	// pinning Accept/API-Version to the current REST API shape.
+	req.Header.Set("User-Agent", "vyos-client-self-upgrade")
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("selfupgrade: calling GitHub releases API: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	limited := io.LimitReader(resp.Body, maxResponseBodyBytes+1)
+	body, err := io.ReadAll(limited)
+	if err != nil {
+		return nil, "", fmt.Errorf("selfupgrade: reading GitHub releases response: %w", err)
+	}
+	if len(body) > maxResponseBodyBytes {
+		return nil, "", fmt.Errorf("selfupgrade: GitHub releases response exceeded %d bytes, aborting read", maxResponseBodyBytes)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, "", fmt.Errorf("selfupgrade: GitHub releases API returned %d: %s", resp.StatusCode, truncate(string(body), 500))
+	}
+
+	var raw []rawRelease
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, "", fmt.Errorf("selfupgrade: decoding GitHub releases response: %w", err)
+	}
+
+	next := ""
+	if m := linkNextPattern.FindStringSubmatch(resp.Header.Get("Link")); m != nil {
+		next = m[1]
+	}
+	return raw, next, nil
+}
+
+// truncate shortens s to at most n bytes, walking back to the nearest
+// UTF-8 rune boundary first so a multi-byte character is never split
+// (GitHub error response bodies can contain non-ASCII, e.g. quoted
+// user input) - a plain byte-slice would otherwise be able to produce
+// invalid UTF-8 in the resulting error message.
 func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s
 	}
-	return s[:n] + "…"
+	cut := n
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + "…"
 }

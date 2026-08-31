@@ -92,8 +92,17 @@ func (s *Server) handleSelfUpgradeStatus(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadGateway, "failed checking for updates on GitHub")
 		return
 	}
-	if len(releases) > 0 {
-		resp.LatestVersion = releases[0].Version
+	// releases is sorted newest-first (see selfupgrade.Client.
+	// ListReleases), but a release's Version can be "" if its tag
+	// isn't a recognizable semver - skip past any such entries rather
+	// than reporting an empty LatestVersion just because the very
+	// newest release happened to have a malformed tag while an older
+	// one is perfectly fine.
+	for _, rel := range releases {
+		if rel.Version != "" {
+			resp.LatestVersion = rel.Version
+			break
+		}
 	}
 
 	// newer/ok is false (not an error) when s.Version isn't a
