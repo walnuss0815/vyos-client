@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { deleteMatchGroupOp, matchGroupFormToOps } from '../../lib/qosMatchGroupForm'
+import { addQosMatchOps, blankQosMatchOptions } from '../../lib/qosMatchForm'
 import { qosMatchGroupPath } from '../../lib/qosParse'
 import type { QosMatchGroup } from '../../lib/qosTypes'
 import { buttonClass, inputClass, labelClass } from '../../lib/formStyles'
@@ -16,12 +17,37 @@ export default function QosMatchGroupsList({ groups }: { groups: QosMatchGroup[]
   const [showAdd, setShowAdd] = useState(false)
   const [newName, setNewName] = useState('')
   const [editing, setEditing] = useState<string | null>(null)
+  const [firstMatchId, setFirstMatchId] = useState('')
+  const [firstMatchDestAddress, setFirstMatchDestAddress] = useState('')
+  const [firstMatchDestPort, setFirstMatchDestPort] = useState('')
   const add = usePendingChangesStore((s) => s.add)
 
   const existingNames = groups.map((g) => g.name)
 
   function queueDelete(name: string) {
     add({ op: deleteMatchGroupOp(name), label: `delete qos traffic-match-group ${name}` })
+  }
+
+  function addGroup() {
+    const trimmed = newName.trim()
+    const ops = matchGroupFormToOps(trimmed, undefined, { description: '' })
+    for (const op of ops) add({ op, label: `${op.op} ${op.path.join(' ')}` })
+    // A group's match rules used to only be configurable AFTER the
+    // group already existed - QosMatchList only ever operates on an
+    // already-fetched group. Queuing a first one here, in the same
+    // commit as the group itself, avoids a detour through
+    // commit+refetch.
+    const trimmedMatchId = firstMatchId.trim()
+    if (trimmedMatchId) {
+      const matchOps = addQosMatchOps(qosMatchGroupPath(trimmed), trimmedMatchId, {
+        ...blankQosMatchOptions(),
+        ipDestinationAddress: firstMatchDestAddress.trim(),
+        ipDestinationPort: firstMatchDestPort.trim(),
+      })
+      for (const op of matchOps) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    }
+    setShowAdd(false)
+    setEditing(trimmed)
   }
 
   return (
@@ -56,18 +82,37 @@ export default function QosMatchGroupsList({ groups }: { groups: QosMatchGroup[]
             />
           </label>
           {newName.trim() !== '' && !existingNames.includes(newName.trim()) && (
-            <button
-              onClick={() => {
-                const trimmed = newName.trim()
-                const ops = matchGroupFormToOps(trimmed, undefined, { description: '' })
-                for (const op of ops) add({ op, label: `${op.op} ${op.path.join(' ')}` })
-                setShowAdd(false)
-                setEditing(trimmed)
-              }}
-              className={`bg-accent-600 ${buttonClass}`}
-            >
-              Add group
-            </button>
+            <>
+              <div className="mb-3">
+                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">First match rule (optional)</p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <input
+                    {...noExtensionInputProps}
+                    value={firstMatchId}
+                    onChange={(e) => setFirstMatchId(e.target.value)}
+                    placeholder="match name"
+                    className={`font-mono ${inputClass}`}
+                  />
+                  <input
+                    {...noExtensionInputProps}
+                    value={firstMatchDestAddress}
+                    onChange={(e) => setFirstMatchDestAddress(e.target.value)}
+                    placeholder="destination address"
+                    className={inputClass}
+                  />
+                  <input
+                    {...noExtensionInputProps}
+                    value={firstMatchDestPort}
+                    onChange={(e) => setFirstMatchDestPort(e.target.value)}
+                    placeholder="destination port"
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+              <button onClick={addGroup} className={`bg-accent-600 ${buttonClass}`}>
+                Add group
+              </button>
+            </>
           )}
         </div>
       )}
