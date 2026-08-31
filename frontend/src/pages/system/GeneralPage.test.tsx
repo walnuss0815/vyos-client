@@ -81,7 +81,10 @@ describe('GeneralPage', () => {
     await user.type(screen.getByPlaceholderText('fileserver'), 'printer')
     const createForm = screen.getByPlaceholderText('fileserver').closest('div.mb-3')
     if (!createForm) throw new Error('create form not found')
-    await user.type(within(createForm as HTMLElement).getByPlaceholderText('10.0.0.5'), '10.0.0.9')
+    const addressesSection = within(createForm as HTMLElement).getByText('Addresses *').closest('div')
+    if (!addressesSection) throw new Error('addresses section not found')
+    await user.type(within(addressesSection as HTMLElement).getByPlaceholderText('10.0.0.5'), '10.0.0.9')
+    await user.click(within(addressesSection as HTMLElement).getByRole('button', { name: /^add$/i }))
     await user.click(within(createForm as HTMLElement).getByRole('button', { name: /queue mapping creation/i }))
 
     const { changes } = usePendingChangesStore.getState()
@@ -90,6 +93,53 @@ describe('GeneralPage', () => {
       op: 'set',
       path: ['system', 'static-host-mapping', 'host-name', 'printer', 'inet'],
       value: '10.0.0.9',
+    })
+  })
+
+  it('also queues additional addresses and aliases when creating a mapping with multiple entries', async () => {
+    // Regression test: additional addresses/aliases beyond the first
+    // used to only be addable AFTER the mapping already existed - the
+    // per-mapping ChipLists rendered above only ever operate on an
+    // already-fetched mapping.
+    const user = userEvent.setup()
+    renderWithProviders(<GeneralPage />)
+    await screen.findByText('fileserver')
+
+    await user.click(screen.getByRole('button', { name: /\+ new mapping/i }))
+    await user.type(screen.getByPlaceholderText('fileserver'), 'printer')
+    const createForm = screen.getByPlaceholderText('fileserver').closest('div.mb-3')
+    if (!createForm) throw new Error('create form not found')
+
+    const addressesSection = within(createForm as HTMLElement).getByText('Addresses *').closest('div')
+    if (!addressesSection) throw new Error('addresses section not found')
+    await user.type(within(addressesSection as HTMLElement).getByPlaceholderText('10.0.0.5'), '10.0.0.9')
+    await user.click(within(addressesSection as HTMLElement).getByRole('button', { name: /^add$/i }))
+    await user.type(within(addressesSection as HTMLElement).getByPlaceholderText('10.0.0.5'), '10.0.0.10')
+    await user.click(within(addressesSection as HTMLElement).getByRole('button', { name: /^add$/i }))
+
+    const aliasesSection = within(createForm as HTMLElement).getByText('Aliases').closest('div')
+    if (!aliasesSection) throw new Error('aliases section not found')
+    await user.type(within(aliasesSection as HTMLElement).getByPlaceholderText('nas (optional)'), 'printer1')
+    await user.click(within(aliasesSection as HTMLElement).getByRole('button', { name: /^add$/i }))
+
+    await user.click(within(createForm as HTMLElement).getByRole('button', { name: /queue mapping creation/i }))
+
+    const { changes } = usePendingChangesStore.getState()
+    const ops = changes.map((c) => c.op)
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['system', 'static-host-mapping', 'host-name', 'printer', 'inet'],
+      value: '10.0.0.9',
+    })
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['system', 'static-host-mapping', 'host-name', 'printer', 'inet'],
+      value: '10.0.0.10',
+    })
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['system', 'static-host-mapping', 'host-name', 'printer', 'alias'],
+      value: 'printer1',
     })
   })
 
