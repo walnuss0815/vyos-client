@@ -180,4 +180,19 @@ describe('L2tpPage', () => {
     expect(await screen.findByText(/l2tp is not configured/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /enable l2tp/i })).toBeInTheDocument()
   })
+
+  // Regression test: see store/pendingChanges.ts's latestPendingOp.
+  it('can be re-enabled after an enable -> disable -> enable cycle, all uncommitted', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))
+    const user = userEvent.setup()
+    renderWithProviders(<L2tpPage />)
+
+    await user.click(await screen.findByRole('button', { name: /enable l2tp/i }))
+    await user.click(await screen.findByRole('button', { name: /disable l2tp entirely/i }))
+    await screen.findByRole('button', { name: /enable l2tp/i })
+    await user.click(screen.getByRole('button', { name: /enable l2tp/i }))
+
+    expect(await screen.findByLabelText(/outside address/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /disable l2tp entirely/i })).toBeInTheDocument()
+  })
 })

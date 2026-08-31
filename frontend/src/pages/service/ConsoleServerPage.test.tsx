@@ -76,4 +76,19 @@ describe('ConsoleServerPage', () => {
     expect(await screen.findByText(/console server is not configured/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /enable console server/i })).toBeInTheDocument()
   })
+
+  // Regression test: see store/pendingChanges.ts's latestPendingOp.
+  it('can be re-enabled after an enable -> disable -> enable cycle, all uncommitted', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))
+    const user = userEvent.setup()
+    renderWithProviders(<ConsoleServerPage />)
+
+    await user.click(await screen.findByRole('button', { name: /enable console server/i }))
+    await user.click(await screen.findByRole('button', { name: /disable console server entirely/i }))
+    await screen.findByRole('button', { name: /enable console server/i })
+    await user.click(screen.getByRole('button', { name: /enable console server/i }))
+
+    expect(await screen.findByRole('button', { name: /\+ new device/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /disable console server entirely/i })).toBeInTheDocument()
+  })
 })

@@ -178,4 +178,60 @@ describe('MonitoringPage', () => {
     expect(await screen.findByText(/network event monitoring is not configured/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^enable network events$/i })).toBeInTheDocument()
   })
+
+  // Regression tests: see store/pendingChanges.ts's latestPendingOp.
+  // Each of Monitoring's 4 sub-areas is gated independently, so each
+  // needs its own re-enable-after-cycle coverage.
+  it('re-enables Node Exporter after an enable -> disable -> enable cycle, all uncommitted', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))
+    const user = userEvent.setup()
+    renderWithProviders(<MonitoringPage />)
+
+    await user.click(await screen.findByRole('button', { name: /^enable node exporter$/i }))
+    await user.click(await screen.findByRole('button', { name: /^disable node exporter$/i }))
+    await screen.findByRole('button', { name: /^enable node exporter$/i })
+    await user.click(screen.getByRole('button', { name: /^enable node exporter$/i }))
+
+    expect(await screen.findByText(/collect textfile metrics/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^disable node exporter$/i })).toBeInTheDocument()
+  })
+
+  it('re-enables FRR Exporter after an enable -> disable -> enable cycle, all uncommitted', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))
+    const user = userEvent.setup()
+    renderWithProviders(<MonitoringPage />)
+
+    await user.click(await screen.findByRole('button', { name: /^enable frr exporter$/i }))
+    await user.click(await screen.findByRole('button', { name: /^disable frr exporter$/i }))
+    await screen.findByRole('button', { name: /^enable frr exporter$/i })
+    await user.click(screen.getByRole('button', { name: /^enable frr exporter$/i }))
+
+    expect(await screen.findByRole('button', { name: /^disable frr exporter$/i })).toBeInTheDocument()
+  })
+
+  it('re-enables Zabbix Agent after an enable -> disable -> enable cycle, all uncommitted', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))
+    const user = userEvent.setup()
+    renderWithProviders(<MonitoringPage />)
+
+    await user.click(await screen.findByRole('button', { name: /^enable zabbix agent$/i }))
+    await user.click(await screen.findByRole('button', { name: /^disable zabbix agent$/i }))
+    await screen.findByRole('button', { name: /^enable zabbix agent$/i })
+    await user.click(screen.getByRole('button', { name: /^enable zabbix agent$/i }))
+
+    expect(await screen.findByRole('button', { name: /^disable zabbix agent$/i })).toBeInTheDocument()
+  })
+
+  it('re-enables Network Events after an enable -> disable -> enable cycle, all uncommitted', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))
+    const user = userEvent.setup()
+    renderWithProviders(<MonitoringPage />)
+
+    await user.click(await screen.findByRole('button', { name: /^enable network events$/i }))
+    await user.click(await screen.findByRole('button', { name: /^disable network events$/i }))
+    await screen.findByRole('button', { name: /^enable network events$/i })
+    await user.click(screen.getByRole('button', { name: /^enable network events$/i }))
+
+    expect(await screen.findByRole('button', { name: /^disable network events$/i })).toBeInTheDocument()
+  })
 })
