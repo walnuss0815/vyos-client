@@ -96,4 +96,19 @@ describe('EventHandlerPage', () => {
     expect(await screen.findByText(/event handler is not configured/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /enable event handler/i })).toBeInTheDocument()
   })
+
+  // Regression test: see store/pendingChanges.ts's latestPendingOp.
+  it('can be re-enabled after an enable -> disable -> enable cycle, all uncommitted', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))
+    const user = userEvent.setup()
+    renderWithProviders(<EventHandlerPage />)
+
+    await user.click(await screen.findByRole('button', { name: /enable event handler/i }))
+    await user.click(await screen.findByRole('button', { name: /disable event handler entirely/i }))
+    await screen.findByRole('button', { name: /enable event handler/i })
+    await user.click(screen.getByRole('button', { name: /enable event handler/i }))
+
+    expect(await screen.findByRole('button', { name: /\+ new event/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /disable event handler entirely/i })).toBeInTheDocument()
+  })
 })

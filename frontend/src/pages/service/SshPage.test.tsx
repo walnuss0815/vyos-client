@@ -107,4 +107,19 @@ describe('SshPage', () => {
     expect(await screen.findByText(/ssh access is not configured/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /enable ssh/i })).toBeInTheDocument()
   })
+
+  // Regression test: see store/pendingChanges.ts's latestPendingOp.
+  it('can be re-enabled after an enable -> disable -> enable cycle, all uncommitted', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))
+    const user = userEvent.setup()
+    renderWithProviders(<SshPage />)
+
+    await user.click(await screen.findByRole('button', { name: /enable ssh/i }))
+    await user.click(await screen.findByRole('button', { name: /disable ssh entirely/i }))
+    await screen.findByRole('button', { name: /enable ssh/i })
+    await user.click(screen.getByRole('button', { name: /enable ssh/i }))
+
+    expect(await screen.findByRole('button', { name: /save settings/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /disable ssh entirely/i })).toBeInTheDocument()
+  })
 })

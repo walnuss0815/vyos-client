@@ -94,4 +94,19 @@ describe('BroadcastRelayPage', () => {
     expect(await screen.findByText(/broadcast relay is not configured/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /enable broadcast relay/i })).toBeInTheDocument()
   })
+
+  // Regression test: see store/pendingChanges.ts's latestPendingOp.
+  it('can be re-enabled after an enable -> disable -> enable cycle, all uncommitted', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))
+    const user = userEvent.setup()
+    renderWithProviders(<BroadcastRelayPage />)
+
+    await user.click(await screen.findByRole('button', { name: /enable broadcast relay/i }))
+    await user.click(await screen.findByRole('button', { name: /disable entirely \(remove config\)/i }))
+    await screen.findByRole('button', { name: /enable broadcast relay/i })
+    await user.click(screen.getByRole('button', { name: /enable broadcast relay/i }))
+
+    expect(await screen.findByRole('button', { name: /\+ new instance/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /disable entirely \(remove config\)/i })).toBeInTheDocument()
+  })
 })

@@ -76,4 +76,23 @@ describe('MdnsPage', () => {
     expect(await screen.findByText(/mdns repeater is not configured/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /enable mdns repeater/i })).toBeInTheDocument()
   })
+
+  // Regression test for the reported bug: enabling, disabling, then
+  // enabling again (all before committing) used to get permanently
+  // stuck showing "not configured", because the stale first disable
+  // was never superseded by the second enable - see
+  // store/pendingChanges.ts's latestPendingOp.
+  it('can be re-enabled after an enable -> disable -> enable cycle, all uncommitted', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))
+    const user = userEvent.setup()
+    renderWithProviders(<MdnsPage />)
+
+    await user.click(await screen.findByRole('button', { name: /enable mdns repeater/i }))
+    await user.click(await screen.findByRole('button', { name: /disable mdns repeater entirely/i }))
+    await screen.findByRole('button', { name: /enable mdns repeater/i })
+    await user.click(screen.getByRole('button', { name: /enable mdns repeater/i }))
+
+    expect(await screen.findByRole('button', { name: /save settings/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /disable mdns repeater entirely/i })).toBeInTheDocument()
+  })
 })

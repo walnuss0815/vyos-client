@@ -115,4 +115,19 @@ describe('SstpPage', () => {
     expect(await screen.findByText(/sstp is not configured/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /enable sstp/i })).toBeInTheDocument()
   })
+
+  // Regression test: see store/pendingChanges.ts's latestPendingOp.
+  it('can be re-enabled after an enable -> disable -> enable cycle, all uncommitted', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))
+    const user = userEvent.setup()
+    renderWithProviders(<SstpPage />)
+
+    await user.click(await screen.findByRole('button', { name: /enable sstp/i }))
+    await user.click(await screen.findByRole('button', { name: /disable sstp entirely/i }))
+    await screen.findByRole('button', { name: /enable sstp/i })
+    await user.click(screen.getByRole('button', { name: /enable sstp/i }))
+
+    expect(await screen.findByLabelText(/ca certificate/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /disable sstp entirely/i })).toBeInTheDocument()
+  })
 })
