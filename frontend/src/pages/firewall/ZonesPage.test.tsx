@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { beforeEach, describe, expect, it } from 'vitest'
@@ -107,6 +107,31 @@ describe('ZonesPage', () => {
         }),
       ]),
     )
+  })
+
+  // Regression test: a zone's first ruleset assignment used to only
+  // be addable AFTER the zone already existed - ZoneCard's "from"
+  // list only ever operates on an already-fetched zone.
+  it('creates a new zone with a first ruleset assignment, all in one commit', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<ZonesPage />)
+    await screen.findByText('LAN')
+
+    await user.click(screen.getByRole('button', { name: /new zone/i }))
+    const form = screen.getByPlaceholderText('eth1, eth2').closest('div.rounded-xl')
+    if (!form) throw new Error('create form not found')
+    await user.type(within(form as HTMLElement).getByPlaceholderText('LAN'), 'DMZ')
+    await user.type(within(form as HTMLElement).getByPlaceholderText('eth1, eth2'), 'eth3')
+    await user.type(within(form as HTMLElement).getByPlaceholderText('source zone'), 'WAN')
+    await user.type(within(form as HTMLElement).getByPlaceholderText('ruleset name'), 'WAN-DMZ-v4')
+    await user.click(within(form as HTMLElement).getByRole('button', { name: /queue zone creation/i }))
+
+    const ops = usePendingChangesStore.getState().changes.map((c) => c.op)
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['firewall', 'zone', 'DMZ', 'from', 'WAN', 'firewall', 'name'],
+      value: 'WAN-DMZ-v4',
+    })
   })
 
   // Regression test: RulesetsPage's CreateRulesetForm validated the
