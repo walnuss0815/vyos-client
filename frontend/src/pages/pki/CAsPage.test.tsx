@@ -55,6 +55,28 @@ describe('CAsPage', () => {
     })
   })
 
+  it('also queues a first CRL when creating a CA with its optional field filled in', async () => {
+    // Regression test: a CA's CRLs used to only be addable AFTER the
+    // CA already existed - CAList.tsx's ChipList only ever operates
+    // on an already-fetched CA.
+    const user = userEvent.setup()
+    renderWithProviders(<CAsPage />)
+    await screen.findByText('vyos_root_ca')
+
+    await user.click(screen.getByRole('button', { name: /\+ new ca/i }))
+    await user.type(screen.getByLabelText(/^name/i), 'vyos_server_ca')
+    await user.type(screen.getByPlaceholderText('MIIB...'), 'MIIBnewcert')
+    await user.type(screen.getByLabelText(/first crl/i), 'MIIDnewcrl')
+    await user.click(screen.getByRole('button', { name: /queue ca creation/i }))
+
+    const { changes } = usePendingChangesStore.getState()
+    expect(changes.map((c) => c.op)).toContainEqual({
+      op: 'set',
+      path: ['pki', 'ca', 'vyos_server_ca', 'crl'],
+      value: 'MIIDnewcrl',
+    })
+  })
+
   it('deletes a CA', async () => {
     const user = userEvent.setup()
     renderWithProviders(<CAsPage />)
