@@ -27,6 +27,13 @@ type systemInfoResponse struct {
 	// banner, including pre-login (harmless to expose here - it's not
 	// sensitive, same as hostname/version below).
 	ConfigWarningsEnabled bool `json:"configWarningsEnabled"`
+	// SelfUpgradeEnabled mirrors Server.SelfUpgradeEnabled - same
+	// piggy-backing reasoning as ConfigWarningsEnabled above, so
+	// SystemLayout.tsx can decide whether to render the Upgrades tab
+	// as enabled or disabled-with-instructions without an extra
+	// round trip. Not sensitive - it's just a deployment-time feature
+	// flag, not VyOS state.
+	SelfUpgradeEnabled bool `json:"selfUpgradeEnabled"`
 }
 
 // handleSystemInfo wraps VyOS's unauthenticated GET /info (hostname,
@@ -48,6 +55,7 @@ func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
 		Version:               info.Version,
 		LoginBanner:           info.Banner,
 		ConfigWarningsEnabled: s.ConfigWarningsEnabled,
+		SelfUpgradeEnabled:    s.SelfUpgradeEnabled,
 	})
 }
 

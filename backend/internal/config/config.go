@@ -134,7 +134,38 @@ type Config struct {
 	// would otherwise keep warm for it) turn the whole thing off
 	// rather than live with false-positive noise.
 	ConfigWarningsEnabled bool
+
+	// SelfUpgradeEnabled turns on the System > Upgrades page (see
+	// docs/architecture.md's "Self-upgrade" section) - disabled by
+	// default. Unlike every other feature in this app, enabling this
+	// makes the backend call an external service (the GitHub Releases
+	// API, see internal/selfupgrade) rather than only ever talking to
+	// VyOS's own API, so it's deliberately opt-in rather than
+	// always-on.
+	SelfUpgradeEnabled bool
+	// SelfUpgradeContainerName is the name this app was configured
+	// under via `set container name <NAME> image ...` on VyOS - the
+	// backend has no other way to know this about itself. Required
+	// (and only read) when SelfUpgradeEnabled is true.
+	SelfUpgradeContainerName string
+	// SelfUpgradeGitHubRepo is the "owner/repo" self-upgrade checks
+	// releases for and pulls images from (ghcr.io/<repo>, since
+	// .github/workflows/release.yml always publishes there). Defaults
+	// to this project's own repo; only meaningfully different for a
+	// fork publishing its own releases/images under a different repo.
+	SelfUpgradeGitHubRepo string
+	// SelfUpgradeVarsIgnored reports whether
+	// SELF_UPGRADE_CONTAINER_NAME or SELF_UPGRADE_GITHUB_REPO were set
+	// despite SelfUpgradeEnabled == false, in which case they're
+	// silently unused - same "you configured X but it's ignored"
+	// pattern as UIAdminVarsIgnored/TLSCertFilesIgnored above.
+	SelfUpgradeVarsIgnored bool
 }
+
+// defaultSelfUpgradeGitHubRepo is this project's own GitHub repo -
+// see SelfUpgradeGitHubRepo's doc comment for when a different value
+// matters.
+const defaultSelfUpgradeGitHubRepo = "walnuss0815/vyos-client"
 
 // Load reads configuration from the environment, applying defaults and
 // validating required fields. missing lists any required environment
@@ -243,6 +274,28 @@ func Load(getenv func(string) string) (*Config, error) {
 			return nil, fmt.Errorf("config: CONFIG_WARNINGS_ENABLED: %w", err)
 		}
 		cfg.ConfigWarningsEnabled = b
+	}
+
+	if v := getenv("SELF_UPGRADE_ENABLED"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return nil, fmt.Errorf("config: SELF_UPGRADE_ENABLED: %w", err)
+		}
+		cfg.SelfUpgradeEnabled = b
+	}
+	rawSelfUpgradeContainerName := getenv("SELF_UPGRADE_CONTAINER_NAME")
+	rawSelfUpgradeGitHubRepo := getenv("SELF_UPGRADE_GITHUB_REPO")
+	if cfg.SelfUpgradeEnabled {
+		cfg.SelfUpgradeContainerName = rawSelfUpgradeContainerName
+		if cfg.SelfUpgradeContainerName == "" {
+			return nil, fmt.Errorf(
+				"config: SELF_UPGRADE_CONTAINER_NAME is required when SELF_UPGRADE_ENABLED=true " +
+					"(this must match the name in VyOS's own `set container name <NAME> image ...`)",
+			)
+		}
+		cfg.SelfUpgradeGitHubRepo = orDefault(rawSelfUpgradeGitHubRepo, defaultSelfUpgradeGitHubRepo)
+	} else {
+		cfg.SelfUpgradeVarsIgnored = rawSelfUpgradeContainerName != "" || rawSelfUpgradeGitHubRepo != ""
 	}
 
 	return cfg, nil

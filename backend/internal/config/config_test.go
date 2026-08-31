@@ -365,6 +365,119 @@ func TestLoad_ConfigWarningsEnabledRejectsInvalidBoolean(t *testing.T) {
 	}
 }
 
+func TestLoad_SelfUpgradeDisabledByDefault(t *testing.T) {
+	cfg, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":           "test-key",
+		"UI_ADMIN_USER":          "admin",
+		"UI_ADMIN_PASSWORD_HASH": "$2a$10$fakehash",
+	}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.SelfUpgradeEnabled {
+		t.Error("expected SelfUpgradeEnabled to default to false when SELF_UPGRADE_ENABLED is unset")
+	}
+	if cfg.SelfUpgradeContainerName != "" {
+		t.Errorf("expected empty SelfUpgradeContainerName when disabled, got %q", cfg.SelfUpgradeContainerName)
+	}
+}
+
+func TestLoad_SelfUpgradeEnabledRequiresContainerName(t *testing.T) {
+	_, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":           "test-key",
+		"UI_ADMIN_USER":          "admin",
+		"UI_ADMIN_PASSWORD_HASH": "$2a$10$fakehash",
+		"SELF_UPGRADE_ENABLED":   "true",
+	}))
+	if err == nil {
+		t.Fatal("expected error: SELF_UPGRADE_ENABLED=true requires SELF_UPGRADE_CONTAINER_NAME")
+	}
+}
+
+func TestLoad_SelfUpgradeEnabledWithContainerName(t *testing.T) {
+	cfg, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":                "test-key",
+		"UI_ADMIN_USER":               "admin",
+		"UI_ADMIN_PASSWORD_HASH":      "$2a$10$fakehash",
+		"SELF_UPGRADE_ENABLED":        "true",
+		"SELF_UPGRADE_CONTAINER_NAME": "vyos-client",
+	}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.SelfUpgradeContainerName != "vyos-client" {
+		t.Errorf("SelfUpgradeContainerName = %q, want vyos-client", cfg.SelfUpgradeContainerName)
+	}
+	if cfg.SelfUpgradeGitHubRepo != "walnuss0815/vyos-client" {
+		t.Errorf("SelfUpgradeGitHubRepo = %q, want the default", cfg.SelfUpgradeGitHubRepo)
+	}
+	if cfg.SelfUpgradeVarsIgnored {
+		t.Error("expected SelfUpgradeVarsIgnored to be false when the feature is actually enabled")
+	}
+}
+
+func TestLoad_SelfUpgradeGitHubRepoOverride(t *testing.T) {
+	cfg, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":                "test-key",
+		"UI_ADMIN_USER":               "admin",
+		"UI_ADMIN_PASSWORD_HASH":      "$2a$10$fakehash",
+		"SELF_UPGRADE_ENABLED":        "true",
+		"SELF_UPGRADE_CONTAINER_NAME": "vyos-client",
+		"SELF_UPGRADE_GITHUB_REPO":    "example/fork",
+	}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.SelfUpgradeGitHubRepo != "example/fork" {
+		t.Errorf("SelfUpgradeGitHubRepo = %q, want example/fork", cfg.SelfUpgradeGitHubRepo)
+	}
+}
+
+func TestLoad_SelfUpgradeEnabledRejectsInvalidBoolean(t *testing.T) {
+	_, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":           "test-key",
+		"UI_ADMIN_USER":          "admin",
+		"UI_ADMIN_PASSWORD_HASH": "$2a$10$fakehash",
+		"SELF_UPGRADE_ENABLED":   "not-a-bool",
+	}))
+	if err == nil {
+		t.Fatal("expected error for an invalid SELF_UPGRADE_ENABLED value")
+	}
+}
+
+// TestLoad_SelfUpgradeVarsIgnoredWhenDisabled guards the same
+// "warn, don't fail startup" behavior as
+// TestLoad_UIAdminVarsIgnoredWhenAuthModeIsVyOSUsers: an operator who
+// sets SELF_UPGRADE_CONTAINER_NAME/SELF_UPGRADE_GITHUB_REPO but leaves
+// (or sets) SELF_UPGRADE_ENABLED=false should not have startup fail -
+// just flagged as silently unused, for serve.go to warn about.
+func TestLoad_SelfUpgradeVarsIgnoredWhenDisabled(t *testing.T) {
+	cfg, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":                "test-key",
+		"UI_ADMIN_USER":               "admin",
+		"UI_ADMIN_PASSWORD_HASH":      "$2a$10$fakehash",
+		"SELF_UPGRADE_CONTAINER_NAME": "vyos-client",
+	}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.SelfUpgradeVarsIgnored {
+		t.Error("expected SelfUpgradeVarsIgnored to be true when SELF_UPGRADE_CONTAINER_NAME is set but the feature is disabled")
+	}
+
+	cfgClean, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":           "test-key",
+		"UI_ADMIN_USER":          "admin",
+		"UI_ADMIN_PASSWORD_HASH": "$2a$10$fakehash",
+	}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfgClean.SelfUpgradeVarsIgnored {
+		t.Error("expected SelfUpgradeVarsIgnored to be false when neither var was ever set")
+	}
+}
+
 func TestSessionSecretIsEphemeral(t *testing.T) {
 	withoutSecret, err := config.Load(fakeEnv(map[string]string{
 		"VYOS_API_KEY":           "test-key",
