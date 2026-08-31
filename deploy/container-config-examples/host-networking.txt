@@ -58,6 +58,20 @@ set container name vyos-client environment SESSION_SECRET value '<GENERATE-A-LON
 # container name used above ("vyos-client" in this example).
 # set container name vyos-client environment SELF_UPGRADE_ENABLED value 'true'
 # set container name vyos-client environment SELF_UPGRADE_CONTAINER_NAME value 'vyos-client'
+#
+# Optional: turns on the Ingress nav group/page, letting a logged-in
+# user reach a web UI elsewhere on the router's own network through
+# this app, without opening a separate port for it. Disabled by
+# default - unlike everything else in this app, an enabled ingress
+# lets this backend reach hosts beyond VyOS's own API. Entries
+# themselves are managed from the UI once enabled, not via env vars,
+# but need a MOUNTED VOLUME to actually persist across restarts - the
+# volume block below stores them under /config (VyOS's own persistent
+# partition, which survives image upgrades), matching
+# INGRESS_DATA_DIR's default of /data inside the container.
+# set container name vyos-client environment INGRESS_ENABLED value 'true'
+# set container name vyos-client volume ingress-data source '/config/vyos-client-ingress'
+# set container name vyos-client volume ingress-data destination '/data'
 
 # 4. Belt-and-suspenders: an explicit firewall rule blocking WAN access
 #    to the UI's port, on top of step 3's LISTEN_ADDR binding - so a

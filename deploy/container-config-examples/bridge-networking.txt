@@ -41,6 +41,13 @@ set container name vyos-client environment SESSION_SECRET value '<GENERATE-A-LON
 # Upgrades check for and pull/queue new releases. Disabled by default.
 # set container name vyos-client environment SELF_UPGRADE_ENABLED value 'true'
 # set container name vyos-client environment SELF_UPGRADE_CONTAINER_NAME value 'vyos-client'
+#
+# Optional: see host-networking.txt's comments - turns on the Ingress
+# nav group/page. Disabled by default; needs a mounted volume to
+# persist entries across restarts.
+# set container name vyos-client environment INGRESS_ENABLED value 'true'
+# set container name vyos-client volume ingress-data source '/config/vyos-client-ingress'
+# set container name vyos-client volume ingress-data destination '/data'
 
 commit
 save

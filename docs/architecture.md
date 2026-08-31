@@ -418,6 +418,91 @@ new image. This matches VyOS's documented declarative container
 management model, but should be confirmed against real hardware
 before relying on it operationally.
 
+## Ingress
+
+The Ingress nav group/page (`backend/internal/ingress`,
+`backend/internal/api/ingress_handlers.go`,
+`frontend/src/pages/IngressPage.tsx`) is an authenticated reverse
+proxy: a logged-in user can reach a web UI elsewhere on the router's
+own network through this app, at `/ingress/<name>/...`, without
+opening a separate port for it. Like self-upgrade above, it's
+deliberately disabled by default (`INGRESS_ENABLED`) - it's the
+**second** (and, unlike self-upgrade, unbounded) exception to "this
+backend only ever talks to VyOS's own API": an ingress target is any
+address the operator configures, not a single fixed external service.
+The proxy only ever does anything once an authenticated operator has
+explicitly created an entry for it.
+
+Two design decisions this required, both departures from how the rest
+of the app works:
+
+- **Entries need durable storage that isn't VyOS config or the
+  environment.** Ingress entries (name, target URL, request headers,
+  a per-entry TLS-verify opt-out) are managed at runtime through the
+  UI, not fixed once at container start like every other setting
+  `internal/config` loads. Storing them in VyOS's own config tree
+  (e.g. under this app's own `container ... environment` node, the
+  only "the app can write its own config" precedent that exists) was
+  considered and rejected: it would restart this very container on
+  every entry change. Instead, `internal/ingress.Store` persists a
+  single `ingress.json` file (atomic write: temp file + fsync +
+  rename) to `INGRESS_DATA_DIR`, the one deliberate exception to this
+  backend's "no config file" principle - the directory must be a
+  persistent mounted volume, or entries are lost every restart.
+- **Entries aren't VyOS configuration, so they bypass the
+  pending-changes cart entirely.** Create/edit/delete apply
+  immediately via direct API calls (`POST`/`PUT`/`DELETE
+  /api/ingress/...`), the same pattern as system/container image
+  management (see above) - there's nothing to review before a commit,
+  because there's no VyOS commit involved.
+
+The proxy itself (`internal/ingress.Proxy`, an `httputil.ReverseProxy`
+wired up in `Server.Routes`) handles a few things a naive "forward the
+request" implementation would get wrong:
+
+- **Auth**: mounted behind `auth.RequireSessionForBrowsing`, not the
+  usual `RequireSession`+`RequireCSRF` pair every `/api/...` route
+  uses - this is reached by a user directly navigating a browser (a
+  new tab from the sidebar), not the SPA's `fetch()` calls, so a
+  missing/invalid session redirects to `/login` instead of returning a
+  JSON 401 body a browser navigation would just render as broken
+  text. No CSRF check either: an upstream app has no way to send this
+  app's own CSRF token back.
+- **This app's own cookies are never forwarded** to the upstream
+  target, and the target's own cookies get their `Path` rewritten to
+  stay under `/ingress/<name>/...` - both needed since the proxy
+  shares one browser origin across every configured entry (and this
+  app's own session), so cookies would otherwise leak or collide
+  between them.
+- **`Location` response headers are rewritten** back into
+  `/ingress/<name>/...` path space when the upstream redirects to
+  itself (e.g. after a login form) - left untouched for a redirect to
+  a different origin entirely, since rewriting that would incorrectly
+  imply this proxy can reach that other host too.
+- **Protocol upgrades (WebSockets) work end to end.** This needed one
+  fix outside `internal/ingress` itself:
+  `requestLogger`'s `statusRecorder` (`backend/internal/api/server.go`)
+  now implements `Unwrap() http.ResponseWriter` rather than nothing -
+  `http.ResponseController` (used internally by `httputil.ReverseProxy`
+  for exactly this) follows `Unwrap` through wrapper types to reach
+  the real `ResponseWriter`'s `Flush`/`Hijack` methods, which a plain
+  type assertion through the wrapper can't see. `Proxy.ServeHTTP` also
+  disables its own write deadline entirely (same `ResponseController`
+  mechanism) rather than inheriting the server's blanket 60s
+  `WriteTimeout`, since a legitimately long-lived proxied connection
+  (streaming, or exactly this kind of upgrade) shouldn't be cut off on
+  a timer meant for this app's own fast, well-bounded API handlers.
+
+**Known limitation**: this only rewrites what it can see at the HTTP
+layer (paths, redirects, cookies) - there's no HTML/JS rewriting, so
+an upstream app whose own frontend hardcodes absolute paths (e.g.
+loading `/assets/app.js` instead of something relative, or with no
+configurable base-path setting of its own) will still render broken
+under the `/ingress/<name>/` prefix. Many self-hosted web UIs work
+fine as-is; some don't. Subdomain-based proxying would avoid this
+class of problem entirely, but needs wildcard DNS/certificates on the
+operator's own LAN and isn't implemented.
+
 ## Files: a curated, read-only viewer over `show file <path>`
 
 `GET /api/files`/`GET /api/files/roots` (`backend/internal/api/

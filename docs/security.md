@@ -265,9 +265,9 @@ https certificates certificate <name>`), leave this at its default
   Treat the container's environment configuration with the same care as
   root/admin credentials on the router itself — because, functionally,
   it is one.
-- **`SELF_UPGRADE_ENABLED` is the one deliberate exception** to this
-  app never talking to anything but VyOS's own API — when set, the
-  backend makes unauthenticated HTTPS calls to `api.github.com` to
+- **`SELF_UPGRADE_ENABLED` is the first of two deliberate exceptions**
+  to this app never talking to anything but VyOS's own API — when set,
+  the backend makes unauthenticated HTTPS calls to `api.github.com` to
   check for new releases (see
   [architecture.md](architecture.md#self-upgrade)). Disabled by
   default. If you enable it, be aware that a compromised/typo'd
@@ -275,6 +275,22 @@ https certificates certificate <name>`), leave this at its default
   don't control — the value is trusted as-is, the same "trust the
   authenticated deployment configuration" posture the rest of
   `internal/config` already takes for every other env var.
+- **`INGRESS_ENABLED` is the second, and unlike self-upgrade,
+  unbounded** — an authenticated reverse proxy (see
+  [architecture.md](architecture.md#ingress)) letting a logged-in user
+  reach any target the operator configures on the router's own
+  network, not a single fixed external service. This runs in the same
+  network namespace as the router itself (host networking, the
+  default), so an ingress target's own reachability is exactly whatever
+  the router itself can already reach — enabling this doesn't grant
+  new network access, only a new authenticated path to reach what the
+  router already had. Entries (target URL, request headers) are
+  created only by an authenticated operator through the UI; a header
+  value meant as a credential for the target (e.g. a static API key)
+  is stored in `INGRESS_DATA_DIR`'s `ingress.json` in plaintext, not
+  masked the way VyOS config secrets are — treat that file with the
+  same care as any other credential store, and make sure its mounted
+  volume isn't world-readable on the host.
 
 ### Restricting access to LAN clients only
 

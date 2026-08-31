@@ -197,6 +197,14 @@ password (the default `vyos-users` auth mode from step 2) — or with
   to the running configuration immediately (like typing `commit` at the
   CLI); **Save** persists the running configuration to `/config/config.boot`
   (like `save`), independent of Commit.
+- **Ingress** — a separate nav group letting you reach a web UI
+  elsewhere on the router's own network through this app, without
+  opening a separate port for it, with optional request headers per
+  entry (e.g. a static API key/bearer token the target expects).
+  Disabled by default, see
+  [configuration-reference.md](configuration-reference.md) — entries
+  are managed here, not via env vars, and applied immediately (no
+  pending-changes review step, since they aren't VyOS configuration).
 
 Not every configuration surface has a dedicated form yet (most of
 `service`, DHCPv6, PPPoE, RADIUS/TACACS+ authentication, NAT64/NAT66/CGNAT,

@@ -1800,6 +1800,39 @@ not a silently-missing gap.
   semver-versioned dependency automerge logic can reason about the
   same way as the others.
 
+- **Ingress**: a new top-level "Ingress" nav group and `/ingresses`
+  management page - an authenticated reverse proxy letting a logged-in
+  user reach a web UI elsewhere on the router's own network through
+  this app (`/ingress/<name>/...`), without opening a separate port
+  for it, with per-entry configurable request headers (e.g. a static
+  API key/bearer token the target expects). Disabled by default
+  (`INGRESS_ENABLED`) - the second, and unlike self-upgrade unbounded,
+  exception to this backend only ever talking to VyOS's own API (an
+  ingress target is any operator-configured address, not one fixed
+  external service). See
+  [architecture.md](architecture.md#ingress) for the full design,
+  including the two departures from how the rest of this app works
+  that it required: entries are stored in a JSON file on a mounted
+  volume (`INGRESS_DATA_DIR`) rather than VyOS config or the
+  environment (the one exception to `internal/config`'s "no config
+  file" principle - storing them in this app's own VyOS `container
+  ... environment` node was considered and rejected, since it would
+  restart the container on every entry change), and create/edit/
+  delete bypass the pending-changes cart entirely (direct API calls,
+  same as system/container image management), since entries aren't
+  VyOS configuration. Also required fixing `requestLogger`'s
+  `statusRecorder` (`backend/internal/api/server.go`) to implement
+  `Unwrap() http.ResponseWriter` so `httputil.ReverseProxy`'s
+  `Flush`/`Hijack` calls (needed for WebSocket-upgrade support through
+  the proxy) can see through the wrapper to the real `ResponseWriter` -
+  verified with a real raw-socket protocol-upgrade test that fails
+  against the pre-fix `statusRecorder` (502) and passes against the
+  fix (101 Switching Protocols). **Known limitation**: no HTML/JS
+  rewriting, so an upstream app whose own frontend hardcodes absolute
+  paths (rather than a configurable base path) will still render
+  broken under the `/ingress/<name>/` prefix - many self-hosted UIs
+  work fine as-is, some don't.
+
 ## Next
 
 Not yet decided - see "Later" below for the candidate list (the

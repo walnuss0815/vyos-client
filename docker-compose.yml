@@ -33,5 +33,10 @@ services:
       - .env
     ports:
       - '${HOST_PORT:-8443}:8443'
+    # Uncomment to test the Ingress feature locally (see .env.example's
+    # INGRESS_ENABLED) - persists ingress entries to a local directory
+    # instead of the container's own ephemeral filesystem.
+    # volumes:
+    #   - ./.ingress-data:/data
     depends_on:
       - mock-vyos
