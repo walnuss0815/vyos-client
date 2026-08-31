@@ -13,13 +13,14 @@ import (
 // (unexported in package api), decoding only the fields these tests
 // assert on.
 type selfUpgradeStatusOut struct {
-	Enabled         bool   `json:"enabled"`
-	ContainerName   string `json:"containerName"`
-	ImageRepo       string `json:"imageRepo"`
-	CurrentVersion  string `json:"currentVersion"`
-	LatestVersion   string `json:"latestVersion"`
-	UpdateAvailable bool   `json:"updateAvailable"`
-	Releases        []struct {
+	Enabled                  bool   `json:"enabled"`
+	ContainerName            string `json:"containerName"`
+	ImageRepo                string `json:"imageRepo"`
+	CurrentVersion           string `json:"currentVersion"`
+	LatestVersion            string `json:"latestVersion"`
+	CurrentVersionRecognized bool   `json:"currentVersionRecognized"`
+	UpdateAvailable          bool   `json:"updateAvailable"`
+	Releases                 []struct {
 		Version string `json:"version"`
 		Name    string `json:"name"`
 		Body    string `json:"body"`
@@ -116,6 +117,9 @@ func TestSelfUpgradeStatus_UpdateAvailable(t *testing.T) {
 	if out.LatestVersion != "2.0.0" {
 		t.Errorf("latestVersion = %q, want 2.0.0", out.LatestVersion)
 	}
+	if !out.CurrentVersionRecognized {
+		t.Error("expected currentVersionRecognized=true for a real version")
+	}
 	if !out.UpdateAvailable {
 		t.Error("expected updateAvailable=true")
 	}
@@ -149,6 +153,9 @@ func TestSelfUpgradeStatus_UpToDate(t *testing.T) {
 	var out selfUpgradeStatusOut
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		t.Fatalf("decode: %v", err)
+	}
+	if !out.CurrentVersionRecognized {
+		t.Error("expected currentVersionRecognized=true for a real version")
 	}
 	if out.UpdateAvailable {
 		t.Error("expected updateAvailable=false when already on the latest version")
@@ -190,6 +197,9 @@ func TestSelfUpgradeStatus_UnparseableCurrentVersion(t *testing.T) {
 	var out selfUpgradeStatusOut
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		t.Fatalf("decode: %v", err)
+	}
+	if out.CurrentVersionRecognized {
+		t.Error("expected currentVersionRecognized=false for a \"dev\" build")
 	}
 	if out.UpdateAvailable {
 		t.Error("expected updateAvailable=false when the current version can't be parsed")

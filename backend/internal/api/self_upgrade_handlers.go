@@ -34,10 +34,16 @@ type selfUpgradeStatusResponse struct {
 	// prerelease) release found, regardless of whether it's newer
 	// than CurrentVersion - "" if no releases were found at all.
 	LatestVersion string `json:"latestVersion,omitempty"`
-	// UpdateAvailable is only ever true when CurrentVersion itself was
-	// a recognizable version - see selfupgrade.NewerThan. It stays
-	// false (not an error) for a "dev" build, since no comparison is
-	// possible there.
+	// CurrentVersionRecognized is false when CurrentVersion isn't a
+	// parseable version (e.g. "dev", a local/non-release build - see
+	// cmd/vyos-client/main.go), meaning no comparison against
+	// available releases was possible at all. The frontend uses this
+	// to distinguish "checked, you're up to date" from "can't check
+	// updates for this build" - both otherwise look identical
+	// (UpdateAvailable=false, empty Releases).
+	CurrentVersionRecognized bool `json:"currentVersionRecognized"`
+	// UpdateAvailable is only ever true when CurrentVersionRecognized
+	// is also true - see selfupgrade.NewerThan.
 	UpdateAvailable bool `json:"updateAvailable"`
 	// Releases lists every release newer than CurrentVersion, newest
 	// first - the "what's changed since you're on" the Upgrades page
@@ -83,6 +89,7 @@ func (s *Server) handleSelfUpgradeStatus(w http.ResponseWriter, r *http.Request)
 	// UpdateAvailable=false and Releases empty in that case is
 	// correct: no comparison is possible, but that's not a failure.
 	if newer, ok := selfupgrade.NewerThan(releases, s.Version); ok {
+		resp.CurrentVersionRecognized = true
 		resp.UpdateAvailable = len(newer) > 0
 		resp.Releases = make([]selfUpgradeReleaseResponse, 0, len(newer))
 		for _, rel := range newer {
