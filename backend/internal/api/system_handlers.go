@@ -34,6 +34,12 @@ type systemInfoResponse struct {
 	// round trip. Not sensitive - it's just a deployment-time feature
 	// flag, not VyOS state.
 	SelfUpgradeEnabled bool `json:"selfUpgradeEnabled"`
+	// IngressEnabled mirrors Server.IngressEnabled - same piggy-
+	// backing reasoning as SelfUpgradeEnabled above, so Layout.tsx can
+	// decide whether to render the Ingress nav group at all. Not
+	// sensitive - it's just a deployment-time feature flag, not VyOS
+	// state or the ingress entries themselves.
+	IngressEnabled bool `json:"ingressEnabled"`
 }
 
 // handleSystemInfo wraps VyOS's unauthenticated GET /info (hostname,
@@ -56,6 +62,7 @@ func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
 		LoginBanner:           info.Banner,
 		ConfigWarningsEnabled: s.ConfigWarningsEnabled,
 		SelfUpgradeEnabled:    s.SelfUpgradeEnabled,
+		IngressEnabled:        s.IngressEnabled,
 	})
 }
 

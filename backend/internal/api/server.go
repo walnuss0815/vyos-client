@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/walnuss0815/vyos-client/backend/internal/auth"
+	"github.com/walnuss0815/vyos-client/backend/internal/ingress"
 	"github.com/walnuss0815/vyos-client/backend/internal/selfupgrade"
 	"github.com/walnuss0815/vyos-client/backend/internal/vyos"
 )
@@ -61,6 +62,18 @@ type Server struct {
 	// selfupgrade.Client.ListReleases) is actually shared across
 	// requests.
 	SelfUpgradeGitHub *selfupgrade.Client
+
+	// IngressEnabled mirrors config.Config.IngressEnabled - surfaced
+	// to the frontend (via handleSystemInfo) so it knows whether to
+	// show the Ingress nav group at all.
+	IngressEnabled bool
+	// IngressStore holds the configured Ingress entries - nil when
+	// IngressEnabled is false, in which case every ingress handler
+	// below returns a "not enabled"/empty response without touching
+	// it (see their own doc comments). Constructed once at startup
+	// (cmd/vyos-client/serve.go), not per-request, since it owns the
+	// single ingress.json file on disk and its in-memory cache.
+	IngressStore *ingress.Store
 }
 
 // Routes returns the fully-wired HTTP handler for the backend, with all
@@ -122,6 +135,12 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /api/qos/shaper-status", authed(s.handleQosShaperStatus))
 
 	mux.Handle("GET /api/pki/expiry", authed(s.handlePKIExpiry))
+
+	mux.Handle("GET /api/ingress", authed(s.handleIngressList))
+	mux.Handle("POST /api/ingress", authed(s.handleIngressCreate))
+	mux.Handle("GET /api/ingress/{name}", authed(s.handleIngressGet))
+	mux.Handle("PUT /api/ingress/{name}", authed(s.handleIngressUpdate))
+	mux.Handle("DELETE /api/ingress/{name}", authed(s.handleIngressDelete))
 
 	return requestLogger(s.Logger)(mux)
 }

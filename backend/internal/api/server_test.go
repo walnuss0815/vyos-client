@@ -981,6 +981,38 @@ func TestSystemInfo_SelfUpgradeEnabledReflectsServerSetting(t *testing.T) {
 	}
 }
 
+func TestSystemInfo_IngressEnabledDefaultsToFalse(t *testing.T) {
+	e := newTestEnv(t)
+	resp := e.doJSON(t, http.MethodGet, "/api/system/info", nil)
+	defer func() { _ = resp.Body.Close() }()
+	var out struct {
+		IngressEnabled bool `json:"ingressEnabled"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if out.IngressEnabled {
+		t.Error("expected ingressEnabled to be false by default")
+	}
+}
+
+func TestSystemInfo_IngressEnabledReflectsServerSetting(t *testing.T) {
+	e := newTestEnv(t)
+	e.apiServer.IngressEnabled = true
+
+	resp := e.doJSON(t, http.MethodGet, "/api/system/info", nil)
+	defer func() { _ = resp.Body.Close() }()
+	var out struct {
+		IngressEnabled bool `json:"ingressEnabled"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !out.IngressEnabled {
+		t.Error("expected ingressEnabled to be true when Server.IngressEnabled is set")
+	}
+}
+
 func TestSystemInfo_ReturnsHostnameAndVersion(t *testing.T) {
 	e := newTestEnv(t)
 	e.login(t)
