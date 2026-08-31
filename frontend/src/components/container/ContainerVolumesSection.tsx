@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { addVolumeOps, removeVolumeOp } from '../../lib/containerNestedForm'
-import { CONTAINER_VOLUME_MODES, CONTAINER_VOLUME_PROPAGATIONS, type ContainerDefinition } from '../../lib/containerTypes'
+import { CONTAINER_VOLUME_MODES, CONTAINER_VOLUME_PROPAGATIONS, type ContainerVolume } from '../../lib/containerTypes'
 import { buttonClass, inputClass } from '../../lib/formStyles'
 import { noExtensionInputProps } from '../../lib/inputProtection'
 import { usePendingChangesStore } from '../../store/pendingChanges'
@@ -8,8 +8,27 @@ import InfoTooltip from '../InfoTooltip'
 
 /** ContainerNestedSections.tsx's "Volume mounts" section, extracted
  * into its own file for size (see that file's own doc comment for why
- * it's split this way). */
-export default function ContainerVolumesSection({ container }: { container: ContainerDefinition }) {
+ * it's split this way). Also reused by
+ * ContainerCreateNestedSections.tsx in draft mode (via onAdd/onRemove)
+ * - see this component's own prop doc comments. */
+export default function ContainerVolumesSection({
+  containerName,
+  volumes,
+  onAdd,
+  onRemove,
+}: {
+  containerName: string
+  volumes: ContainerVolume[]
+  /** Overrides what "Add volume mount" does, in place of the default
+   * "immediately queue the real set ops" - see ChipList.tsx's onAdd
+   * doc comment for the general rationale (buffering a not-yet-
+   * created container's nested entries locally until its own submit).
+   * `volumes` must then be whatever local state onAdd/onRemove write
+   * to. */
+  onAdd?: (id: string, source: string, destination: string, mode: string, propagation: string) => void
+  /** The mirror of onAdd, for Remove. */
+  onRemove?: (id: string) => void
+}) {
   const [showAdd, setShowAdd] = useState(false)
   const [id, setId] = useState('')
   const [source, setSource] = useState('')
@@ -19,14 +38,18 @@ export default function ContainerVolumesSection({ container }: { container: Cont
   const add = usePendingChangesStore((s) => s.add)
 
   const trimmedId = id.trim()
-  const taken = container.volumes.some((v) => v.id === trimmedId)
+  const taken = volumes.some((v) => v.id === trimmedId)
   const valid = trimmedId !== '' && !taken
 
   function submit() {
     if (!valid) return
-    const ops = addVolumeOps(container.name, trimmedId, source, destination, mode, propagation)
-    for (const op of ops) {
-      add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    if (onAdd) {
+      onAdd(trimmedId, source, destination, mode, propagation)
+    } else {
+      const ops = addVolumeOps(containerName, trimmedId, source, destination, mode, propagation)
+      for (const op of ops) {
+        add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+      }
     }
     setId('')
     setSource('')
@@ -36,26 +59,29 @@ export default function ContainerVolumesSection({ container }: { container: Cont
     setShowAdd(false)
   }
 
+  function remove(volId: string) {
+    if (onRemove) {
+      onRemove(volId)
+      return
+    }
+    const op = removeVolumeOp(containerName, volId)
+    add({ op, label: `delete ${op.path.join(' ')}` })
+  }
+
   return (
     <div>
-      {container.volumes.map((vol) => (
+      {volumes.map((vol) => (
         <div key={vol.id} className="mb-1 flex items-center justify-between rounded border border-surface-border p-2">
           <span className="font-mono text-xs text-slate-300">
             {vol.id}: {vol.source ?? '?'} → {vol.destination ?? '?'}
             {vol.mode && <span className="text-slate-500"> ({vol.mode})</span>}
           </span>
-          <button
-            onClick={() => {
-              const op = removeVolumeOp(container.name, vol.id)
-              add({ op, label: `delete ${op.path.join(' ')}` })
-            }}
-            className="text-xs text-slate-500 hover:text-danger-500"
-          >
+          <button onClick={() => remove(vol.id)} className="text-xs text-slate-500 hover:text-danger-500">
             Remove
           </button>
         </div>
       ))}
-      {container.volumes.length === 0 && <p className="text-xs text-slate-500">No volume mounts.</p>}
+      {volumes.length === 0 && <p className="text-xs text-slate-500">No volume mounts.</p>}
 
       <button onClick={() => setShowAdd((v) => !v)} className="mt-1 text-xs text-accent-500 hover:text-accent-400">
         {showAdd ? 'Cancel' : '+ Add volume mount'}

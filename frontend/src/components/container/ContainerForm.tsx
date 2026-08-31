@@ -7,28 +7,47 @@ import {
   type ContainerFormValues,
 } from '../../lib/containerForm'
 import { imageIsPulled } from '../../lib/containerImageMatch'
-import { CONTAINER_CAPABILITIES, CONTAINER_LOG_DRIVERS, CONTAINER_RESTART_POLICIES } from '../../lib/containerTypes'
+import {
+  CONTAINER_CAPABILITIES,
+  CONTAINER_LOG_DRIVERS,
+  CONTAINER_RESTART_POLICIES,
+  type ContainerNetwork,
+} from '../../lib/containerTypes'
 import type { ContainerDefinition } from '../../lib/containerTypes'
 import { buttonClass, inputClass, labelClass } from '../../lib/formStyles'
 import { noExtensionInputProps } from '../../lib/inputProtection'
+import type { ConfigOp } from '../../lib/vyosApi'
 import { pullContainerImage } from '../../lib/vyosApi'
 import { useContainerImages } from '../../hooks/useContainerImages'
 import { usePendingChangesStore } from '../../store/pendingChanges'
 import FieldLabel from '../FieldLabel'
 import InfoTooltip from '../InfoTooltip'
+import ContainerCreateNestedSections from './ContainerCreateNestedSections'
 
 interface ContainerFormProps {
   /** undefined = creating a new container. */
   container?: ContainerDefinition
   existingNames: string[]
+  /** Only used in create mode, for the Network attachments draft
+   * section's "attach to an existing network" dropdown - see
+   * ContainerCreateNestedSections.tsx. */
+  networks: ContainerNetwork[]
   onDone: () => void
 }
 
-export default function ContainerForm({ container, existingNames, onDone }: ContainerFormProps) {
+export default function ContainerForm({ container, existingNames, networks, onDone }: ContainerFormProps) {
   const [name, setName] = useState(container?.name ?? '')
   const [values, setValues] = useState<ContainerFormValues>(
     container ? containerToFormValues(container) : blankContainerFormValues(),
   )
+  // Everything queued via the nested-sections draft below (volumes,
+  // devices, ports, network attachments, tmpfs, health check, DNS
+  // servers, environment, labels, sysctl) - see
+  // ContainerCreateNestedSections.tsx. Only ever populated in create
+  // mode; stays empty (and unused) when editing an existing container,
+  // which still uses ContainerNestedSections.tsx (queuing immediately)
+  // exactly as before.
+  const [nestedOps, setNestedOps] = useState<ConfigOp[]>([])
   const add = usePendingChangesStore((s) => s.add)
 
   const isCreate = container === undefined
@@ -53,6 +72,14 @@ export default function ContainerForm({ container, existingNames, onDone }: Cont
     if (!canSubmit) return
     const ops = containerFormToOps(trimmedName, container, values)
     for (const op of ops) {
+      add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    }
+    // Queued in the SAME batch as the container's own creation ops
+    // above, so a single "Queue container creation" click is enough
+    // to define the whole container, nested resources included - see
+    // ContainerCreateNestedSections.tsx's own doc comment for why
+    // these can't be queued any earlier than this.
+    for (const op of nestedOps) {
       add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
     }
     onDone()
@@ -269,6 +296,18 @@ export default function ContainerForm({ container, existingNames, onDone }: Cont
           ))}
         </div>
       </div>
+
+      {isCreate && (
+        // Deliberately always mounted once in create mode (not
+        // conditional on trimmedName !== '') so clearing/retyping the
+        // name mid-way through doesn't unmount this and discard
+        // whatever's already been drafted below - see
+        // ContainerCreateNestedSections.tsx's own doc comment. The
+        // path labels shown just look slightly odd (an empty name
+        // segment) until a name is typed, which is a fair trade for
+        // never losing already-entered nested-resource drafts.
+        <ContainerCreateNestedSections containerName={trimmedName} networks={networks} onOpsChange={setNestedOps} />
+      )}
 
       <div className="mt-4 flex items-center gap-2">
         <button onClick={submit} disabled={!canSubmit} className={`bg-accent-600 ${buttonClass}`}>

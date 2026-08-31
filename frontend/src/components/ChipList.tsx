@@ -8,7 +8,7 @@ import { usePendingChangesStore } from '../store/pendingChanges'
  * Generic add/remove UI for any VyOS multi-valued leaf - e.g. a DHCP
  * shared network/subnet's `option name-server`/`ntp-server`/
  * `domain-search`, or a subnet's `exclude` list. Each add/remove is
- * queued immediately, matching the same convention as
+ * queued immediately by default, matching the same convention as
  * components/interfaces/AddressChips.tsx (which is deliberately kept
  * separate rather than generalized into this component, since it also
  * has IP-addressing-specific dhcp/dhcpv6 quick-add buttons this
@@ -20,6 +20,8 @@ export default function ChipList({
   leaf,
   pathLabel,
   placeholder,
+  onAdd,
+  onRemove,
 }: {
   values: string[]
   basePath: string[]
@@ -29,6 +31,19 @@ export default function ChipList({
   /** Human-readable dotted path for the pending-changes label. */
   pathLabel: string
   placeholder?: string
+  /** Overrides what "Add" does, in place of the default "immediately
+   * queue a real `set` op". `values` must then be whatever local state
+   * `onAdd` writes to, for the rendered chips to reflect it. Exists
+   * for callers managing a not-yet-created parent resource (e.g.
+   * ContainerCreateNestedSections.tsx's draft DNS-server list, queued
+   * for real only once the container itself is): pending changes are
+   * a flat, resource-agnostic list, so there's no way to later
+   * "cancel" ops already queued here if the parent creation is
+   * abandoned - buffering in local state until the parent's own
+   * submit avoids ever queuing something that could be orphaned. */
+  onAdd?: (value: string) => void
+  /** The mirror of onAdd, for Remove. */
+  onRemove?: (value: string) => void
 }) {
   const [newValue, setNewValue] = useState('')
   const add = usePendingChangesStore((s) => s.add)
@@ -38,12 +53,20 @@ export default function ChipList({
 
   function queueAdd() {
     if (!trimmedValue || taken) return
-    const op: ConfigOp = { op: 'set', path: [...basePath, leaf], value: trimmedValue }
-    add({ op, label: `set ${pathLabel} '${trimmedValue}'` })
+    if (onAdd) {
+      onAdd(trimmedValue)
+    } else {
+      const op: ConfigOp = { op: 'set', path: [...basePath, leaf], value: trimmedValue }
+      add({ op, label: `set ${pathLabel} '${trimmedValue}'` })
+    }
     setNewValue('')
   }
 
   function queueRemove(value: string) {
+    if (onRemove) {
+      onRemove(value)
+      return
+    }
     const op: ConfigOp = { op: 'delete', path: [...basePath, leaf], value }
     add({ op, label: `delete ${pathLabel} '${value}'` })
   }
