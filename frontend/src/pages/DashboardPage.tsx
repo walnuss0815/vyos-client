@@ -116,10 +116,6 @@ export default function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-8">
-      {systemInfoQuery.data?.loginBanner && (
-        <LoginBanner text={systemInfoQuery.data.loginBanner} />
-      )}
-
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="mb-1 text-lg font-semibold text-white">Dashboard</h1>
@@ -138,6 +134,10 @@ export default function DashboardPage() {
           <RefreshControl />
         </div>
       </div>
+
+      {systemInfoQuery.data?.loginBanner && (
+        <LoginBanner text={systemInfoQuery.data.loginBanner} />
+      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Card label="Hostname" value={hostnameValue} muted={systemInfoQuery.isError} />
@@ -216,8 +216,8 @@ export default function DashboardPage() {
 }
 
 /**
- * VyOS's own configured `system login banner` text, shown as the very
- * first thing on the Dashboard - not built on ConfigWarningsBanner
+ * VyOS's own configured `system login banner` text, shown just below
+ * the "Dashboard" page title - not built on ConfigWarningsBanner
  * (that one is global-to-every-page, collapsible, and warning-toned;
  * this is Dashboard-only, always fully shown, and just informational,
  * not a warning). Rendered only when non-empty (see DashboardPage's

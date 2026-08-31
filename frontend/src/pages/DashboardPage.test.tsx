@@ -28,7 +28,7 @@ describe('DashboardPage', () => {
     expect(screen.getByText('2026.02-rolling')).toBeInTheDocument()
   })
 
-  it('shows the login banner as the first element when VyOS has one configured', async () => {
+  it('shows the login banner below the "Dashboard" title when VyOS has one configured', async () => {
     server.use(
       http.get('/api/system/info', () =>
         HttpResponse.json({
@@ -41,6 +41,11 @@ describe('DashboardPage', () => {
     renderWithProviders(<DashboardPage />)
     expect(await screen.findByText(/Authorized access only\./)).toBeInTheDocument()
     expect(screen.getByText(/All activity is logged\./)).toBeInTheDocument()
+
+    // DOM_POSITION_FOLLOWING (4) means the title precedes the banner.
+    const title = screen.getByRole('heading', { name: 'Dashboard' })
+    const banner = screen.getByText(/Authorized access only\./)
+    expect(title.compareDocumentPosition(banner) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('does not render a login banner element when VyOS has none configured', async () => {
