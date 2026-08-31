@@ -15,6 +15,7 @@ import (
 	"github.com/walnuss0815/vyos-client/backend/internal/api"
 	"github.com/walnuss0815/vyos-client/backend/internal/auth"
 	"github.com/walnuss0815/vyos-client/backend/internal/config"
+	"github.com/walnuss0815/vyos-client/backend/internal/ingress"
 	"github.com/walnuss0815/vyos-client/backend/internal/selfupgrade"
 	"github.com/walnuss0815/vyos-client/backend/internal/vyos"
 	"github.com/walnuss0815/vyos-client/backend/internal/webapp"
@@ -60,6 +61,13 @@ func runServer() error {
 	if cfg.SelfUpgradeEnabled {
 		logger.Info("self-upgrade enabled", "container_name", cfg.SelfUpgradeContainerName, "github_repo", cfg.SelfUpgradeGitHubRepo)
 	}
+	if cfg.IngressVarsIgnored {
+		logger.Warn("INGRESS_DATA_DIR is set but ignored because INGRESS_ENABLED is not true; " +
+			"set INGRESS_ENABLED=true to actually turn on the Ingress feature, or remove that var if that's not intended.")
+	}
+	if cfg.IngressEnabled {
+		logger.Info("ingress enabled", "data_dir", cfg.IngressDataDir)
+	}
 	logger.Info("auth mode", "mode", cfg.AuthMode)
 
 	vyosClient, err := vyos.New(vyos.Config{
@@ -85,6 +93,19 @@ func runServer() error {
 		if err != nil {
 			return fmt.Errorf("configuring self-upgrade client: %w", err)
 		}
+	}
+
+	// Only constructed (and only ever touches disk or proxies a
+	// request) when the operator has explicitly opted in - see
+	// config.Config.IngressEnabled's doc comment.
+	var ingressStore *ingress.Store
+	var ingressProxy *ingress.Proxy
+	if cfg.IngressEnabled {
+		ingressStore, err = ingress.NewStore(cfg.IngressDataDir)
+		if err != nil {
+			return fmt.Errorf("configuring ingress store: %w", err)
+		}
+		ingressProxy = ingress.NewProxy(ingressStore, logger)
 	}
 
 	// A single LoginLimiter instance is shared between the
@@ -125,6 +146,9 @@ func runServer() error {
 		SelfUpgradeEnabled:       cfg.SelfUpgradeEnabled,
 		SelfUpgradeContainerName: cfg.SelfUpgradeContainerName,
 		SelfUpgradeGitHub:        selfUpgradeGitHub,
+		IngressEnabled:           cfg.IngressEnabled,
+		IngressStore:             ingressStore,
+		IngressProxy:             ingressProxy,
 	}
 
 	mux := http.NewServeMux()

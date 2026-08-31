@@ -81,6 +81,20 @@ func (p *Proxy) transport(skipVerify bool) *http.Transport {
 }
 
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Disable this response's write deadline entirely - unlike this
+	// backend's own fast, well-bounded API handlers, an ingress
+	// target is an arbitrary operator-chosen web UI that may
+	// legitimately stream (SSE, a slow report render, a WebSocket
+	// upgrade) for far longer than the server's blanket
+	// WriteTimeout (60s - see cmd/vyos-client/serve.go) allows. A
+	// zero time.Time means "no deadline" (see
+	// http.ResponseController.SetWriteDeadline's doc comment); this
+	// works through statusRecorder's Unwrap method to reach the
+	// real underlying connection.
+	if err := http.NewResponseController(w).SetWriteDeadline(time.Time{}); err != nil {
+		p.logger.Warn("could not disable write deadline for ingress proxy", "error", err)
+	}
+
 	name, rest, ok := splitPath(r.URL.Path)
 	if !ok {
 		http.NotFound(w, r)

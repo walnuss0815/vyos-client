@@ -74,7 +74,17 @@ type Server struct {
 	// (cmd/vyos-client/serve.go), not per-request, since it owns the
 	// single ingress.json file on disk and its in-memory cache.
 	IngressStore *ingress.Store
+	// IngressProxy serves the actual proxied requests
+	// (ingress.PathPrefix + "<name>/...") - nil when IngressEnabled is
+	// false, in which case the route below isn't even registered (see
+	// Routes), so a request to that path falls through to this same
+	// mux's normal 404 rather than reaching a nil handler.
+	IngressProxy *ingress.Proxy
 }
+
+// loginPath is the frontend SPA's login route - see
+// auth.RequireSessionForBrowsing's use in Routes below.
+const loginPath = "/login"
 
 // Routes returns the fully-wired HTTP handler for the backend, with all
 // middleware applied.
@@ -142,6 +152,21 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("PUT /api/ingress/{name}", authed(s.handleIngressUpdate))
 	mux.Handle("DELETE /api/ingress/{name}", authed(s.handleIngressDelete))
 
+	// The actual proxied traffic - reached by direct browser
+	// navigation (a new tab, not the SPA's fetch() calls), so this
+	// uses RequireSessionForBrowsing (redirect to the login page)
+	// instead of the JSON-401 authed() helper above, and deliberately
+	// has no method restriction in its pattern (unlike every /api/...
+	// route) since it must proxy whatever method the upstream app's
+	// own UI happens to use. No RequireCSRF either - an upstream app
+	// has no way to send this app's own CSRF token back. Only
+	// registered at all when the feature is enabled, so a disabled
+	// deployment gets this mux's ordinary 404 for that path instead
+	// of reaching a nil IngressProxy.
+	if s.IngressProxy != nil {
+		mux.Handle(ingress.PathPrefix, auth.RequireSessionForBrowsing(s.Sessions, s.CookiesSecure, loginPath)(s.IngressProxy))
+	}
+
 	return requestLogger(s.Logger)(mux)
 }
 
@@ -162,13 +187,15 @@ func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 }
 
 // statusRecorder wraps http.ResponseWriter to capture the status code
-// for request logging. It deliberately does not forward http.Flusher
-// or http.Hijacker: nothing on this server currently streams (SSE) or
-// hijacks (WebSocket) a connection, but if a future handler needs
-// either, wrapping it here would silently lose that capability - a
-// type assertion for http.Flusher/http.Hijacker on this wrapper simply
-// fails rather than erroring loudly. Add explicit pass-through methods
-// if that's ever needed.
+// for request logging. It implements Unwrap (returning the real,
+// underlying ResponseWriter) rather than separately implementing
+// http.Flusher/http.Hijacker/deadline-setting itself - http's own
+// ResponseController (used internally by httputil.ReverseProxy for
+// the Ingress proxy's Flush/Hijack needs - see internal/ingress.Proxy
+// - and directly by handlers like handlePullContainerImage's
+// SetWriteDeadline call) follows Unwrap to find the real
+// ResponseWriter's capabilities through this wrapper, so nothing
+// wrapped by requestLogger below loses access to them.
 type statusRecorder struct {
 	http.ResponseWriter
 	status int
@@ -177,4 +204,8 @@ type statusRecorder struct {
 func (r *statusRecorder) WriteHeader(code int) {
 	r.status = code
 	r.ResponseWriter.WriteHeader(code)
+}
+
+func (r *statusRecorder) Unwrap() http.ResponseWriter {
+	return r.ResponseWriter
 }
