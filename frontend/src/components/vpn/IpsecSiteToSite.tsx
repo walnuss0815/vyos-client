@@ -293,7 +293,7 @@ function PeerForm({
           <div className="grid grid-cols-3 gap-3">
             <label className={labelClass}>
               Tunnel #
-              <input {...noExtensionInputProps} value={firstTunnelId} onChange={(e) => setFirstTunnelId(e.target.value)} placeholder="0" className={inputClass} />
+              <input {...noExtensionInputProps} value={firstTunnelId} onChange={(e) => setFirstTunnelId(e.target.value.replace(/[^0-9]/g, ''))} placeholder="0" className={inputClass} />
             </label>
             <label className={labelClass}>
               Local prefix
@@ -388,7 +388,7 @@ function TunnelsSection({ peer }: { peer: IPsecPeer }) {
       </button>
       {showAdd && (
         <div className="mt-2 grid grid-cols-3 gap-2">
-          <input {...noExtensionInputProps} value={id} onChange={(e) => setId(e.target.value)} placeholder="tunnel #" className={inputClass} />
+          <input {...noExtensionInputProps} value={id} onChange={(e) => setId(e.target.value.replace(/[^0-9]/g, ''))} placeholder="tunnel #" className={inputClass} />
           <input {...noExtensionInputProps} value={espGroup} onChange={(e) => setEspGroup(e.target.value)} placeholder="esp-group override (optional)" className={inputClass} />
           <input {...noExtensionInputProps} value={protocol} onChange={(e) => setProtocol(e.target.value)} placeholder="protocol (optional)" className={inputClass} />
           <button onClick={submit} disabled={!valid} className={`col-span-3 bg-accent-600 ${buttonClass}`}>Add tunnel</button>

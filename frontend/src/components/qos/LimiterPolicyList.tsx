@@ -121,7 +121,7 @@ export default function LimiterPolicyList({
                   <input
                     {...noExtensionInputProps}
                     value={firstClassId}
-                    onChange={(e) => setFirstClassId(e.target.value)}
+                    onChange={(e) => setFirstClassId(e.target.value.replace(/[^0-9]/g, ''))}
                     placeholder="class ID (1-4090)"
                     className={inputClass}
                   />
@@ -222,7 +222,7 @@ function LimiterClassList({
           <input
             {...noExtensionInputProps}
             value={newId}
-            onChange={(e) => setNewId(e.target.value)}
+            onChange={(e) => setNewId(e.target.value.replace(/[^0-9]/g, ''))}
             placeholder="class ID (1-4090)"
             className={inputClass}
           />
