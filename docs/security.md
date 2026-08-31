@@ -265,6 +265,16 @@ https certificates certificate <name>`), leave this at its default
   Treat the container's environment configuration with the same care as
   root/admin credentials on the router itself — because, functionally,
   it is one.
+- **`SELF_UPGRADE_ENABLED` is the one deliberate exception** to this
+  app never talking to anything but VyOS's own API — when set, the
+  backend makes unauthenticated HTTPS calls to `api.github.com` to
+  check for new releases (see
+  [architecture.md](architecture.md#self-upgrade)). Disabled by
+  default. If you enable it, be aware that a compromised/typo'd
+  `SELF_UPGRADE_GITHUB_REPO` could point this at an image reference you
+  don't control — the value is trusted as-is, the same "trust the
+  authenticated deployment configuration" posture the rest of
+  `internal/config` already takes for every other env var.
 
 ### Restricting access to LAN clients only
 
