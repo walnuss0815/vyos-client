@@ -1,7 +1,12 @@
 import { useState } from 'react'
 import ChipList from '../ChipList'
 import Dhcpv6SubnetDetails from './Dhcpv6SubnetDetails'
-import { dhcpv6GlobalParametersPath, dhcpv6ServerPath } from '../../lib/serviceDhcpv6ServerParse'
+import {
+  dhcpv6GlobalParametersPath,
+  dhcpv6RangePath,
+  dhcpv6ServerPath,
+  dhcpv6SharedNetworkPath,
+} from '../../lib/serviceDhcpv6ServerParse'
 import {
   blankDHCPv6GlobalFormValues,
   blankDHCPv6SharedNetworkFormValues,
@@ -220,6 +225,10 @@ function SharedNetworkForm({
   const [values, setValues] = useState<DHCPv6SharedNetworkFormValues>(
     network ? dhcpv6SharedNetworkToFormValues(network) : blankDHCPv6SharedNetworkFormValues(),
   )
+  const [firstSubnetCidr, setFirstSubnetCidr] = useState('')
+  const [firstSubnetId, setFirstSubnetId] = useState('')
+  const [firstRangeStart, setFirstRangeStart] = useState('')
+  const [firstRangeStop, setFirstRangeStop] = useState('')
   const add = usePendingChangesStore((s) => s.add)
 
   const isCreate = network === undefined
@@ -235,6 +244,37 @@ function SharedNetworkForm({
     if (!canSubmit) return
     const ops = dhcpv6SharedNetworkFormToOps(trimmedName, network, values)
     for (const op of ops) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    // VyOS refuses to commit a DHCPv6 subnet with no address range,
+    // static mapping, or prefix delegation at all - and Dhcpv6SubnetDetails.tsx
+    // (the normal way to add a subnet) only ever operates on an
+    // already-fetched, real shared network, so a brand new one has no
+    // way to get a subnet - let alone a range - before its own first
+    // commit without this. Queuing it here, in the same commit as
+    // creation, is what breaks that deadlock - same pattern as
+    // dhcp/NetworksPage.tsx's CreateNetworkForm for the DHCPv4 sibling
+    // feature.
+    const trimmedCidr = firstSubnetCidr.trim()
+    if (isCreate && trimmedCidr) {
+      const subnetId = firstSubnetId.trim()
+      if (subnetId) {
+        add({
+          op: { op: 'set', path: [...dhcpv6SharedNetworkPath(trimmedName), 'subnet', trimmedCidr, 'subnet-id'], value: subnetId },
+          label: `set ... subnet ${trimmedCidr} subnet-id '${subnetId}'`,
+        })
+      }
+      if (firstRangeStart.trim() && firstRangeStop.trim()) {
+        const rangeBase = dhcpv6RangePath(trimmedName, trimmedCidr, '0')
+        add({ op: { op: 'set', path: rangeBase }, label: `set ... range 0` })
+        add({
+          op: { op: 'set', path: [...rangeBase, 'start'], value: firstRangeStart.trim() },
+          label: `set ... range 0 start '${firstRangeStart.trim()}'`,
+        })
+        add({
+          op: { op: 'set', path: [...rangeBase, 'stop'], value: firstRangeStop.trim() },
+          label: `set ... range 0 stop '${firstRangeStop.trim()}'`,
+        })
+      }
+    }
     onDone()
   }
 
@@ -267,6 +307,60 @@ function SharedNetworkForm({
         Disable this shared network
         <InfoTooltip text="Stops this specific network from being served while leaving other shared networks on the DHCPv6 server active." />
       </label>
+
+      {isCreate && (
+        <div className="mt-3 border-t border-surface-border pt-3">
+          <p className="mb-2 text-xs text-slate-500">
+            VyOS requires a DHCPv6 subnet to have at least one address range, static mapping, or
+            prefix delegation before it can be committed - fill in a first subnet and range now, or
+            add a subnet the normal way (once this network exists) and give it a static mapping or
+            prefix delegation instead.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <label className={labelClass}>
+              First subnet CIDR (optional)
+              <input
+                {...noExtensionInputProps}
+                value={firstSubnetCidr}
+                onChange={(e) => setFirstSubnetCidr(e.target.value)}
+                placeholder="2001:db8::/64"
+                className={inputClass}
+              />
+            </label>
+            <label className={labelClass}>
+              First subnet ID
+              <input
+                {...noExtensionInputProps}
+                value={firstSubnetId}
+                onChange={(e) => setFirstSubnetId(e.target.value)}
+                placeholder="1"
+                className={inputClass}
+              />
+            </label>
+            <label className={labelClass}>
+              First range start (optional)
+              <input
+                {...noExtensionInputProps}
+                value={firstRangeStart}
+                onChange={(e) => setFirstRangeStart(e.target.value)}
+                placeholder="2001:db8::100"
+                className={inputClass}
+              />
+            </label>
+            <label className={labelClass}>
+              First range stop (optional)
+              <input
+                {...noExtensionInputProps}
+                value={firstRangeStop}
+                onChange={(e) => setFirstRangeStop(e.target.value)}
+                placeholder="2001:db8::1ff"
+                className={inputClass}
+              />
+            </label>
+          </div>
+        </div>
+      )}
+
       <div className="mt-4 flex items-center gap-2">
         <button onClick={submit} disabled={!canSubmit} className={`bg-accent-600 ${buttonClass}`}>
           {isCreate ? 'Queue creation' : 'Save changes'}
