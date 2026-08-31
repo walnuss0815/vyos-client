@@ -50,4 +50,28 @@ describe('IpsecSettingsPage', () => {
     ;({ changes } = usePendingChangesStore.getState())
     expect(changes.map((c) => c.op)).toContainEqual({ op: 'delete', path: ['vpn', 'ipsec'] })
   })
+
+  // Regression test: see store/pendingChanges.ts's withPendingEnable.
+  it('shows the settings form immediately after clicking Enable, without committing', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))
+    const user = userEvent.setup()
+    renderWithProviders(<IpsecSettingsPage />)
+
+    await user.click(await screen.findByRole('button', { name: /enable ipsec/i }))
+
+    expect(await screen.findByRole('checkbox', { name: /allow flexvpn vendor id/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /disable ipsec entirely/i })).toBeInTheDocument()
+  })
+
+  it('reverts to the enable prompt immediately after clicking Disable, without committing', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: { ipsec: {} } })))
+    const user = userEvent.setup()
+    renderWithProviders(<IpsecSettingsPage />)
+    await screen.findByRole('button', { name: /disable ipsec entirely/i })
+
+    await user.click(screen.getByRole('button', { name: /disable ipsec entirely/i }))
+
+    expect(await screen.findByText(/ipsec is not configured/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /enable ipsec/i })).toBeInTheDocument()
+  })
 })

@@ -70,4 +70,28 @@ describe('BroadcastRelayPage', () => {
       path: ['service', 'broadcast-relay', 'id', '10'],
     })
   })
+
+  // Regression test: see store/pendingChanges.ts's withPendingEnable.
+  it('shows the full list UI immediately after clicking Enable, without committing', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))
+    const user = userEvent.setup()
+    renderWithProviders(<BroadcastRelayPage />)
+
+    await user.click(await screen.findByRole('button', { name: /enable broadcast relay/i }))
+
+    expect(await screen.findByRole('button', { name: /\+ new instance/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /disable entirely \(remove config\)/i })).toBeInTheDocument()
+  })
+
+  it('reverts to the enable prompt immediately after clicking Disable, without committing', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: { 'broadcast-relay': {} } })))
+    const user = userEvent.setup()
+    renderWithProviders(<BroadcastRelayPage />)
+    await screen.findByRole('button', { name: /\+ new instance/i })
+
+    await user.click(screen.getByRole('button', { name: /disable entirely \(remove config\)/i }))
+
+    expect(await screen.findByText(/broadcast relay is not configured/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /enable broadcast relay/i })).toBeInTheDocument()
+  })
 })

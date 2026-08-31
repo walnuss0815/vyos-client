@@ -66,4 +66,28 @@ describe('LldpPage', () => {
       path: ['service', 'lldp', 'legacy-protocols', 'cdp'],
     })
   })
+
+  // Regression test: see store/pendingChanges.ts's withPendingEnable.
+  it('shows the full list UI immediately after clicking Enable, without committing', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))
+    const user = userEvent.setup()
+    renderWithProviders(<LldpPage />)
+
+    await user.click(await screen.findByRole('button', { name: /enable lldp/i }))
+
+    expect(await screen.findByRole('button', { name: /\+ new interface/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /disable lldp entirely/i })).toBeInTheDocument()
+  })
+
+  it('reverts to the enable prompt immediately after clicking Disable, without committing', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: { lldp: {} } })))
+    const user = userEvent.setup()
+    renderWithProviders(<LldpPage />)
+    await screen.findByRole('button', { name: /\+ new interface/i })
+
+    await user.click(screen.getByRole('button', { name: /disable lldp entirely/i }))
+
+    expect(await screen.findByText(/lldp is not configured/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /enable lldp/i })).toBeInTheDocument()
+  })
 })

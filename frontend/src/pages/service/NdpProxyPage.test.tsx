@@ -53,4 +53,27 @@ describe('NdpProxyPage', () => {
       path: ['service', 'ndp-proxy', 'interface', 'eth0', 'prefix', '2001:db8::/64'],
     })
   })
+
+  // Regression test: see store/pendingChanges.ts's withPendingEnable.
+  it('shows the full list UI immediately after clicking Enable, without committing', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))
+    const user = userEvent.setup()
+    renderWithProviders(<NdpProxyPage />)
+
+    await user.click(await screen.findByRole('button', { name: /enable ndp proxy/i }))
+
+    expect(await screen.findByRole('button', { name: /disable ndp proxy entirely/i })).toBeInTheDocument()
+  })
+
+  it('reverts to the enable prompt immediately after clicking Disable, without committing', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: { 'ndp-proxy': {} } })))
+    const user = userEvent.setup()
+    renderWithProviders(<NdpProxyPage />)
+    await screen.findByRole('button', { name: /disable ndp proxy entirely/i })
+
+    await user.click(screen.getByRole('button', { name: /disable ndp proxy entirely/i }))
+
+    expect(await screen.findByText(/ndp proxy is not configured/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /enable ndp proxy/i })).toBeInTheDocument()
+  })
 })

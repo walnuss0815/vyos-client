@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { usePendingChangesStore } from './pendingChanges'
+import { hasPendingDelete, hasPendingSet, usePendingChangesStore, withPendingEnable } from './pendingChanges'
 
 beforeEach(() => {
   sessionStorage.clear()
@@ -97,5 +97,94 @@ describe('usePendingChangesStore', () => {
 
     const raw = sessionStorage.getItem('vyos-client-pending-changes')
     expect(raw).toContain('plaintext-password')
+  })
+})
+
+// Regression coverage for the "Enable X requires a commit before it's
+// configurable" bug: useServiceConfig.ts/useVpnConfig.ts derive each
+// feature's `enabled` flag by OR-ing hasPendingSet(...) into the
+// fetched-config check, and AND-ing out hasPendingDelete(...) for the
+// symmetric "Disable X entirely" case.
+describe('hasPendingSet', () => {
+  it('is false when there are no changes', () => {
+    expect(hasPendingSet([], ['service', 'ssh'])).toBe(false)
+  })
+
+  it('is true when a set op exactly matches the path', () => {
+    usePendingChangesStore.getState().add({ op: { op: 'set', path: ['service', 'ssh'] }, label: 'set service ssh' })
+    expect(hasPendingSet(usePendingChangesStore.getState().changes, ['service', 'ssh'])).toBe(true)
+  })
+
+  it('is false for a delete op on the same path', () => {
+    usePendingChangesStore.getState().add({ op: { op: 'delete', path: ['service', 'ssh'] }, label: 'delete service ssh' })
+    expect(hasPendingSet(usePendingChangesStore.getState().changes, ['service', 'ssh'])).toBe(false)
+  })
+
+  it('is false for a set op on a different (even related/nested) path', () => {
+    usePendingChangesStore.getState().add({
+      op: { op: 'set', path: ['service', 'ssh', 'port'], value: '2222' },
+      label: 'set service ssh port',
+    })
+    expect(hasPendingSet(usePendingChangesStore.getState().changes, ['service', 'ssh'])).toBe(false)
+  })
+})
+
+describe('hasPendingDelete', () => {
+  it('is false when there are no changes', () => {
+    expect(hasPendingDelete([], ['service', 'ssh'])).toBe(false)
+  })
+
+  it('is true when a delete op exactly matches the path', () => {
+    usePendingChangesStore.getState().add({ op: { op: 'delete', path: ['service', 'ssh'] }, label: 'delete service ssh' })
+    expect(hasPendingDelete(usePendingChangesStore.getState().changes, ['service', 'ssh'])).toBe(true)
+  })
+
+  it('is false for a set op on the same path', () => {
+    usePendingChangesStore.getState().add({ op: { op: 'set', path: ['service', 'ssh'] }, label: 'set service ssh' })
+    expect(hasPendingDelete(usePendingChangesStore.getState().changes, ['service', 'ssh'])).toBe(false)
+  })
+})
+
+describe('withPendingEnable', () => {
+  const path = ['service', 'ssh']
+
+  it('leaves an already-enabled config alone when there are no changes', () => {
+    const parsed = { enabled: true, port: '22' }
+    expect(withPendingEnable(parsed, path, [])).toEqual(parsed)
+  })
+
+  it('leaves a disabled config alone when there are no changes', () => {
+    const parsed = { enabled: false }
+    expect(withPendingEnable(parsed, path, [])).toEqual({ enabled: false })
+  })
+
+  it('flips a disabled config to enabled when a pending set matches the path', () => {
+    usePendingChangesStore.getState().add({ op: { op: 'set', path }, label: 'set service ssh' })
+    const parsed = { enabled: false }
+    expect(withPendingEnable(parsed, path, usePendingChangesStore.getState().changes)).toEqual({ enabled: true })
+  })
+
+  it('does not flip an already-enabled config just because of an unrelated pending set', () => {
+    usePendingChangesStore
+      .getState()
+      .add({ op: { op: 'set', path: ['service', 'ssh', 'port'], value: '2222' }, label: 'set service ssh port' })
+    const parsed = { enabled: true, port: '22' }
+    expect(withPendingEnable(parsed, path, usePendingChangesStore.getState().changes)).toEqual(parsed)
+  })
+
+  it('flips an enabled config to disabled when a pending delete matches the path', () => {
+    usePendingChangesStore.getState().add({ op: { op: 'delete', path }, label: 'delete service ssh' })
+    const parsed = { enabled: true, port: '22' }
+    expect(withPendingEnable(parsed, path, usePendingChangesStore.getState().changes)).toEqual({
+      enabled: false,
+      port: '22',
+    })
+  })
+
+  it('a pending delete takes precedence over a pending set for the same path', () => {
+    usePendingChangesStore.getState().add({ op: { op: 'set', path }, label: 'set service ssh' })
+    usePendingChangesStore.getState().add({ op: { op: 'delete', path }, label: 'delete service ssh' })
+    const parsed = { enabled: false }
+    expect(withPendingEnable(parsed, path, usePendingChangesStore.getState().changes)).toEqual({ enabled: false })
   })
 })

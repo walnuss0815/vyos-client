@@ -78,4 +78,33 @@ describe('SshPage', () => {
     expect(changes).toHaveLength(1)
     expect(changes[0].op).toEqual({ op: 'delete', path: ['service', 'ssh'] })
   })
+
+  // Regression test: the settings form used to stay hidden behind the
+  // Enable button until the pending "set service ssh" was committed
+  // and refetched - see store/pendingChanges.ts's withPendingEnable.
+  it('shows the settings form immediately after clicking Enable, without committing', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))
+    const user = userEvent.setup()
+    renderWithProviders(<SshPage />)
+
+    await user.click(await screen.findByRole('button', { name: /enable ssh/i }))
+
+    expect(await screen.findByRole('button', { name: /save settings/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /disable ssh entirely/i })).toBeInTheDocument()
+  })
+
+  // The mirror case: clicking "Disable SSH entirely" should revert to
+  // the Enable prompt immediately too, not keep showing the (now
+  // stale) form until the pending delete is committed.
+  it('reverts to the enable prompt immediately after clicking Disable, without committing', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: { ssh: {} } })))
+    const user = userEvent.setup()
+    renderWithProviders(<SshPage />)
+    await screen.findByRole('button', { name: /save settings/i })
+
+    await user.click(screen.getByRole('button', { name: /disable ssh entirely/i }))
+
+    expect(await screen.findByText(/ssh access is not configured/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /enable ssh/i })).toBeInTheDocument()
+  })
 })
