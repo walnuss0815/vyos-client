@@ -433,6 +433,77 @@ func TestLoad_SelfUpgradeGitHubRepoOverride(t *testing.T) {
 	}
 }
 
+func TestLoad_SelfUpgradeRejectsInvalidGitHubRepo(t *testing.T) {
+	cases := []string{
+		"not-a-repo",         // missing "/"
+		"owner/repo/extra",   // too many segments
+		"owner/",             // empty repo segment
+		"/repo",              // empty owner segment
+		"owner repo/extra",   // whitespace
+		"owner/repo; rm -rf", // shell metacharacters
+	}
+	for _, raw := range cases {
+		t.Run(raw, func(t *testing.T) {
+			_, err := config.Load(fakeEnv(map[string]string{
+				"VYOS_API_KEY":                "test-key",
+				"UI_ADMIN_USER":               "admin",
+				"UI_ADMIN_PASSWORD_HASH":      "$2a$10$fakehash",
+				"SELF_UPGRADE_ENABLED":        "true",
+				"SELF_UPGRADE_CONTAINER_NAME": "vyos-client",
+				"SELF_UPGRADE_GITHUB_REPO":    raw,
+			}))
+			if err == nil {
+				t.Errorf("Load with SELF_UPGRADE_GITHUB_REPO=%q: expected an error, got nil", raw)
+			}
+		})
+	}
+}
+
+func TestLoad_SelfUpgradeRejectsInvalidContainerName(t *testing.T) {
+	cases := []string{
+		"-leading-hyphen",
+		"has a space",
+		"has/a/slash",
+		"has;a;semicolon",
+		"",
+	}
+	for _, raw := range cases {
+		t.Run(raw, func(t *testing.T) {
+			env := map[string]string{
+				"VYOS_API_KEY":           "test-key",
+				"UI_ADMIN_USER":          "admin",
+				"UI_ADMIN_PASSWORD_HASH": "$2a$10$fakehash",
+				"SELF_UPGRADE_ENABLED":   "true",
+			}
+			if raw != "" {
+				env["SELF_UPGRADE_CONTAINER_NAME"] = raw
+			}
+			_, err := config.Load(fakeEnv(env))
+			if err == nil {
+				t.Errorf("Load with SELF_UPGRADE_CONTAINER_NAME=%q: expected an error, got nil", raw)
+			}
+		})
+	}
+}
+
+func TestLoad_SelfUpgradeAcceptsDefaultGitHubRepo(t *testing.T) {
+	// Guards against the default value itself (defaultSelfUpgradeGitHubRepo)
+	// ever regressing to something the new validation pattern rejects.
+	cfg, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":                "test-key",
+		"UI_ADMIN_USER":               "admin",
+		"UI_ADMIN_PASSWORD_HASH":      "$2a$10$fakehash",
+		"SELF_UPGRADE_ENABLED":        "true",
+		"SELF_UPGRADE_CONTAINER_NAME": "vyos-client",
+	}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.SelfUpgradeGitHubRepo == "" {
+		t.Error("expected a non-empty default SelfUpgradeGitHubRepo")
+	}
+}
+
 func TestLoad_SelfUpgradeEnabledRejectsInvalidBoolean(t *testing.T) {
 	_, err := config.Load(fakeEnv(map[string]string{
 		"VYOS_API_KEY":           "test-key",

@@ -64,6 +64,19 @@ func (s *Server) handleSelfUpgradeStatus(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusOK, selfUpgradeStatusResponse{Enabled: false})
 		return
 	}
+	// SelfUpgradeGitHub is only ever nil here if SelfUpgradeEnabled is
+	// true without cmd/vyos-client/serve.go having constructed it -
+	// shouldn't happen (Load() requires SELF_UPGRADE_CONTAINER_NAME
+	// whenever SELF_UPGRADE_ENABLED=true, and serve.go always builds
+	// the client alongside that), but guarded explicitly rather than
+	// trusting that invariant, since a nil-pointer panic here would
+	// take down the whole request instead of failing this one
+	// endpoint cleanly.
+	if s.SelfUpgradeGitHub == nil {
+		s.Logger.Error("self-upgrade is enabled but no GitHub client was configured")
+		writeError(w, http.StatusInternalServerError, "self-upgrade is misconfigured; contact your administrator")
+		return
+	}
 
 	resp := selfUpgradeStatusResponse{
 		Enabled:        true,
