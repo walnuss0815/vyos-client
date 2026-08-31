@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { accelPppClientIpv6PoolPath } from '../../lib/vpnAccelPppParse'
-import { removeAccelPppClientIpv6PoolOp } from '../../lib/vpnAccelPppForm'
+import { addAccelPppClientIpv6PoolPrefixOps, removeAccelPppClientIpv6PoolOp } from '../../lib/vpnAccelPppForm'
 import type { AccelPppConfig, AccelPppKind } from '../../lib/vpnAccelPppTypes'
 import { buttonClass, inputClass } from '../../lib/formStyles'
 import { noExtensionInputProps } from '../../lib/inputProtection'
@@ -15,6 +15,8 @@ import AccelPppIpv6PoolPrefixList from './AccelPppIpv6PoolPrefixList'
 export default function AccelPppClientIpv6PoolsSection({ kind, config }: { kind: AccelPppKind; config: AccelPppConfig }) {
   const [showAdd, setShowAdd] = useState(false)
   const [name, setName] = useState('')
+  const [firstPrefix, setFirstPrefix] = useState('')
+  const [firstPrefixMask, setFirstPrefixMask] = useState('')
   const add = usePendingChangesStore((s) => s.add)
   const { clientIpv6Pools } = config
 
@@ -26,7 +28,20 @@ export default function AccelPppClientIpv6PoolsSection({ kind, config }: { kind:
     if (!valid) return
     const op = { op: 'set' as const, path: accelPppClientIpv6PoolPath(kind, trimmedName) }
     add({ op, label: `set ${op.path.join(' ')}` })
+    // A pool's prefixes used to only be addable AFTER the pool
+    // already existed - AccelPppIpv6PoolPrefixList only ever operates
+    // on an already-fetched pool. Queuing a first one here, in the
+    // same commit as the pool itself, avoids a detour through
+    // commit+refetch.
+    if (firstPrefix.trim()) {
+      const prefixOps = addAccelPppClientIpv6PoolPrefixOps(kind, trimmedName, firstPrefix.trim(), firstPrefixMask.trim())
+      for (const prefixOp of prefixOps) {
+        add({ op: prefixOp, label: `${prefixOp.op} ${prefixOp.path.join(' ')}${prefixOp.value ? ` '${prefixOp.value}'` : ''}` })
+      }
+    }
     setName('')
+    setFirstPrefix('')
+    setFirstPrefixMask('')
     setShowAdd(false)
   }
 
@@ -39,10 +54,28 @@ export default function AccelPppClientIpv6PoolsSection({ kind, config }: { kind:
         </button>
       </div>
       {showAdd && (
-        <div className="mb-3 flex items-center gap-2 rounded-xl border border-surface-border bg-surface-900 p-4">
-          <input {...noExtensionInputProps} autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="pool name" className={inputClass} />
-          <button onClick={submit} disabled={!valid} className={`bg-accent-600 ${buttonClass}`}>Create</button>
-          {taken && <p className="text-xs text-danger-500">This pool already exists.</p>}
+        <div className="mb-3 rounded-xl border border-surface-border bg-surface-900 p-4">
+          <div className="flex items-center gap-2">
+            <input {...noExtensionInputProps} autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="pool name" className={inputClass} />
+          </div>
+          {taken && <p className="mt-1 text-xs text-danger-500">This pool already exists.</p>}
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <input
+              {...noExtensionInputProps}
+              value={firstPrefix}
+              onChange={(e) => setFirstPrefix(e.target.value)}
+              placeholder="first prefix, e.g. 2001:db8::/64 (optional)"
+              className={inputClass}
+            />
+            <input
+              {...noExtensionInputProps}
+              value={firstPrefixMask}
+              onChange={(e) => setFirstPrefixMask(e.target.value)}
+              placeholder="client prefix length (default 64)"
+              className={inputClass}
+            />
+          </div>
+          <button onClick={submit} disabled={!valid} className={`mt-2 bg-accent-600 ${buttonClass}`}>Create</button>
         </div>
       )}
       <div className="space-y-2">
