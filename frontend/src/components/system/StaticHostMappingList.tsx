@@ -1,9 +1,6 @@
 import { useState } from 'react'
 import ChipList from '../ChipList'
-import {
-  addStaticHostMappingOps,
-  deleteStaticHostMappingOp,
-} from '../../lib/systemGeneralForm'
+import { deleteStaticHostMappingOp } from '../../lib/systemGeneralForm'
 import { staticHostMappingPath } from '../../lib/systemParse'
 import type { StaticHostMapping } from '../../lib/systemTypes'
 import { buttonClass, inputClass } from '../../lib/formStyles'
@@ -97,17 +94,28 @@ function CreateMappingForm({
   onDone: () => void
 }) {
   const [hostName, setHostName] = useState('')
-  const [address, setAddress] = useState('')
-  const [alias, setAlias] = useState('')
+  // Draft addresses/aliases, buffered locally (via ChipList's onAdd/
+  // onRemove overrides) rather than queued immediately, since this
+  // host-name doesn't exist yet - see ChipList.tsx's own doc comment
+  // on why ("could be orphaned if creation is abandoned"). Beyond the
+  // first address, additional ones used to only be addable AFTER the
+  // mapping already existed - the plain ChipLists rendered per
+  // already-fetched mapping above only ever operate on a real one.
+  const [addresses, setAddresses] = useState<string[]>([])
+  const [aliases, setAliases] = useState<string[]>([])
   const add = usePendingChangesStore((s) => s.add)
 
   const trimmedHostName = hostName.trim()
   const taken = existingHostNames.includes(trimmedHostName)
-  const valid = trimmedHostName !== '' && !taken && address.trim() !== ''
+  const valid = trimmedHostName !== '' && !taken && addresses.length > 0
 
   function submit() {
     if (!valid) return
-    const ops = addStaticHostMappingOps(trimmedHostName, address.trim(), alias)
+    const base = staticHostMappingPath(trimmedHostName)
+    const ops = [
+      ...addresses.map((a) => ({ op: 'set' as const, path: [...base, 'inet'], value: a })),
+      ...aliases.map((al) => ({ op: 'set' as const, path: [...base, 'alias'], value: al })),
+    ]
     for (const op of ops) {
       add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
     }
@@ -116,32 +124,44 @@ function CreateMappingForm({
 
   return (
     <div className="mb-3 rounded-lg border border-surface-border p-3">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <input
-          {...noExtensionInputProps}
-          autoFocus
-          value={hostName}
-          onChange={(e) => setHostName(e.target.value)}
-          placeholder="fileserver"
-          className={inputClass}
-        />
-        <input
-          {...noExtensionInputProps}
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
-          placeholder="10.0.0.5"
-          className={inputClass}
-        />
-        <input
-          {...noExtensionInputProps}
-          value={alias}
-          onChange={(e) => setAlias(e.target.value)}
-          placeholder="alias (optional)"
-          className={inputClass}
-        />
-      </div>
+      <input
+        {...noExtensionInputProps}
+        autoFocus
+        value={hostName}
+        onChange={(e) => setHostName(e.target.value)}
+        placeholder="fileserver"
+        className={inputClass}
+      />
       {taken && <p className="mt-1 text-xs text-danger-500">This host-name is already mapped.</p>}
-      <button onClick={submit} disabled={!valid} className={`mt-2 bg-accent-600 ${buttonClass}`}>
+
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div>
+          <p className="mb-1 text-xs text-slate-500">Addresses *</p>
+          <ChipList
+            values={addresses}
+            basePath={[]}
+            leaf="inet"
+            pathLabel={`system static-host-mapping host-name ${trimmedHostName || '<name>'} inet`}
+            placeholder="10.0.0.5"
+            onAdd={(value) => setAddresses((v) => [...v, value])}
+            onRemove={(value) => setAddresses((v) => v.filter((a) => a !== value))}
+          />
+        </div>
+        <div>
+          <p className="mb-1 text-xs text-slate-500">Aliases</p>
+          <ChipList
+            values={aliases}
+            basePath={[]}
+            leaf="alias"
+            pathLabel={`system static-host-mapping host-name ${trimmedHostName || '<name>'} alias`}
+            placeholder="nas (optional)"
+            onAdd={(value) => setAliases((v) => [...v, value])}
+            onRemove={(value) => setAliases((v) => v.filter((al) => al !== value))}
+          />
+        </div>
+      </div>
+
+      <button onClick={submit} disabled={!valid} className={`mt-3 bg-accent-600 ${buttonClass}`}>
         Queue mapping creation
       </button>
     </div>
