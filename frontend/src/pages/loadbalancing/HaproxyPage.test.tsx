@@ -100,6 +100,29 @@ describe('HaproxyPage', () => {
     })
   })
 
+  it('does not lose backend draft fields when the name is cleared and retyped mid-fill', async () => {
+    // Regression test: the create panel's Name field used to live
+    // outside HaproxyBackendFormPanel, gating the whole panel's
+    // existence on it being non-empty - clearing it back to '' (even
+    // briefly, e.g. to retype a typo) unmounted the panel and
+    // discarded every other field already filled in.
+    const user = userEvent.setup()
+    renderWithProviders(<HaproxyPage />)
+    await screen.findByText('app-servers')
+
+    await user.click(screen.getByRole('button', { name: '+ Add backend' }))
+    const nameInput = screen.getByPlaceholderText('app-servers')
+    await user.type(nameInput, 'db-servers')
+    await user.type(screen.getByPlaceholderText('server name (e.g. app1)'), 'db1')
+    await user.clear(nameInput)
+    await user.type(nameInput, 'db-servers')
+    await user.click(screen.getByRole('button', { name: 'Add backend' }))
+
+    const { changes } = usePendingChangesStore.getState()
+    const ops = changes.map((c) => c.op)
+    expect(ops).toContainEqual({ op: 'set', path: ['load-balancing', 'haproxy', 'backend', 'db-servers', 'server', 'db1'] })
+  })
+
   it('also queues a first routing rule for a new backend when its optional fields are filled in', async () => {
     // Regression test: a backend's routing rules used to only be
     // addable AFTER the backend already existed -
@@ -163,6 +186,27 @@ describe('HaproxyPage', () => {
       op: 'set',
       path: ['load-balancing', 'haproxy', 'service', 'api', 'rule', '1', 'set', 'backend'],
       value: 'app-servers',
+    })
+  })
+
+  it('does not lose service draft fields when the name is cleared and retyped mid-fill', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<HaproxyPage />)
+    await screen.findByText('web')
+
+    await user.click(screen.getByRole('button', { name: '+ Add service' }))
+    const nameInput = screen.getByPlaceholderText('web')
+    await user.type(nameInput, 'api')
+    await user.type(screen.getByPlaceholderText('0.0.0.0 or ::'), '203.0.113.10')
+    await user.clear(nameInput)
+    await user.type(nameInput, 'api')
+    await user.click(screen.getByRole('button', { name: 'Add service' }))
+
+    const { changes } = usePendingChangesStore.getState()
+    const ops = changes.map((c) => c.op)
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['load-balancing', 'haproxy', 'service', 'api', 'listen-address', '203.0.113.10'],
     })
   })
 

@@ -25,7 +25,6 @@ import InfoTooltip from '../InfoTooltip'
 export default function VrrpGroupList({ groups }: { groups: VRRPGroup[] }) {
   const [showAdd, setShowAdd] = useState(false)
   const [editing, setEditing] = useState<string | null>(null)
-  const [newName, setNewName] = useState('')
   const add = usePendingChangesStore((s) => s.add)
 
   const existingNames = groups.map((g) => g.name)
@@ -42,7 +41,6 @@ export default function VrrpGroupList({ groups }: { groups: VRRPGroup[] }) {
           onClick={() => {
             setShowAdd((v) => !v)
             setEditing(null)
-            setNewName('')
           }}
           className={`bg-accent-600 ${buttonClass}`}
         >
@@ -52,19 +50,12 @@ export default function VrrpGroupList({ groups }: { groups: VRRPGroup[] }) {
 
       {showAdd && (
         <div className="mb-3 rounded-xl border border-surface-border bg-surface-900 p-4">
-          <label className={`${labelClass} mb-3`}>
-            Name
-            <input
-              {...noExtensionInputProps}
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="OUTSIDE"
-              className={`font-mono ${inputClass}`}
-            />
-          </label>
-          {newName.trim() !== '' && !existingNames.includes(newName.trim()) && (
-            <VrrpGroupFormPanel name={newName.trim()} onDone={() => setShowAdd(false)} />
-          )}
+          {/* Name lives inside VrrpGroupFormPanel itself (not gating
+           * this panel's existence on it) so clearing it mid-fill
+           * doesn't unmount the panel and discard every other field
+           * already filled in - see HaproxyServiceList's equivalent
+           * comment for the full rationale. */}
+          <VrrpGroupFormPanel existingNames={existingNames} onDone={() => setShowAdd(false)} />
         </div>
       )}
 
@@ -74,7 +65,7 @@ export default function VrrpGroupList({ groups }: { groups: VRRPGroup[] }) {
         {groups.map((group) => (
           <div key={group.name} className="rounded-xl border border-surface-border bg-surface-900 p-4">
             {editing === group.name ? (
-              <VrrpGroupFormPanel name={group.name} group={group} onDone={() => setEditing(null)} />
+              <VrrpGroupFormPanel existingNames={existingNames} group={group} onDone={() => setEditing(null)} />
             ) : (
               <>
                 <div className="flex items-center justify-between">
@@ -137,20 +128,34 @@ export default function VrrpGroupList({ groups }: { groups: VRRPGroup[] }) {
   )
 }
 
-function VrrpGroupFormPanel({ name, group, onDone }: { name: string; group?: VRRPGroup; onDone: () => void }) {
+function VrrpGroupFormPanel({
+  group,
+  existingNames,
+  onDone,
+}: {
+  group?: VRRPGroup
+  existingNames: string[]
+  onDone: () => void
+}) {
   const add = usePendingChangesStore((s) => s.add)
+  const isCreate = group === undefined
+  const [newName, setNewName] = useState('')
   const [values, setValues] = useState<VRRPGroupFormValues>(
     group ? vrrpGroupToFormValues(group) : blankVRRPGroupFormValues(),
   )
-  const isCreate = group === undefined
   const [firstAddress, setFirstAddress] = useState('')
   const [firstAddressInterface, setFirstAddressInterface] = useState('')
+
+  const name = isCreate ? newName.trim() : group.name
+  const nameTaken = isCreate && existingNames.includes(name)
+  const nameValid = !isCreate || (name !== '' && !nameTaken)
 
   function update<K extends keyof VRRPGroupFormValues>(key: K, value: VRRPGroupFormValues[K]) {
     setValues((v) => ({ ...v, [key]: value }))
   }
 
   function submit() {
+    if (!nameValid) return
     const ops = vrrpGroupFormToOps(name, group, values)
     for (const op of ops) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
     // A group's virtual addresses used to only be configurable AFTER
@@ -167,6 +172,19 @@ function VrrpGroupFormPanel({ name, group, onDone }: { name: string; group?: VRR
 
   return (
     <div>
+      {isCreate && (
+        <label className={`${labelClass} mb-3`}>
+          Name
+          <input
+            {...noExtensionInputProps}
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="OUTSIDE"
+            className={`font-mono ${inputClass}`}
+          />
+          {nameTaken && <span className="text-danger-500">A group named "{name}" already exists.</span>}
+        </label>
+      )}
       <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
         <label className={labelClass}>
           Interface
@@ -396,7 +414,7 @@ function VrrpGroupFormPanel({ name, group, onDone }: { name: string; group?: VRR
       )}
 
       <div className="flex items-center gap-2">
-        <button onClick={submit} className={`bg-accent-600 ${buttonClass}`}>
+        <button onClick={submit} disabled={!nameValid} className={`bg-accent-600 ${buttonClass}`}>
           {group ? 'Save' : 'Add group'}
         </button>
         <button onClick={onDone} className="text-xs text-slate-500 hover:text-slate-300">

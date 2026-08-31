@@ -22,7 +22,6 @@ import InfoTooltip from '../InfoTooltip'
 export default function VrrpSyncGroupList({ syncGroups, groups }: { syncGroups: VRRPSyncGroup[]; groups: VRRPGroup[] }) {
   const [showAdd, setShowAdd] = useState(false)
   const [editing, setEditing] = useState<string | null>(null)
-  const [newName, setNewName] = useState('')
   const add = usePendingChangesStore((s) => s.add)
 
   const existingNames = syncGroups.map((g) => g.name)
@@ -42,7 +41,6 @@ export default function VrrpSyncGroupList({ syncGroups, groups }: { syncGroups: 
           onClick={() => {
             setShowAdd((v) => !v)
             setEditing(null)
-            setNewName('')
           }}
           className={`bg-accent-600 ${buttonClass}`}
         >
@@ -52,19 +50,12 @@ export default function VrrpSyncGroupList({ syncGroups, groups }: { syncGroups: 
 
       {showAdd && (
         <div className="mb-3 rounded-xl border border-surface-border bg-surface-900 p-4">
-          <label className={`${labelClass} mb-3`}>
-            Name
-            <input
-              {...noExtensionInputProps}
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="INTERNAL"
-              className={`font-mono ${inputClass}`}
-            />
-          </label>
-          {newName.trim() !== '' && !existingNames.includes(newName.trim()) && (
-            <VrrpSyncGroupFormPanel name={newName.trim()} groups={groups} onDone={() => setShowAdd(false)} />
-          )}
+          {/* Name lives inside VrrpSyncGroupFormPanel itself (not
+           * gating this panel's existence on it) so clearing it
+           * mid-fill doesn't unmount the panel and discard every
+           * other field already filled in - see HaproxyServiceList's
+           * equivalent comment for the full rationale. */}
+          <VrrpSyncGroupFormPanel existingNames={existingNames} groups={groups} onDone={() => setShowAdd(false)} />
         </div>
       )}
 
@@ -75,7 +66,7 @@ export default function VrrpSyncGroupList({ syncGroups, groups }: { syncGroups: 
           <div key={syncGroup.name} className="rounded-xl border border-surface-border bg-surface-900 p-4">
             {editing === syncGroup.name ? (
               <VrrpSyncGroupFormPanel
-                name={syncGroup.name}
+                existingNames={existingNames}
                 syncGroup={syncGroup}
                 groups={groups}
                 onDone={() => setEditing(null)}
@@ -115,21 +106,27 @@ export default function VrrpSyncGroupList({ syncGroups, groups }: { syncGroups: 
 }
 
 function VrrpSyncGroupFormPanel({
-  name,
   syncGroup,
   groups,
+  existingNames,
   onDone,
 }: {
-  name: string
   syncGroup?: VRRPSyncGroup
   groups: VRRPGroup[]
+  existingNames: string[]
   onDone: () => void
 }) {
   const add = usePendingChangesStore((s) => s.add)
+  const isCreate = syncGroup === undefined
+  const [newName, setNewName] = useState('')
   const [values, setValues] = useState<VRRPSyncGroupFormValues>(
     syncGroup ? vrrpSyncGroupToFormValues(syncGroup) : blankVRRPSyncGroupFormValues(),
   )
   const [selectedMembers, setSelectedMembers] = useState<string[]>(syncGroup?.members ?? [])
+
+  const name = isCreate ? newName.trim() : syncGroup.name
+  const nameTaken = isCreate && existingNames.includes(name)
+  const nameValid = !isCreate || (name !== '' && !nameTaken)
 
   function update<K extends keyof VRRPSyncGroupFormValues>(key: K, value: VRRPSyncGroupFormValues[K]) {
     setValues((v) => ({ ...v, [key]: value }))
@@ -140,6 +137,7 @@ function VrrpSyncGroupFormPanel({
   }
 
   function submit() {
+    if (!nameValid) return
     const ops = vrrpSyncGroupFormToOps(name, syncGroup, values)
     const before = new Set(syncGroup?.members ?? [])
     const after = new Set(selectedMembers)
@@ -151,6 +149,19 @@ function VrrpSyncGroupFormPanel({
 
   return (
     <div>
+      {isCreate && (
+        <label className={`${labelClass} mb-3`}>
+          Name
+          <input
+            {...noExtensionInputProps}
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="INTERNAL"
+            className={`font-mono ${inputClass}`}
+          />
+          {nameTaken && <span className="text-danger-500">A sync group named "{name}" already exists.</span>}
+        </label>
+      )}
       <div className="mb-3">
         <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">Member groups</p>
         <div className="flex flex-wrap gap-3">
@@ -241,7 +252,7 @@ function VrrpSyncGroupFormPanel({
       </div>
 
       <div className="flex items-center gap-2">
-        <button onClick={submit} className={`bg-accent-600 ${buttonClass}`}>
+        <button onClick={submit} disabled={!nameValid} className={`bg-accent-600 ${buttonClass}`}>
           {syncGroup ? 'Save' : 'Add sync group'}
         </button>
         <button onClick={onDone} className="text-xs text-slate-500 hover:text-slate-300">

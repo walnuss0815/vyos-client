@@ -39,7 +39,6 @@ export default function HaproxyServiceList({
 }) {
   const [showAdd, setShowAdd] = useState(false)
   const [editing, setEditing] = useState<string | null>(null)
-  const [newName, setNewName] = useState('')
   const add = usePendingChangesStore((s) => s.add)
 
   const existingNames = services.map((s) => s.name)
@@ -56,7 +55,6 @@ export default function HaproxyServiceList({
           onClick={() => {
             setShowAdd((v) => !v)
             setEditing(null)
-            setNewName('')
           }}
           className={`bg-accent-600 ${buttonClass}`}
         >
@@ -66,19 +64,13 @@ export default function HaproxyServiceList({
 
       {showAdd && (
         <div className="mb-3 rounded-xl border border-surface-border bg-surface-900 p-4">
-          <label className={`${labelClass} mb-3`}>
-            Name
-            <input
-              {...noExtensionInputProps}
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="web"
-              className={`font-mono ${inputClass}`}
-            />
-          </label>
-          {newName.trim() !== '' && !existingNames.includes(newName.trim()) && (
-            <HaproxyServiceFormPanel name={newName.trim()} backends={backends} onDone={() => setShowAdd(false)} />
-          )}
+          {/* The name field lives inside HaproxyServiceFormPanel itself
+           * (rather than gating this panel's very existence on it being
+           * non-empty/unique) so clearing it mid-fill - even briefly,
+           * e.g. backspacing to retype - doesn't unmount the panel and
+           * discard every other field the operator already filled in.
+           * See RouteMapRuleForm.tsx's ruleNumber for the same pattern. */}
+          <HaproxyServiceFormPanel backends={backends} existingNames={existingNames} onDone={() => setShowAdd(false)} />
         </div>
       )}
 
@@ -89,9 +81,9 @@ export default function HaproxyServiceList({
           <div key={service.name} className="rounded-xl border border-surface-border bg-surface-900 p-4">
             {editing === service.name ? (
               <HaproxyServiceFormPanel
-                name={service.name}
                 service={service}
                 backends={backends}
+                existingNames={existingNames}
                 onDone={() => setEditing(null)}
               />
             ) : (
@@ -163,25 +155,30 @@ export default function HaproxyServiceList({
 }
 
 function HaproxyServiceFormPanel({
-  name,
   service,
   backends,
+  existingNames,
   onDone,
 }: {
-  name: string
   service?: HAProxyService
   backends: HAProxyBackend[]
+  existingNames: string[]
   onDone: () => void
 }) {
   const add = usePendingChangesStore((s) => s.add)
+  const isCreate = service === undefined
+  const [newName, setNewName] = useState('')
   const [values, setValues] = useState<HAProxyServiceFormValues>(
     service ? haproxyServiceToFormValues(service) : blankHAProxyServiceFormValues(),
   )
   const [selectedBackends, setSelectedBackends] = useState<string[]>(service?.backends ?? [])
-  const isCreate = service === undefined
   const [firstListenAddress, setFirstListenAddress] = useState('')
   const [firstRuleDomainNames, setFirstRuleDomainNames] = useState('')
   const [firstRuleSetBackend, setFirstRuleSetBackend] = useState('')
+
+  const name = isCreate ? newName.trim() : service.name
+  const nameTaken = isCreate && existingNames.includes(name)
+  const nameValid = !isCreate || (name !== '' && !nameTaken)
 
   function update<K extends keyof HAProxyServiceFormValues>(key: K, value: HAProxyServiceFormValues[K]) {
     setValues((v) => ({ ...v, [key]: value }))
@@ -194,6 +191,7 @@ function HaproxyServiceFormPanel({
   }
 
   function submit() {
+    if (!nameValid) return
     const ops = haproxyServiceFormToOps(name, service, values)
     const base = haproxyServicePath(name)
     const before = new Set(service?.backends ?? [])
@@ -230,6 +228,19 @@ function HaproxyServiceFormPanel({
 
   return (
     <div>
+      {isCreate && (
+        <label className={`${labelClass} mb-3`}>
+          Name
+          <input
+            {...noExtensionInputProps}
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="web"
+            className={`font-mono ${inputClass}`}
+          />
+          {nameTaken && <span className="text-danger-500">A service named "{name}" already exists.</span>}
+        </label>
+      )}
       <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className={labelClass}>
           Description
@@ -379,7 +390,7 @@ function HaproxyServiceFormPanel({
       )}
 
       <div className="flex items-center gap-2">
-        <button onClick={submit} className={`bg-accent-600 ${buttonClass}`}>
+        <button onClick={submit} disabled={!nameValid} className={`bg-accent-600 ${buttonClass}`}>
           {service ? 'Save' : 'Add service'}
         </button>
         <button onClick={onDone} className="text-xs text-slate-500 hover:text-slate-300">

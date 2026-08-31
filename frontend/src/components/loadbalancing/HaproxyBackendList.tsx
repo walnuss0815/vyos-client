@@ -32,7 +32,6 @@ import FieldLabel from '../FieldLabel'
 export default function HaproxyBackendList({ backends }: { backends: HAProxyBackend[] }) {
   const [showAdd, setShowAdd] = useState(false)
   const [editing, setEditing] = useState<string | null>(null)
-  const [newName, setNewName] = useState('')
   const add = usePendingChangesStore((s) => s.add)
 
   const existingNames = backends.map((b) => b.name)
@@ -49,7 +48,6 @@ export default function HaproxyBackendList({ backends }: { backends: HAProxyBack
           onClick={() => {
             setShowAdd((v) => !v)
             setEditing(null)
-            setNewName('')
           }}
           className={`bg-accent-600 ${buttonClass}`}
         >
@@ -59,19 +57,12 @@ export default function HaproxyBackendList({ backends }: { backends: HAProxyBack
 
       {showAdd && (
         <div className="mb-3 rounded-xl border border-surface-border bg-surface-900 p-4">
-          <label className={`${labelClass} mb-3`}>
-            Name
-            <input
-              {...noExtensionInputProps}
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="app-servers"
-              className={`font-mono ${inputClass}`}
-            />
-          </label>
-          {newName.trim() !== '' && !existingNames.includes(newName.trim()) && (
-            <HaproxyBackendFormPanel name={newName.trim()} onDone={() => setShowAdd(false)} />
-          )}
+          {/* Name lives inside HaproxyBackendFormPanel itself (not
+           * gating this panel's existence on it) so clearing it
+           * mid-fill doesn't unmount the panel and discard every
+           * other field already filled in - see HaproxyServiceList's
+           * equivalent comment for the full rationale. */}
+          <HaproxyBackendFormPanel existingNames={existingNames} onDone={() => setShowAdd(false)} />
         </div>
       )}
 
@@ -81,7 +72,7 @@ export default function HaproxyBackendList({ backends }: { backends: HAProxyBack
         {backends.map((backend) => (
           <div key={backend.name} className="rounded-xl border border-surface-border bg-surface-900 p-4">
             {editing === backend.name ? (
-              <HaproxyBackendFormPanel name={backend.name} backend={backend} onDone={() => setEditing(null)} />
+              <HaproxyBackendFormPanel existingNames={existingNames} backend={backend} onDone={() => setEditing(null)} />
             ) : (
               <>
                 <div className="flex items-center justify-between">
@@ -132,15 +123,17 @@ export default function HaproxyBackendList({ backends }: { backends: HAProxyBack
 }
 
 function HaproxyBackendFormPanel({
-  name,
   backend,
+  existingNames,
   onDone,
 }: {
-  name: string
   backend?: HAProxyBackend
+  existingNames: string[]
   onDone: () => void
 }) {
   const add = usePendingChangesStore((s) => s.add)
+  const isCreate = backend === undefined
+  const [newName, setNewName] = useState('')
   const [values, setValues] = useState<HAProxyBackendFormValues>(
     backend ? haproxyBackendToFormValues(backend) : blankHAProxyBackendFormValues(),
   )
@@ -150,11 +143,16 @@ function HaproxyBackendFormPanel({
   const [firstRuleDomainNames, setFirstRuleDomainNames] = useState('')
   const [firstRuleSetServer, setFirstRuleSetServer] = useState('')
 
+  const name = isCreate ? newName.trim() : backend.name
+  const nameTaken = isCreate && existingNames.includes(name)
+  const nameValid = !isCreate || (name !== '' && !nameTaken)
+
   function update<K extends keyof HAProxyBackendFormValues>(key: K, value: HAProxyBackendFormValues[K]) {
     setValues((v) => ({ ...v, [key]: value }))
   }
 
   function submit() {
+    if (!nameValid) return
     const ops = haproxyBackendFormToOps(name, backend, values)
     for (const op of ops) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
     // VyOS refuses to commit ANY load-balancing haproxy config unless
@@ -204,6 +202,19 @@ function HaproxyBackendFormPanel({
 
   return (
     <div>
+      {isCreate && (
+        <label className={`${labelClass} mb-3`}>
+          Name
+          <input
+            {...noExtensionInputProps}
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="app-servers"
+            className={`font-mono ${inputClass}`}
+          />
+          {nameTaken && <span className="text-danger-500">A backend named "{name}" already exists.</span>}
+        </label>
+      )}
       <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <label className={labelClass}>
           Description
@@ -444,7 +455,7 @@ function HaproxyBackendFormPanel({
       )}
 
       <div className="flex items-center gap-2">
-        <button onClick={submit} className={`bg-accent-600 ${buttonClass}`}>
+        <button onClick={submit} disabled={!nameValid} className={`bg-accent-600 ${buttonClass}`}>
           {backend ? 'Save' : 'Add backend'}
         </button>
         <button onClick={onDone} className="text-xs text-slate-500 hover:text-slate-300">
