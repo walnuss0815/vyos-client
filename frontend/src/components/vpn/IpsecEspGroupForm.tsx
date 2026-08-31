@@ -1,6 +1,18 @@
 import { useState } from 'react'
-import { blankEspGroupFormValues, espGroupFormToOps, espGroupToFormValues, type EspGroupFormValues } from '../../lib/vpnIpsecForm'
-import { IPSEC_ESP_MODES, IPSEC_PFS_OPTIONS, type IPsecEspGroup } from '../../lib/vpnIpsecTypes'
+import {
+  addEspProposalOps,
+  blankEspGroupFormValues,
+  espGroupFormToOps,
+  espGroupToFormValues,
+  type EspGroupFormValues,
+} from '../../lib/vpnIpsecForm'
+import {
+  IPSEC_ENCRYPTION_CIPHERS,
+  IPSEC_ESP_MODES,
+  IPSEC_HASH_ALGORITHMS,
+  IPSEC_PFS_OPTIONS,
+  type IPsecEspGroup,
+} from '../../lib/vpnIpsecTypes'
 import FieldLabel from '../FieldLabel'
 import { buttonClass, inputClass, labelClass } from '../../lib/formStyles'
 import { noExtensionInputProps } from '../../lib/inputProtection'
@@ -20,6 +32,8 @@ export default function IpsecEspGroupForm({
 }) {
   const [name, setName] = useState(group?.name ?? '')
   const [values, setValues] = useState<EspGroupFormValues>(group ? espGroupToFormValues(group) : blankEspGroupFormValues())
+  const [firstProposalEncryption, setFirstProposalEncryption] = useState('')
+  const [firstProposalHash, setFirstProposalHash] = useState('')
   const add = usePendingChangesStore((s) => s.add)
 
   const isCreate = group === undefined
@@ -35,6 +49,19 @@ export default function IpsecEspGroupForm({
     if (!canSubmit) return
     const ops = espGroupFormToOps(trimmedName, group, values)
     for (const op of ops) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    // An ESP group with no proposals is meaningless (VyOS has nothing
+    // to actually negotiate), and IpsecEspProposals.tsx only ever
+    // operates on an already-fetched group - queuing a first proposal
+    // here, numbered 10, avoids a detour through commit+refetch just
+    // to add one.
+    if (isCreate && (firstProposalEncryption || firstProposalHash)) {
+      const proposalOps = addEspProposalOps(trimmedName, '10', {
+        encryption: firstProposalEncryption,
+        hash: firstProposalHash,
+        esn: '',
+      })
+      for (const op of proposalOps) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    }
     onDone()
   }
 
@@ -92,6 +119,33 @@ export default function IpsecEspGroupForm({
           Disable local re-key
         </label>
       </div>
+
+      {isCreate && (
+        <div className="mt-3 border-t border-surface-border pt-3">
+          <p className="mb-2 text-xs text-slate-500">First proposal (optional, numbered 10)</p>
+          <div className="grid grid-cols-2 gap-3">
+            <label className={labelClass}>
+              Encryption
+              <select value={firstProposalEncryption} onChange={(e) => setFirstProposalEncryption(e.target.value)} className={inputClass}>
+                <option value="">Default (aes128)</option>
+                {IPSEC_ENCRYPTION_CIPHERS.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </label>
+            <label className={labelClass}>
+              Hash
+              <select value={firstProposalHash} onChange={(e) => setFirstProposalHash(e.target.value)} className={inputClass}>
+                <option value="">Default (sha1)</option>
+                {IPSEC_HASH_ALGORITHMS.map((h) => (
+                  <option key={h} value={h}>{h}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
+      )}
+
       <div className="mt-4 flex items-center gap-2">
         <button onClick={submit} disabled={!canSubmit} className={`bg-accent-600 ${buttonClass}`}>
           {isCreate ? 'Queue creation' : 'Save changes'}

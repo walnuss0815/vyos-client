@@ -1,8 +1,17 @@
 import { useState } from 'react'
-import { blankIkeGroupFormValues, ikeGroupFormToOps, ikeGroupToFormValues, type IkeGroupFormValues } from '../../lib/vpnIpsecForm'
+import {
+  addIkeProposalOps,
+  blankIkeGroupFormValues,
+  ikeGroupFormToOps,
+  ikeGroupToFormValues,
+  type IkeGroupFormValues,
+} from '../../lib/vpnIpsecForm'
 import {
   IPSEC_CLOSE_ACTIONS,
+  IPSEC_DH_GROUPS,
   IPSEC_DPD_ACTIONS,
+  IPSEC_ENCRYPTION_CIPHERS,
+  IPSEC_HASH_ALGORITHMS,
   IPSEC_IKE_MODES,
   IPSEC_KEY_EXCHANGE_VERSIONS,
   type IPsecIkeGroup,
@@ -26,6 +35,9 @@ export default function IpsecIkeGroupForm({
 }) {
   const [name, setName] = useState(group?.name ?? '')
   const [values, setValues] = useState<IkeGroupFormValues>(group ? ikeGroupToFormValues(group) : blankIkeGroupFormValues())
+  const [firstProposalDhGroup, setFirstProposalDhGroup] = useState('')
+  const [firstProposalEncryption, setFirstProposalEncryption] = useState('')
+  const [firstProposalHash, setFirstProposalHash] = useState('')
   const add = usePendingChangesStore((s) => s.add)
 
   const isCreate = group === undefined
@@ -41,6 +53,21 @@ export default function IpsecIkeGroupForm({
     if (!canSubmit) return
     const ops = ikeGroupFormToOps(trimmedName, group, values)
     for (const op of ops) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    // An IKE group with no proposals is meaningless (VyOS has nothing
+    // to actually negotiate), and IpsecIkeProposals.tsx only ever
+    // operates on an already-fetched group - queuing a first proposal
+    // here, numbered 10, avoids a detour through commit+refetch just
+    // to add one.
+    if (isCreate && (firstProposalDhGroup || firstProposalEncryption || firstProposalHash)) {
+      const proposalOps = addIkeProposalOps(trimmedName, '10', {
+        dhGroup: firstProposalDhGroup,
+        prf: '',
+        encryption: firstProposalEncryption,
+        hash: firstProposalHash,
+        esn: '',
+      })
+      for (const op of proposalOps) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    }
     onDone()
   }
 
@@ -111,6 +138,42 @@ export default function IpsecIkeGroupForm({
           Disable MOBIKE (IKEv2)
         </label>
       </div>
+
+      {isCreate && (
+        <div className="mt-3 border-t border-surface-border pt-3">
+          <p className="mb-2 text-xs text-slate-500">First proposal (optional, numbered 10)</p>
+          <div className="grid grid-cols-3 gap-3">
+            <label className={labelClass}>
+              DH group
+              <select value={firstProposalDhGroup} onChange={(e) => setFirstProposalDhGroup(e.target.value)} className={inputClass}>
+                <option value="">Select…</option>
+                {IPSEC_DH_GROUPS.map((g) => (
+                  <option key={g} value={g}>dh-group{g}</option>
+                ))}
+              </select>
+            </label>
+            <label className={labelClass}>
+              Encryption
+              <select value={firstProposalEncryption} onChange={(e) => setFirstProposalEncryption(e.target.value)} className={inputClass}>
+                <option value="">Default (aes128)</option>
+                {IPSEC_ENCRYPTION_CIPHERS.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </label>
+            <label className={labelClass}>
+              Hash
+              <select value={firstProposalHash} onChange={(e) => setFirstProposalHash(e.target.value)} className={inputClass}>
+                <option value="">Default (sha1)</option>
+                {IPSEC_HASH_ALGORITHMS.map((h) => (
+                  <option key={h} value={h}>{h}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
+      )}
+
       <div className="mt-4 flex items-center gap-2">
         <button onClick={submit} disabled={!canSubmit} className={`bg-accent-600 ${buttonClass}`}>
           {isCreate ? 'Queue creation' : 'Save changes'}

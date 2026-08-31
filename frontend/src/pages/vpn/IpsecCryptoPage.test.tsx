@@ -44,6 +44,54 @@ describe('IpsecCryptoPage', () => {
     })
   })
 
+  // Regression test: an ESP group's first proposal used to only be
+  // addable AFTER the group already existed - IpsecEspProposals.tsx
+  // only ever operates on an already-fetched group.
+  it('creates a new ESP group with a first proposal, all in one commit', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))
+    const user = userEvent.setup()
+    renderWithProviders(<IpsecCryptoPage />)
+    await screen.findByRole('button', { name: /\+ new esp group/i })
+
+    await user.click(screen.getByRole('button', { name: /\+ new esp group/i }))
+    await user.type(screen.getByLabelText(/^name/i), 'ESP-DEFAULT')
+    await user.selectOptions(screen.getByLabelText(/^encryption/i), 'aes256')
+    await user.click(screen.getByRole('button', { name: /queue creation/i }))
+
+    const ops = usePendingChangesStore.getState().changes.map((c) => c.op)
+    expect(ops).toContainEqual({ op: 'set', path: ['vpn', 'ipsec', 'esp-group', 'ESP-DEFAULT'] })
+    expect(ops).toContainEqual({ op: 'set', path: ['vpn', 'ipsec', 'esp-group', 'ESP-DEFAULT', 'proposal', '10'] })
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['vpn', 'ipsec', 'esp-group', 'ESP-DEFAULT', 'proposal', '10', 'encryption'],
+      value: 'aes256',
+    })
+  })
+
+  // Regression test: an IKE group's first proposal used to only be
+  // addable AFTER the group already existed - IpsecIkeProposals.tsx
+  // only ever operates on an already-fetched group.
+  it('creates a new IKE group with a first proposal, all in one commit', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))
+    const user = userEvent.setup()
+    renderWithProviders(<IpsecCryptoPage />)
+    await screen.findByRole('button', { name: /\+ new ike group/i })
+
+    await user.click(screen.getByRole('button', { name: /\+ new ike group/i }))
+    await user.type(screen.getByLabelText(/^name/i), 'IKE-DEFAULT')
+    await user.selectOptions(screen.getByLabelText(/^dh group/i), '14')
+    await user.click(screen.getByRole('button', { name: /queue creation/i }))
+
+    const ops = usePendingChangesStore.getState().changes.map((c) => c.op)
+    expect(ops).toContainEqual({ op: 'set', path: ['vpn', 'ipsec', 'ike-group', 'IKE-DEFAULT'] })
+    expect(ops).toContainEqual({ op: 'set', path: ['vpn', 'ipsec', 'ike-group', 'IKE-DEFAULT', 'proposal', '10'] })
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['vpn', 'ipsec', 'ike-group', 'IKE-DEFAULT', 'proposal', '10', 'dh-group'],
+      value: '14',
+    })
+  })
+
   it('adds a pre-shared key without leaking the secret in pending-change labels', async () => {
     server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))
     const user = userEvent.setup()
