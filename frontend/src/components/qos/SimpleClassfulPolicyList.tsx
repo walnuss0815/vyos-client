@@ -42,6 +42,7 @@ export default function SimpleClassfulPolicyList({
   const [showAdd, setShowAdd] = useState(false)
   const [newName, setNewName] = useState('')
   const [editing, setEditing] = useState<string | null>(null)
+  const [firstClassId, setFirstClassId] = useState('')
   const add = usePendingChangesStore((s) => s.add)
 
   const existingNames = policies.map((p) => p.name)
@@ -51,6 +52,30 @@ export default function SimpleClassfulPolicyList({
       op: deleteSimpleClassfulPolicyOp(policyType, name),
       label: `delete qos policy ${policyType} ${name}`,
     })
+  }
+
+  function addPolicy() {
+    const trimmed = newName.trim()
+    const ops = simpleClassfulPolicyFormToOps(policyType, trimmed, undefined, { description: '' })
+    for (const op of ops) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    // A policy's classes used to only be configurable AFTER the
+    // policy already existed - ClassList only ever operates on an
+    // already-fetched policy. Queuing a first one here, in the same
+    // commit as the policy itself, avoids a detour through
+    // commit+refetch.
+    const trimmedClassId = firstClassId.trim()
+    if (trimmedClassId) {
+      const classOps = simpleClassfulClassFormToOps(
+        policyType,
+        trimmed,
+        trimmedClassId,
+        undefined,
+        blankSimpleClassfulClassFormValues('drop-tail'),
+      )
+      for (const op of classOps) add({ op, label: `${op.op} ${op.path.join(' ')}` })
+    }
+    setShowAdd(false)
+    setEditing(trimmed)
   }
 
   return (
@@ -81,18 +106,21 @@ export default function SimpleClassfulPolicyList({
             />
           </label>
           {newName.trim() !== '' && !existingNames.includes(newName.trim()) && (
-            <button
-              onClick={() => {
-                const trimmed = newName.trim()
-                const ops = simpleClassfulPolicyFormToOps(policyType, trimmed, undefined, { description: '' })
-                for (const op of ops) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
-                setShowAdd(false)
-                setEditing(trimmed)
-              }}
-              className={`bg-accent-600 ${buttonClass}`}
-            >
-              Add policy
-            </button>
+            <>
+              <label className={`${labelClass} mb-3`}>
+                First class ID (optional)
+                <input
+                  {...noExtensionInputProps}
+                  value={firstClassId}
+                  onChange={(e) => setFirstClassId(e.target.value)}
+                  placeholder={classIdHint}
+                  className={inputClass}
+                />
+              </label>
+              <button onClick={addPolicy} className={`bg-accent-600 ${buttonClass}`}>
+                Add policy
+              </button>
+            </>
           )}
         </div>
       )}

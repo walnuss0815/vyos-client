@@ -13,6 +13,7 @@ import {
   shaperHfscPolicyToFormValues,
   type HfscClassFormValues,
   type HfscCurveFormValues,
+  type HfscDefaultClassFormValues,
 } from '../../lib/qosShaperHfscForm'
 import type { QosHfscClass, QosShaperHfscPolicy } from '../../lib/qosTypes'
 import { buttonClass, inputClass, labelClass } from '../../lib/formStyles'
@@ -37,12 +38,52 @@ export default function ShaperHfscPolicyList({
   const [showAdd, setShowAdd] = useState(false)
   const [newName, setNewName] = useState('')
   const [editing, setEditing] = useState<string | null>(null)
+  const [firstClassId, setFirstClassId] = useState('')
+  const [firstClassLinkshareM2, setFirstClassLinkshareM2] = useState('')
+  const [defaultLinkshareM2, setDefaultLinkshareM2] = useState('')
   const add = usePendingChangesStore((s) => s.add)
 
   const existingNames = policies.map((p) => p.name)
 
   function queueDelete(name: string) {
     add({ op: deleteShaperHfscPolicyOp(name), label: `delete qos policy shaper-hfsc ${name}` })
+  }
+
+  function addPolicy() {
+    const trimmed = newName.trim()
+    const ops = shaperHfscPolicyFormToOps(trimmed, undefined, blankShaperHfscPolicyFormValues())
+    for (const op of ops) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    // A policy's classes and default class used to only be
+    // configurable AFTER the policy already existed -
+    // HfscClassList/HfscDefaultClassPanel only ever operate on an
+    // already-fetched policy. Queuing a first class and/or the
+    // default class's linkshare rate here, in the same commit as the
+    // policy itself, avoids a detour through commit+refetch. (Only
+    // the linkshare curve's m2 is exposed here, not the full
+    // d/m1/m2 x linkshare/realtime/upperlimit matrix - that's still
+    // reachable via "Manage" once the class exists.)
+    const trimmedClassId = firstClassId.trim()
+    if (trimmedClassId) {
+      const classOps = hfscClassFormToOps(trimmed, trimmedClassId, undefined, {
+        ...blankHfscClassFormValues(),
+        linkshare: { d: '', m1: '', m2: firstClassLinkshareM2.trim() },
+      })
+      for (const op of classOps) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    }
+    if (defaultLinkshareM2.trim()) {
+      const before: HfscDefaultClassFormValues = {
+        linkshare: { d: '', m1: '', m2: '' },
+        realtime: { d: '', m1: '', m2: '' },
+        upperlimit: { d: '', m1: '', m2: '' },
+      }
+      const defaultOps = hfscDefaultClassFormToOps(trimmed, before, {
+        ...before,
+        linkshare: { d: '', m1: '', m2: defaultLinkshareM2.trim() },
+      })
+      for (const op of defaultOps) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    }
+    setShowAdd(false)
+    setEditing(trimmed)
   }
 
   return (
@@ -77,18 +118,42 @@ export default function ShaperHfscPolicyList({
             />
           </label>
           {newName.trim() !== '' && !existingNames.includes(newName.trim()) && (
-            <button
-              onClick={() => {
-                const trimmed = newName.trim()
-                const ops = shaperHfscPolicyFormToOps(trimmed, undefined, blankShaperHfscPolicyFormValues())
-                for (const op of ops) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
-                setShowAdd(false)
-                setEditing(trimmed)
-              }}
-              className={`bg-accent-600 ${buttonClass}`}
-            >
-              Add policy
-            </button>
+            <>
+              <div className="mb-3">
+                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">First class (optional)</p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <input
+                    {...noExtensionInputProps}
+                    value={firstClassId}
+                    onChange={(e) => setFirstClassId(e.target.value)}
+                    placeholder="class ID (1-4095)"
+                    className={inputClass}
+                  />
+                  <input
+                    {...noExtensionInputProps}
+                    value={firstClassLinkshareM2}
+                    onChange={(e) => setFirstClassLinkshareM2(e.target.value)}
+                    placeholder="linkshare rate (m2)"
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+              <div className="mb-3">
+                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">
+                  Default class (unmatched traffic, optional)
+                </p>
+                <input
+                  {...noExtensionInputProps}
+                  value={defaultLinkshareM2}
+                  onChange={(e) => setDefaultLinkshareM2(e.target.value)}
+                  placeholder="linkshare rate (m2)"
+                  className={inputClass}
+                />
+              </div>
+              <button onClick={addPolicy} className={`bg-accent-600 ${buttonClass}`}>
+                Add policy
+              </button>
+            </>
           )}
         </div>
       )}

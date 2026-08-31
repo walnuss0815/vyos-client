@@ -12,6 +12,7 @@ import {
   shaperPolicyFormToOps,
   shaperPolicyToFormValues,
   type ShaperClassFormValues,
+  type ShaperDefaultClassFormValues,
 } from '../../lib/qosShaperForm'
 import type { QosShaperClass, QosShaperPolicy } from '../../lib/qosTypes'
 import { buttonClass, inputClass, labelClass } from '../../lib/formStyles'
@@ -32,12 +33,57 @@ export default function ShaperPolicyList({
   const [showAdd, setShowAdd] = useState(false)
   const [newName, setNewName] = useState('')
   const [editing, setEditing] = useState<string | null>(null)
+  const [firstClassId, setFirstClassId] = useState('')
+  const [firstClassBandwidth, setFirstClassBandwidth] = useState('')
+  const [firstClassCeiling, setFirstClassCeiling] = useState('')
+  const [defaultBandwidth, setDefaultBandwidth] = useState('')
+  const [defaultCeiling, setDefaultCeiling] = useState('')
   const add = usePendingChangesStore((s) => s.add)
 
   const existingNames = policies.map((p) => p.name)
 
   function queueDelete(name: string) {
     add({ op: deleteShaperPolicyOp(name), label: `delete qos policy shaper ${name}` })
+  }
+
+  function addPolicy() {
+    const trimmed = newName.trim()
+    const ops = shaperPolicyFormToOps(trimmed, undefined, blankShaperPolicyFormValues())
+    for (const op of ops) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    // A policy's classes and default class used to only be
+    // configurable AFTER the policy already existed -
+    // ShaperClassList/ShaperDefaultClassPanel only ever operate on an
+    // already-fetched policy. Queuing a first class and/or the
+    // default class settings here, in the same commit as the policy
+    // itself, avoids a detour through commit+refetch.
+    const trimmedClassId = firstClassId.trim()
+    if (trimmedClassId) {
+      const classOps = shaperClassFormToOps(trimmed, trimmedClassId, undefined, {
+        ...blankShaperClassFormValues(),
+        bandwidth: firstClassBandwidth.trim(),
+        ceiling: firstClassCeiling.trim(),
+      })
+      for (const op of classOps) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    }
+    if (defaultBandwidth.trim() || defaultCeiling.trim()) {
+      const before: ShaperDefaultClassFormValues = {
+        bandwidth: '',
+        burst: '15k',
+        ceiling: '',
+        queueType: 'fq-codel',
+        queueLimit: '',
+        setDscp: '',
+        priority: '',
+      }
+      const defaultOps = shaperDefaultClassFormToOps(trimmed, before, {
+        ...before,
+        bandwidth: defaultBandwidth.trim(),
+        ceiling: defaultCeiling.trim(),
+      })
+      for (const op of defaultOps) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    }
+    setShowAdd(false)
+    setEditing(trimmed)
   }
 
   return (
@@ -69,18 +115,58 @@ export default function ShaperPolicyList({
             />
           </label>
           {newName.trim() !== '' && !existingNames.includes(newName.trim()) && (
-            <button
-              onClick={() => {
-                const trimmed = newName.trim()
-                const ops = shaperPolicyFormToOps(trimmed, undefined, blankShaperPolicyFormValues())
-                for (const op of ops) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
-                setShowAdd(false)
-                setEditing(trimmed)
-              }}
-              className={`bg-accent-600 ${buttonClass}`}
-            >
-              Add policy
-            </button>
+            <>
+              <div className="mb-3">
+                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">First class (optional)</p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <input
+                    {...noExtensionInputProps}
+                    value={firstClassId}
+                    onChange={(e) => setFirstClassId(e.target.value)}
+                    placeholder="class ID (2-4095)"
+                    className={inputClass}
+                  />
+                  <input
+                    {...noExtensionInputProps}
+                    value={firstClassBandwidth}
+                    onChange={(e) => setFirstClassBandwidth(e.target.value)}
+                    placeholder="bandwidth"
+                    className={inputClass}
+                  />
+                  <input
+                    {...noExtensionInputProps}
+                    value={firstClassCeiling}
+                    onChange={(e) => setFirstClassCeiling(e.target.value)}
+                    placeholder="ceiling"
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+              <div className="mb-3">
+                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">
+                  Default class (unmatched traffic, optional)
+                </p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <input
+                    {...noExtensionInputProps}
+                    value={defaultBandwidth}
+                    onChange={(e) => setDefaultBandwidth(e.target.value)}
+                    placeholder="bandwidth"
+                    className={inputClass}
+                  />
+                  <input
+                    {...noExtensionInputProps}
+                    value={defaultCeiling}
+                    onChange={(e) => setDefaultCeiling(e.target.value)}
+                    placeholder="ceiling"
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+              <button onClick={addPolicy} className={`bg-accent-600 ${buttonClass}`}>
+                Add policy
+              </button>
+            </>
           )}
         </div>
       )}

@@ -10,6 +10,7 @@ import {
   limiterDefaultClassToFormValues,
   limiterPolicyFormToOps,
   type LimiterClassFormValues,
+  type LimiterDefaultClassFormValues,
 } from '../../lib/qosLimiterForm'
 import type { QosLimiterClass, QosLimiterPolicy } from '../../lib/qosTypes'
 import { buttonClass, inputClass, labelClass } from '../../lib/formStyles'
@@ -30,12 +31,48 @@ export default function LimiterPolicyList({
   const [showAdd, setShowAdd] = useState(false)
   const [newName, setNewName] = useState('')
   const [editing, setEditing] = useState<string | null>(null)
+  const [firstClassId, setFirstClassId] = useState('')
+  const [firstClassBandwidth, setFirstClassBandwidth] = useState('')
+  const [defaultBandwidth, setDefaultBandwidth] = useState('')
   const add = usePendingChangesStore((s) => s.add)
 
   const existingNames = policies.map((p) => p.name)
 
   function queueDelete(name: string) {
     add({ op: deleteLimiterPolicyOp(name), label: `delete qos policy limiter ${name}` })
+  }
+
+  function addPolicy() {
+    const trimmed = newName.trim()
+    const ops = limiterPolicyFormToOps(trimmed, undefined, { description: '' })
+    for (const op of ops) add({ op, label: `${op.op} ${op.path.join(' ')}` })
+    // A policy's classes and default class used to only be
+    // configurable AFTER the policy already existed -
+    // LimiterClassList/LimiterDefaultClassPanel only ever operate on
+    // an already-fetched policy. Queuing a first class and/or the
+    // default class's bandwidth here, in the same commit as the
+    // policy itself, avoids a detour through commit+refetch.
+    const trimmedClassId = firstClassId.trim()
+    if (trimmedClassId) {
+      const classOps = limiterClassFormToOps(trimmed, trimmedClassId, undefined, {
+        ...blankLimiterClassFormValues(),
+        bandwidth: firstClassBandwidth.trim(),
+      })
+      for (const op of classOps) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    }
+    if (defaultBandwidth.trim()) {
+      const before: LimiterDefaultClassFormValues = {
+        bandwidth: '',
+        burst: '15k',
+        mtu: '',
+        policeExceed: 'drop',
+        policeNotExceed: 'ok',
+      }
+      const defaultOps = limiterDefaultClassFormToOps(trimmed, before, { ...before, bandwidth: defaultBandwidth.trim() })
+      for (const op of defaultOps) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    }
+    setShowAdd(false)
+    setEditing(trimmed)
   }
 
   return (
@@ -67,18 +104,42 @@ export default function LimiterPolicyList({
             />
           </label>
           {newName.trim() !== '' && !existingNames.includes(newName.trim()) && (
-            <button
-              onClick={() => {
-                const trimmed = newName.trim()
-                const ops = limiterPolicyFormToOps(trimmed, undefined, { description: '' })
-                for (const op of ops) add({ op, label: `${op.op} ${op.path.join(' ')}` })
-                setShowAdd(false)
-                setEditing(trimmed)
-              }}
-              className={`bg-accent-600 ${buttonClass}`}
-            >
-              Add policy
-            </button>
+            <>
+              <div className="mb-3">
+                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">First class (optional)</p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <input
+                    {...noExtensionInputProps}
+                    value={firstClassId}
+                    onChange={(e) => setFirstClassId(e.target.value)}
+                    placeholder="class ID (1-4090)"
+                    className={inputClass}
+                  />
+                  <input
+                    {...noExtensionInputProps}
+                    value={firstClassBandwidth}
+                    onChange={(e) => setFirstClassBandwidth(e.target.value)}
+                    placeholder="bandwidth"
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+              <div className="mb-3">
+                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">
+                  Default class (unmatched traffic, optional)
+                </p>
+                <input
+                  {...noExtensionInputProps}
+                  value={defaultBandwidth}
+                  onChange={(e) => setDefaultBandwidth(e.target.value)}
+                  placeholder="bandwidth"
+                  className={inputClass}
+                />
+              </div>
+              <button onClick={addPolicy} className={`bg-accent-600 ${buttonClass}`}>
+                Add policy
+              </button>
+            </>
           )}
         </div>
       )}
