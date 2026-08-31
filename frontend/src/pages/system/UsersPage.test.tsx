@@ -65,6 +65,42 @@ describe('UsersPage', () => {
     })
   })
 
+  // Regression test: an SSH public key used to only be addable AFTER
+  // a user already existed - see UserForm.tsx's "First SSH public
+  // key" field.
+  it('creates a new user with a first SSH public key, all in one commit, and no password needed', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<UsersPage />)
+    await screen.findByText('admin')
+
+    await user.click(screen.getByRole('button', { name: /\+ new user/i }))
+    await user.type(screen.getByLabelText(/username/i), 'bob')
+
+    const form = screen.getByText('New user').closest('div.rounded-xl')
+    if (!form) throw new Error('create form not found')
+    await user.type(within(form as HTMLElement).getByPlaceholderText('alice@laptop'), 'bob@laptop')
+    await user.type(within(form as HTMLElement).getByPlaceholderText(/base64 key data only/i), 'AAAABBBB')
+    await user.click(within(form as HTMLElement).getByRole('button', { name: /queue user creation/i }))
+
+    const ops = usePendingChangesStore.getState().changes.map((c) => c.op)
+    // No plaintext-password op at all - a bare username plus a first
+    // key needs no password, and setting the key's own deep path is
+    // enough for VyOS to create the user's ancestor nodes implicitly.
+    expect(ops).not.toContainEqual(
+      expect.objectContaining({ path: ['system', 'login', 'user', 'bob', 'authentication', 'plaintext-password'] }),
+    )
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['system', 'login', 'user', 'bob', 'authentication', 'public-keys', 'bob@laptop', 'key'],
+      value: 'AAAABBBB',
+    })
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['system', 'login', 'user', 'bob', 'authentication', 'public-keys', 'bob@laptop', 'type'],
+      value: 'ssh-ed25519',
+    })
+  })
+
   it('deletes a user', async () => {
     const user = userEvent.setup()
     renderWithProviders(<UsersPage />)

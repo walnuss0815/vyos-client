@@ -74,6 +74,15 @@ export interface SystemUserPublicKey {
   hasKey: boolean
 }
 
+export const SSH_KEY_TYPES = [
+  'ssh-ed25519',
+  'ssh-rsa',
+  'ecdsa-sha2-nistp256',
+  'ecdsa-sha2-nistp384',
+  'ecdsa-sha2-nistp521',
+  'ssh-dss',
+]
+
 export interface SystemUser {
   username: string
   fullName?: string

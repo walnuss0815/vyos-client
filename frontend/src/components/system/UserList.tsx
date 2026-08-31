@@ -1,21 +1,12 @@
 import { useState } from 'react'
 import UserForm from './UserForm'
 import { addPublicKeyOps, deleteUserOp, removePublicKeyOp } from '../../lib/systemUserForm'
-import type { SystemUser } from '../../lib/systemTypes'
+import { SSH_KEY_TYPES, type SystemUser } from '../../lib/systemTypes'
 import { buttonClass, inputClass } from '../../lib/formStyles'
 import { noExtensionInputProps } from '../../lib/inputProtection'
 import { useSessionStore } from '../../store/session'
 import { usePendingChangesStore } from '../../store/pendingChanges'
 import InfoTooltip from '../InfoTooltip'
-
-const SSH_KEY_TYPES = [
-  'ssh-ed25519',
-  'ssh-rsa',
-  'ecdsa-sha2-nistp256',
-  'ecdsa-sha2-nistp384',
-  'ecdsa-sha2-nistp521',
-  'ssh-dss',
-]
 
 export default function UserList({ users, isLoading }: { users: SystemUser[]; isLoading: boolean }) {
   const [showCreate, setShowCreate] = useState(false)
