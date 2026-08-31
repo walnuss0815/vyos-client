@@ -151,17 +151,7 @@ func runServer() error {
 		IngressProxy:             ingressProxy,
 	}
 
-	mux := http.NewServeMux()
-	apiHandler := apiServer.Routes()
-	// apiHandler's own internal router (api.Server.Routes) already
-	// matches "GET /healthz" itself, alongside every "POST /api/...".
-	// It's mounted at both prefixes here so this outer router's table
-	// stays self-documenting about which paths are backend routes at
-	// all, rather than relying on a reader to know that /healthz is
-	// secretly handled by the same handler as /api/.
-	mux.Handle("/api/", apiHandler)
-	mux.Handle("/healthz", apiHandler)
-	mux.Handle("/", webappHandler)
+	mux := buildMux(apiServer.Routes(), webappHandler)
 
 	var tlsConfig *tls.Config
 	if cfg.TLSEnabled {
@@ -216,6 +206,34 @@ func runServer() error {
 		}
 	}
 	return nil
+}
+
+// buildMux assembles the outer-level HTTP handler: the backend API
+// (everything under /api/, /healthz, and the Ingress proxy under
+// ingress.PathPrefix) is dispatched to apiHandler (api.Server.Routes's
+// own return value, which does its own internal routing/auth/logging
+// for each of those); everything else falls through to webappHandler,
+// the embedded SPA. Separated from runServer so it can be exercised by
+// an end-to-end test (see serve_test.go) without needing a live
+// *http.Server or TLS - a real bug (a request for
+// ingress.PathPrefix silently reaching the SPA fallback instead of
+// the proxy) shipped once already because every other test only ever
+// exercised api.Server.Routes() in isolation, never this outer
+// assembly.
+func buildMux(apiHandler, webappHandler http.Handler) http.Handler {
+	mux := http.NewServeMux()
+	// apiHandler's own internal router (api.Server.Routes) already
+	// matches "GET /healthz" and the Ingress proxy route itself,
+	// alongside every "POST /api/...". Each is mounted here too so
+	// this outer router's table stays self-documenting about which
+	// paths are backend routes at all, rather than relying on a
+	// reader to know that /healthz (and /ingress/) are secretly
+	// handled by the same handler as /api/.
+	mux.Handle("/api/", apiHandler)
+	mux.Handle("/healthz", apiHandler)
+	mux.Handle(ingress.PathPrefix, apiHandler)
+	mux.Handle("/", webappHandler)
+	return mux
 }
 
 func buildTLSConfig(cfg *config.Config, logger *slog.Logger) (*tls.Config, error) {

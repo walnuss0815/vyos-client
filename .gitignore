@@ -37,6 +37,10 @@ result-*
 .env.*
 !.env.example
 
+# --- Local Ingress test data (see docker-compose.yml's commented
+# volume mount) ---
+.ingress-data/
+
 # --- OS / editor ---
 .DS_Store
 Thumbs.db
