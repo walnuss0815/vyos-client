@@ -403,6 +403,95 @@ func TestRequireSession_RejectsExpiredCookie(t *testing.T) {
 	}
 }
 
+func TestRequireSessionForBrowsing_RedirectsMissingCookie(t *testing.T) {
+	sm := auth.NewSessionManager([]byte("test-secret"))
+	handler := auth.RequireSessionForBrowsing(sm, false, "/login")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/ingress/nas/", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusFound {
+		t.Errorf("status = %d, want 302", rec.Code)
+	}
+	if got := rec.Header().Get("Location"); got != "/login" {
+		t.Errorf("Location = %q, want /login", got)
+	}
+}
+
+func TestRequireSessionForBrowsing_RedirectsExpiredCookie(t *testing.T) {
+	sm := auth.NewSessionManager([]byte("test-secret"))
+	handler := auth.RequireSessionForBrowsing(sm, false, "/login")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	other := auth.NewSessionManager([]byte("other-secret"))
+	token, _, _ := other.Issue("admin")
+
+	req := httptest.NewRequest(http.MethodGet, "/ingress/nas/", nil)
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusFound {
+		t.Errorf("status = %d, want 302", rec.Code)
+	}
+}
+
+func TestRequireSessionForBrowsing_AcceptsValidCookie(t *testing.T) {
+	sm := auth.NewSessionManager([]byte("test-secret"))
+	token, _, _ := sm.Issue("admin")
+
+	var gotUser string
+	handler := auth.RequireSessionForBrowsing(sm, false, "/login")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUser, _ = auth.UserFromContext(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/ingress/nas/", nil)
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rec.Code)
+	}
+	if gotUser != "admin" {
+		t.Errorf("user = %q, want admin", gotUser)
+	}
+}
+
+func TestRequireSessionForBrowsing_ReissuesSessionCookieOnSuccess(t *testing.T) {
+	sm := auth.NewSessionManager([]byte("test-secret"))
+	token, _, _ := sm.Issue("admin")
+	time.Sleep(2 * time.Millisecond)
+
+	handler := auth.RequireSessionForBrowsing(sm, true, "/login")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/ingress/nas/", nil)
+	req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: token})
+	req.AddCookie(&http.Cookie{Name: auth.CSRFCookieName, Value: "csrf-value"})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	var gotSession *http.Cookie
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == auth.SessionCookieName {
+			gotSession = c
+		}
+	}
+	if gotSession == nil {
+		t.Fatal("expected a reissued session cookie")
+	}
+	if gotSession.Value == token {
+		t.Error("expected a renewed session token to differ from the original (different exp)")
+	}
+}
+
 func TestRequireCSRF_RejectsMissingToken(t *testing.T) {
 	handler := auth.RequireCSRF(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

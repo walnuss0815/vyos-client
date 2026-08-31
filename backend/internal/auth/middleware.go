@@ -143,6 +143,65 @@ func RequireSession(sessions *SessionManager, secure bool) func(http.Handler) ht
 	}
 }
 
+// RequireSessionForBrowsing is like RequireSession, but responds to a
+// missing/invalid session with a redirect to loginPath instead of a
+// JSON 401 body. Intended for handlers reached by a user directly
+// navigating a browser to a URL - e.g. opening a proxied Ingress app
+// in a new tab (see internal/ingress and cmd/vyos-client/serve.go) -
+// rather than by an XHR/fetch call from the SPA, where a JSON error
+// body would just render as a broken page instead of sending the user
+// to sign in.
+func RequireSessionForBrowsing(sessions *SessionManager, secure bool, loginPath string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			unauthorized := func() { http.Redirect(w, r, loginPath, http.StatusFound) }
+
+			cookie, err := r.Cookie(SessionCookieName)
+			if err != nil {
+				unauthorized()
+				return
+			}
+			newToken, newExp, err := sessions.Renew(cookie.Value)
+			if err != nil {
+				unauthorized()
+				return
+			}
+			user, err := sessions.Verify(newToken)
+			if err != nil {
+				// Renew just minted this token; a failure here would be
+				// a logic bug, not an untrusted-input problem, but fail
+				// closed the same way rather than trusting it blindly.
+				unauthorized()
+				return
+			}
+			http.SetCookie(w, &http.Cookie{
+				Name:     SessionCookieName,
+				Value:    newToken,
+				Path:     "/",
+				Expires:  newExp,
+				HttpOnly: true,
+				Secure:   secure,
+				SameSite: http.SameSiteStrictMode,
+			})
+			// See RequireSession's identical block for why the CSRF
+			// cookie's expiry is also slid forward here.
+			if csrfCookie, err := r.Cookie(CSRFCookieName); err == nil {
+				http.SetCookie(w, &http.Cookie{
+					Name:     CSRFCookieName,
+					Value:    csrfCookie.Value,
+					Path:     "/",
+					Expires:  newExp,
+					HttpOnly: false,
+					Secure:   secure,
+					SameSite: http.SameSiteStrictMode,
+				})
+			}
+			ctx := context.WithValue(r.Context(), userContextKey, user)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
 // RequireCSRF is HTTP middleware enforcing the double-submit CSRF
 // pattern on state-changing methods (everything but GET/HEAD/OPTIONS).
 // It must run after RequireSession so unauthenticated requests are

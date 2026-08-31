@@ -161,12 +161,51 @@ type Config struct {
 	// silently unused - same "you configured X but it's ignored"
 	// pattern as UIAdminVarsIgnored/TLSCertFilesIgnored above.
 	SelfUpgradeVarsIgnored bool
+
+	// IngressEnabled turns on the Ingress feature - an authenticated
+	// reverse proxy (see internal/ingress) that lets a logged-in user
+	// reach a web UI on the router's own network through this app,
+	// without opening a separate port for it. Disabled by default.
+	// Like SelfUpgradeEnabled above, this is a second deliberate,
+	// opt-in exception to the "backend only ever talks to VyOS's own
+	// API" network model documented in docs/security.md - except
+	// broader, since the operator can point it at ANY host the router
+	// can reach, not just api.github.com. Definitions are only ever
+	// created explicitly by an authenticated operator, but the flag
+	// still exists so the feature (and its outbound-proxy code path)
+	// is entirely inert unless someone has consciously turned it on.
+	IngressEnabled bool
+	// IngressDataDir is the directory ingress definitions (name,
+	// target URL, request headers) are persisted to as a JSON file -
+	// see internal/ingress.Store. This is the one deliberate exception
+	// to this package's own "no config file" principle (see the
+	// package doc comment): unlike every other setting, ingress
+	// definitions are themselves managed at runtime through the UI,
+	// not fixed at container start, so they need somewhere durable to
+	// live that isn't the environment. Defaults to "/data", matching
+	// this project's documented container volume-mount convention
+	// (see deploy/container-config-examples). Only meaningful (and
+	// only ever touched) when IngressEnabled is true - actual
+	// directory creation/writability is checked by ingress.NewStore
+	// at startup, not here, since this package deliberately performs
+	// no I/O of its own.
+	IngressDataDir string
+	// IngressVarsIgnored reports whether INGRESS_DATA_DIR was set
+	// despite IngressEnabled == false, in which case it's silently
+	// unused - same "you configured X but it's ignored" pattern as
+	// SelfUpgradeVarsIgnored above.
+	IngressVarsIgnored bool
 }
 
 // defaultSelfUpgradeGitHubRepo is this project's own GitHub repo -
 // see SelfUpgradeGitHubRepo's doc comment for when a different value
 // matters.
 const defaultSelfUpgradeGitHubRepo = "walnuss0815/vyos-client"
+
+// defaultIngressDataDir is the container volume mount point ingress
+// definitions are persisted under by default - see
+// Config.IngressDataDir's doc comment.
+const defaultIngressDataDir = "/data"
 
 // selfUpgradeGitHubRepoPattern bounds SELF_UPGRADE_GITHUB_REPO to a
 // structurally valid "owner/repo" shape. This value is interpolated
@@ -333,6 +372,23 @@ func Load(getenv func(string) string) (*Config, error) {
 		}
 	} else {
 		cfg.SelfUpgradeVarsIgnored = rawSelfUpgradeContainerName != "" || rawSelfUpgradeGitHubRepo != ""
+	}
+
+	if v := getenv("INGRESS_ENABLED"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return nil, fmt.Errorf("config: INGRESS_ENABLED: %w", err)
+		}
+		cfg.IngressEnabled = b
+	}
+	rawIngressDataDir := getenv("INGRESS_DATA_DIR")
+	// Applied unconditionally (not just when IngressEnabled), same
+	// reasoning as SelfUpgradeGitHubRepo above - nothing reads this
+	// while the feature is disabled, but the zero value shouldn't
+	// misrepresent what the effective default actually is.
+	cfg.IngressDataDir = orDefault(rawIngressDataDir, defaultIngressDataDir)
+	if !cfg.IngressEnabled {
+		cfg.IngressVarsIgnored = rawIngressDataDir != ""
 	}
 
 	return cfg, nil

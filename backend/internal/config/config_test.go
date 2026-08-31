@@ -555,6 +555,106 @@ func TestLoad_SelfUpgradeVarsIgnoredWhenDisabled(t *testing.T) {
 	}
 }
 
+func TestLoad_IngressDisabledByDefault(t *testing.T) {
+	cfg, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":           "test-key",
+		"UI_ADMIN_USER":          "admin",
+		"UI_ADMIN_PASSWORD_HASH": "$2a$10$fakehash",
+	}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.IngressEnabled {
+		t.Error("expected IngressEnabled to default to false when INGRESS_ENABLED is unset")
+	}
+	// IngressDataDir is still populated with its default even when
+	// disabled - same reasoning as SelfUpgradeGitHubRepo: nothing
+	// reads it in that case, but the zero value shouldn't misrepresent
+	// what the effective default is.
+	if cfg.IngressDataDir != "/data" {
+		t.Errorf("IngressDataDir = %q, want the default even when disabled", cfg.IngressDataDir)
+	}
+}
+
+func TestLoad_IngressEnabledUsesDefaultDataDir(t *testing.T) {
+	cfg, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":           "test-key",
+		"UI_ADMIN_USER":          "admin",
+		"UI_ADMIN_PASSWORD_HASH": "$2a$10$fakehash",
+		"INGRESS_ENABLED":        "true",
+	}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.IngressDataDir != "/data" {
+		t.Errorf("IngressDataDir = %q, want /data", cfg.IngressDataDir)
+	}
+	if cfg.IngressVarsIgnored {
+		t.Error("expected IngressVarsIgnored to be false when the feature is actually enabled")
+	}
+}
+
+func TestLoad_IngressDataDirOverride(t *testing.T) {
+	cfg, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":           "test-key",
+		"UI_ADMIN_USER":          "admin",
+		"UI_ADMIN_PASSWORD_HASH": "$2a$10$fakehash",
+		"INGRESS_ENABLED":        "true",
+		"INGRESS_DATA_DIR":       "/var/lib/vyos-client-ingress",
+	}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.IngressDataDir != "/var/lib/vyos-client-ingress" {
+		t.Errorf("IngressDataDir = %q, want /var/lib/vyos-client-ingress", cfg.IngressDataDir)
+	}
+}
+
+func TestLoad_IngressEnabledRejectsInvalidBoolean(t *testing.T) {
+	_, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":           "test-key",
+		"UI_ADMIN_USER":          "admin",
+		"UI_ADMIN_PASSWORD_HASH": "$2a$10$fakehash",
+		"INGRESS_ENABLED":        "not-a-bool",
+	}))
+	if err == nil {
+		t.Fatal("expected error for an invalid INGRESS_ENABLED value")
+	}
+}
+
+// TestLoad_IngressVarsIgnoredWhenDisabled guards the same "warn,
+// don't fail startup" behavior as
+// TestLoad_SelfUpgradeVarsIgnoredWhenDisabled: an operator who sets
+// INGRESS_DATA_DIR but leaves (or sets) INGRESS_ENABLED=false should
+// not have startup fail - just flagged as silently unused, for
+// serve.go to warn about.
+func TestLoad_IngressVarsIgnoredWhenDisabled(t *testing.T) {
+	cfg, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":           "test-key",
+		"UI_ADMIN_USER":          "admin",
+		"UI_ADMIN_PASSWORD_HASH": "$2a$10$fakehash",
+		"INGRESS_DATA_DIR":       "/data",
+	}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.IngressVarsIgnored {
+		t.Error("expected IngressVarsIgnored to be true when INGRESS_DATA_DIR is set but the feature is disabled")
+	}
+
+	cfgClean, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":           "test-key",
+		"UI_ADMIN_USER":          "admin",
+		"UI_ADMIN_PASSWORD_HASH": "$2a$10$fakehash",
+	}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfgClean.IngressVarsIgnored {
+		t.Error("expected IngressVarsIgnored to be false when the var was never set")
+	}
+}
+
 func TestSessionSecretIsEphemeral(t *testing.T) {
 	withoutSecret, err := config.Load(fakeEnv(map[string]string{
 		"VYOS_API_KEY":           "test-key",
