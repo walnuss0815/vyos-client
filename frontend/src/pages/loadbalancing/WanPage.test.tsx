@@ -96,6 +96,58 @@ describe('WanPage', () => {
     ).toBe(true)
   })
 
+  it('also queues a first health test for a new interface when its optional fields are filled in', async () => {
+    // Regression test: an interface-health entry's tests used to only
+    // be addable AFTER the entry already existed -
+    // WanHealthTestsSection only ever operates on an already-fetched
+    // entry.
+    const user = userEvent.setup()
+    renderWithProviders(<WanPage />)
+    await screen.findByText('eth0')
+
+    await user.click(screen.getAllByRole('button', { name: '+ Add interface' })[0])
+    await user.type(screen.getByPlaceholderText('eth0'), 'eth1')
+    await user.type(screen.getByPlaceholderText('target address'), '9.9.9.9')
+    await user.click(screen.getByRole('button', { name: 'Add interface' }))
+
+    const { changes } = usePendingChangesStore.getState()
+    const ops = changes.map((c) => c.op)
+    expect(ops).toContainEqual({ op: 'set', path: ['load-balancing', 'wan', 'interface-health', 'eth1', 'test', '0'] })
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['load-balancing', 'wan', 'interface-health', 'eth1', 'test', '0', 'type'],
+      value: 'ping',
+    })
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['load-balancing', 'wan', 'interface-health', 'eth1', 'test', '0', 'target'],
+      value: '9.9.9.9',
+    })
+  })
+
+  it('also queues a first egress interface for a new rule when its optional fields are filled in', async () => {
+    // Regression test: a rule's egress interfaces used to only be
+    // addable AFTER the rule already existed - WanRuleInterfacesSection
+    // only ever operates on an already-fetched rule.
+    const user = userEvent.setup()
+    renderWithProviders(<WanPage />)
+    await screen.findByText(/#10/)
+
+    await user.click(screen.getByRole('button', { name: '+ Add rule' }))
+    await user.type(screen.getByPlaceholderText('eth0'), 'eth2')
+    await user.type(screen.getByPlaceholderText('weight (default 1)'), '2')
+    await user.click(screen.getByRole('button', { name: 'Add rule' }))
+
+    const { changes } = usePendingChangesStore.getState()
+    const ops = changes.map((c) => c.op)
+    expect(ops).toContainEqual({ op: 'set', path: ['load-balancing', 'wan', 'rule', '20', 'interface', 'eth2'] })
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['load-balancing', 'wan', 'rule', '20', 'interface', 'eth2', 'weight'],
+      value: '2',
+    })
+  })
+
   it('renders the rules list and queues a rule deletion', async () => {
     const user = userEvent.setup()
     renderWithProviders(<WanPage />)
