@@ -110,6 +110,34 @@ describe('OSPFPage', () => {
     ])
   })
 
+  it('also queues a first network and range when creating an area with its optional fields filled in', async () => {
+    // Regression test: an area's networks and ranges used to only be
+    // configurable AFTER the area already existed - the ChipList/
+    // RangesSection in OSPFAreaList.tsx only ever operate on an
+    // already-fetched area.
+    const user = userEvent.setup()
+    renderWithProviders(<OSPFPage />)
+    await screen.findByText('Area 0')
+
+    await user.click(screen.getByRole('button', { name: /\+ new area/i }))
+    await user.type(screen.getByLabelText(/area id/i), '1')
+    await user.type(screen.getByLabelText(/first network/i), '203.0.113.0/24')
+    await user.type(screen.getByLabelText(/first range/i), '198.51.100.0/24')
+    await user.click(screen.getByRole('button', { name: /queue area creation/i }))
+
+    const { changes } = usePendingChangesStore.getState()
+    const ops = changes.map((c) => c.op)
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['protocols', 'ospf', 'area', '1', 'network'],
+      value: '203.0.113.0/24',
+    })
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['protocols', 'ospf', 'area', '1', 'range', '198.51.100.0/24'],
+    })
+  })
+
   it('deletes an area', async () => {
     const user = userEvent.setup()
     renderWithProviders(<OSPFPage />)

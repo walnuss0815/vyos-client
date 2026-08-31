@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import {
+  addAreaRangeOps,
   areaFormToOps,
   areaToFormValues,
   blankAreaFormValues,
   type OSPFAreaFormValues,
 } from '../../lib/ospfAreaForm'
+import { ospfAreaPath } from '../../lib/ospfParse'
 import type { OSPFArea, OSPFProtocol } from '../../lib/ospfTypes'
 import { buttonClass, inputClass, labelClass } from '../../lib/formStyles'
 import { noExtensionInputProps } from '../../lib/inputProtection'
@@ -21,11 +23,13 @@ interface OSPFAreaFormProps {
 }
 
 /** Create/edit form for an OSPF(v3) area's metadata (id, area-type,
- * authentication). Networks and ranges are managed separately, per
- * already-created area - see OSPFAreaList.tsx - since (particularly
- * for OSPFv3, whose areas have no `network` statement at all) an area
- * can be perfectly valid with zero of either, unlike a static route's
- * mandatory first "via". */
+ * authentication). Full network/range management (adding more than
+ * one, removing any) still happens separately, per already-created
+ * area - see OSPFAreaList.tsx - since (particularly for OSPFv3, whose
+ * areas have no `network` statement at all) an area can be perfectly
+ * valid with zero of either. Create mode does offer an optional first
+ * network/range field, so a brand new area doesn't strictly require a
+ * commit+refetch detour just to add its first one. */
 export default function OSPFAreaForm({ protocol, area, existingIds, onDone }: OSPFAreaFormProps) {
   const [id, setId] = useState(area?.id ?? '')
   const [values, setValues] = useState<OSPFAreaFormValues>(
@@ -34,6 +38,8 @@ export default function OSPFAreaForm({ protocol, area, existingIds, onDone }: OS
   const add = usePendingChangesStore((s) => s.add)
 
   const isCreate = area === undefined
+  const [firstNetwork, setFirstNetwork] = useState('')
+  const [firstRangePrefix, setFirstRangePrefix] = useState('')
   const trimmedId = id.trim()
   const idTaken = isCreate && existingIds.includes(trimmedId)
   const canSubmit = trimmedId !== '' && !idTaken
@@ -47,6 +53,21 @@ export default function OSPFAreaForm({ protocol, area, existingIds, onDone }: OS
     const ops = areaFormToOps(protocol, trimmedId, area, values)
     for (const op of ops) {
       add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    }
+    // An area's networks and ranges used to only be configurable
+    // AFTER the area already existed - the ChipList/RangesSection in
+    // OSPFAreaList.tsx only ever operate on an already-fetched area.
+    // Queuing a first one of each here, in the same commit as the
+    // area itself, avoids a detour through commit+refetch.
+    if (protocol === 'ospf' && firstNetwork.trim()) {
+      add({
+        op: { op: 'set', path: [...ospfAreaPath(protocol, trimmedId), 'network'], value: firstNetwork.trim() },
+        label: `set protocols ${protocol} area ${trimmedId} network '${firstNetwork.trim()}'`,
+      })
+    }
+    if (firstRangePrefix.trim()) {
+      const rangeOps = addAreaRangeOps(protocol, trimmedId, firstRangePrefix.trim(), {})
+      for (const op of rangeOps) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
     }
     onDone()
   }
@@ -160,6 +181,33 @@ export default function OSPFAreaForm({ protocol, area, existingIds, onDone }: OS
           </FieldLabel>
         )}
       </div>
+
+      {isCreate && (
+        <div className="mt-4 grid grid-cols-2 gap-3 border-t border-surface-border pt-3">
+          {protocol === 'ospf' && (
+            <label className={labelClass}>
+              First network (optional)
+              <input
+                {...noExtensionInputProps}
+                value={firstNetwork}
+                onChange={(e) => setFirstNetwork(e.target.value)}
+                placeholder="192.0.2.0/24"
+                className={`font-mono ${inputClass}`}
+              />
+            </label>
+          )}
+          <label className={labelClass}>
+            First range (optional)
+            <input
+              {...noExtensionInputProps}
+              value={firstRangePrefix}
+              onChange={(e) => setFirstRangePrefix(e.target.value)}
+              placeholder={protocol === 'ospfv3' ? '2001:db8::/32' : '192.0.2.0/24'}
+              className={`font-mono ${inputClass}`}
+            />
+          </label>
+        </div>
+      )}
 
       <div className="mt-4 flex items-center gap-2">
         <button onClick={submit} disabled={!canSubmit} className={`bg-accent-600 ${buttonClass}`}>
