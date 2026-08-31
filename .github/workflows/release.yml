@@ -69,15 +69,34 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # `type=semver` normally only produces output on a real tag-push
+      # event (it reads the version from the git ref that triggered
+      # the workflow) - this workflow triggers on push to `main`, and
+      # the tag semantic-release creates is pushed *within* the
+      # `release` job above, so this job's own `github.ref` is still
+      # `refs/heads/main`, never a tag ref. Without an explicit
+      # `value=`, all three `type=semver` rules below silently produce
+      # nothing, and only `latest` ever actually gets pushed - which
+      # is exactly what happened for every release before this fix
+      # (confirmed against the live GHCR package: no version-numbered
+      # tags existed at all). Passing `value=` (the documented
+      # workaround for non-tag-triggered semver tagging) fixes this.
+      # `flavor: latest=false` disables metadata-action's own
+      # "is this the highest semver" auto-latest heuristic, so tagging
+      # stays fully explicit and controlled only by the `type=raw`
+      # rule below - that heuristic is more fragile now that versions
+      # come from an explicit value instead of a real tag ref anyway.
       - name: Compute image metadata
         id: meta
         uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository }}
+          flavor: |
+            latest=false
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
+            type=semver,pattern={{version}},value=${{ needs.release.outputs.new_release_version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.release.outputs.new_release_version }}
+            type=semver,pattern={{major}},value=${{ needs.release.outputs.new_release_version }}
             type=raw,value=latest
 
       - name: Build and push
