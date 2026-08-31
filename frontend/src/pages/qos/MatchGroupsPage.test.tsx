@@ -79,6 +79,37 @@ describe('MatchGroupsPage', () => {
     })
   })
 
+  it('does not leak a previous group\'s first-match-rule draft into the next one', async () => {
+    // Regression test: firstMatchId/firstMatchDestAddress/
+    // firstMatchDestPort used to live in this long-lived list
+    // component and were never reset after a successful "Add group"
+    // - so creating a SECOND group right after would silently reuse
+    // the first group's leftover match-rule draft.
+    const user = userEvent.setup()
+    renderWithProviders(<MatchGroupsPage />)
+    await screen.findByText('WEB')
+
+    await user.click(screen.getByRole('button', { name: '+ Add group' }))
+    await user.type(screen.getByPlaceholderText('WEB'), 'VOIP')
+    await user.type(screen.getByPlaceholderText('match name'), 'sip')
+    await user.type(screen.getByPlaceholderText('destination address'), '203.0.113.5')
+    await user.type(screen.getByPlaceholderText('destination port'), '5060')
+    await user.click(screen.getByRole('button', { name: 'Add group' }))
+
+    usePendingChangesStore.setState({ changes: [] })
+
+    await user.click(screen.getByRole('button', { name: '+ Add group' }))
+    await user.type(screen.getByPlaceholderText('WEB'), 'DNS')
+    expect(screen.getByPlaceholderText('match name')).toHaveValue('')
+    expect(screen.getByPlaceholderText('destination address')).toHaveValue('')
+    expect(screen.getByPlaceholderText('destination port')).toHaveValue('')
+    await user.click(screen.getByRole('button', { name: 'Add group' }))
+
+    const { changes } = usePendingChangesStore.getState()
+    expect(changes).toHaveLength(1)
+    expect(changes[0].op).toEqual({ op: 'set', path: ['qos', 'traffic-match-group', 'DNS'] })
+  })
+
   it('deletes a match group', async () => {
     const user = userEvent.setup()
     renderWithProviders(<MatchGroupsPage />)

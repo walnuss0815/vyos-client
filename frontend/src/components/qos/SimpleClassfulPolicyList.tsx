@@ -76,6 +76,8 @@ export default function SimpleClassfulPolicyList({
     }
     setShowAdd(false)
     setEditing(trimmed)
+    setNewName('')
+    setFirstClassId('')
   }
 
   return (
@@ -87,6 +89,10 @@ export default function SimpleClassfulPolicyList({
             setShowAdd((v) => !v)
             setEditing(null)
             setNewName('')
+            // A previous, abandoned draft (first class ID) must not
+            // survive into the next "+ Add policy" click - see the
+            // regression test guarding this.
+            setFirstClassId('')
           }}
           className={`bg-accent-600 ${buttonClass}`}
         >

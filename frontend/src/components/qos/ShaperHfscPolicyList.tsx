@@ -84,6 +84,10 @@ export default function ShaperHfscPolicyList({
     }
     setShowAdd(false)
     setEditing(trimmed)
+    setNewName('')
+    setFirstClassId('')
+    setFirstClassLinkshareM2('')
+    setDefaultLinkshareM2('')
   }
 
   return (
@@ -98,6 +102,12 @@ export default function ShaperHfscPolicyList({
             setShowAdd((v) => !v)
             setEditing(null)
             setNewName('')
+            // A previous, abandoned draft (first class/default class
+            // fields) must not survive into the next "+ Add policy"
+            // click - see the regression test guarding this.
+            setFirstClassId('')
+            setFirstClassLinkshareM2('')
+            setDefaultLinkshareM2('')
           }}
           className={`bg-accent-600 ${buttonClass}`}
         >

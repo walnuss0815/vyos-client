@@ -84,6 +84,12 @@ export default function ShaperPolicyList({
     }
     setShowAdd(false)
     setEditing(trimmed)
+    setNewName('')
+    setFirstClassId('')
+    setFirstClassBandwidth('')
+    setFirstClassCeiling('')
+    setDefaultBandwidth('')
+    setDefaultCeiling('')
   }
 
   return (
@@ -95,6 +101,14 @@ export default function ShaperPolicyList({
             setShowAdd((v) => !v)
             setEditing(null)
             setNewName('')
+            // A previous, abandoned draft (first class/default class
+            // fields) must not survive into the next "+ Add policy"
+            // click - see the regression test guarding this.
+            setFirstClassId('')
+            setFirstClassBandwidth('')
+            setFirstClassCeiling('')
+            setDefaultBandwidth('')
+            setDefaultCeiling('')
           }}
           className={`bg-accent-600 ${buttonClass}`}
         >
