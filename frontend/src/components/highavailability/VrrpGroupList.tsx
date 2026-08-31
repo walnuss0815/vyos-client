@@ -142,6 +142,9 @@ function VrrpGroupFormPanel({ name, group, onDone }: { name: string; group?: VRR
   const [values, setValues] = useState<VRRPGroupFormValues>(
     group ? vrrpGroupToFormValues(group) : blankVRRPGroupFormValues(),
   )
+  const isCreate = group === undefined
+  const [firstAddress, setFirstAddress] = useState('')
+  const [firstAddressInterface, setFirstAddressInterface] = useState('')
 
   function update<K extends keyof VRRPGroupFormValues>(key: K, value: VRRPGroupFormValues[K]) {
     setValues((v) => ({ ...v, [key]: value }))
@@ -150,6 +153,15 @@ function VrrpGroupFormPanel({ name, group, onDone }: { name: string; group?: VRR
   function submit() {
     const ops = vrrpGroupFormToOps(name, group, values)
     for (const op of ops) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    // A group's virtual addresses used to only be configurable AFTER
+    // the group already existed - VrrpAddressesSection only ever
+    // operates on an already-fetched group. Queuing a first one here,
+    // in the same commit as the group itself, avoids a detour
+    // through commit+refetch.
+    if (isCreate && firstAddress.trim()) {
+      const addressOps = addVRRPGroupAddressOps(name, 'address', firstAddress.trim(), firstAddressInterface.trim())
+      for (const op of addressOps) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    }
     onDone()
   }
 
@@ -360,6 +372,28 @@ function VrrpGroupFormPanel({ name, group, onDone }: { name: string; group?: VRR
           />
         </div>
       </div>
+
+      {isCreate && (
+        <div className="mb-3 border-t border-surface-border pt-3">
+          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">First virtual address (optional)</p>
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              {...noExtensionInputProps}
+              value={firstAddress}
+              onChange={(e) => setFirstAddress(e.target.value)}
+              placeholder="192.0.2.254/24"
+              className={`font-mono ${inputClass}`}
+            />
+            <input
+              {...noExtensionInputProps}
+              value={firstAddressInterface}
+              onChange={(e) => setFirstAddressInterface(e.target.value)}
+              placeholder="assign to a different interface (optional)"
+              className={`font-mono ${inputClass}`}
+            />
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center gap-2">
         <button onClick={submit} className={`bg-accent-600 ${buttonClass}`}>
