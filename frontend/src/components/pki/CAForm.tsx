@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { blankCAFormValues, caFormToOps, caToFormValues, type PKICAFormValues } from '../../lib/pkiCAForm'
+import { pkiCAPath } from '../../lib/pkiParse'
 import type { PKICertificateAuthority } from '../../lib/pkiTypes'
 import { buttonClass, inputClass, labelClass } from '../../lib/formStyles'
 import { noExtensionInputProps } from '../../lib/inputProtection'
@@ -19,6 +20,7 @@ interface CAFormProps {
 export default function CAForm({ ca, existingNames, onDone }: CAFormProps) {
   const [name, setName] = useState(ca?.name ?? '')
   const [values, setValues] = useState<PKICAFormValues>(ca ? caToFormValues(ca) : blankCAFormValues())
+  const [firstCrl, setFirstCrl] = useState('')
   const add = usePendingChangesStore((s) => s.add)
 
   const isCreate = ca === undefined
@@ -35,6 +37,17 @@ export default function CAForm({ ca, existingNames, onDone }: CAFormProps) {
     const ops = caFormToOps(trimmedName, ca, values)
     for (const op of ops) {
       add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    }
+    // A CA's CRLs used to only be addable AFTER the CA already
+    // existed - CAList.tsx's ChipList only ever operates on an
+    // already-fetched CA. Queuing a first one here, in the same
+    // commit as the CA itself, avoids a detour through
+    // commit+refetch.
+    if (isCreate && firstCrl.trim()) {
+      add({
+        op: { op: 'set', path: [...pkiCAPath(trimmedName), 'crl'], value: firstCrl.trim() },
+        label: `set pki ca ${trimmedName} crl '${firstCrl.trim()}'`,
+      })
     }
     onDone()
   }
@@ -121,6 +134,19 @@ export default function CAForm({ ca, existingNames, onDone }: CAFormProps) {
           <InfoTooltip text="Marks this CA as revoked in VyOS's own PKI store - a local record, not something that publishes a revocation to relying parties elsewhere." />
         </label>
       </div>
+
+      {isCreate && (
+        <label className={`${labelClass} mt-3`}>
+          First CRL (optional, PEM, single line)
+          <textarea
+            value={firstCrl}
+            onChange={(e) => setFirstCrl(e.target.value)}
+            placeholder="MIIC... (PEM, single line)"
+            rows={2}
+            className={textareaClass}
+          />
+        </label>
+      )}
 
       <div className="mt-4 flex items-center gap-2">
         <button onClick={submit} disabled={!canSubmit} className={`bg-accent-600 ${buttonClass}`}>
