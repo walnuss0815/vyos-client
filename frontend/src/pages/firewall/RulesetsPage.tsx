@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { rulesetPath } from '../../lib/firewallParse'
+import { blankRuleFormValues, ruleFormToOps } from '../../lib/firewallRuleForm'
+import type { RuleAction } from '../../lib/firewallTypes'
 import { noExtensionInputProps } from '../../lib/inputProtection'
 import { useFirewallConfig } from '../../hooks/useFirewallConfig'
 import { usePendingChangesStore } from '../../store/pendingChanges'
@@ -78,6 +80,9 @@ function CreateRulesetForm({ onDone }: { onDone: () => void }) {
   const [name, setName] = useState('')
   const [family, setFamily] = useState<'ipv4' | 'ipv6'>('ipv4')
   const [description, setDescription] = useState('')
+  const [firstRuleAction, setFirstRuleAction] = useState<RuleAction | ''>('')
+  const [firstRuleProtocol, setFirstRuleProtocol] = useState('')
+  const [firstRuleDescription, setFirstRuleDescription] = useState('')
   const add = usePendingChangesStore((s) => s.add)
 
   const valid = isValidVyOSIdentifier(name)
@@ -94,6 +99,28 @@ function CreateRulesetForm({ onDone }: { onDone: () => void }) {
         op: { op: 'set', path: rulesetPath(ref, 'description'), value: description.trim() },
         label: `set firewall ${family} name ${name} description '${description.trim()}'`,
       })
+    }
+    // A ruleset commits fine with zero rules (falls through to the
+    // default action above), so this isn't a VyOS deadlock the way
+    // e.g. a DHCP subnet's range is - but RuleForm.tsx (the normal way
+    // to add a rule) only ever operates on an already-fetched
+    // ruleset, so without this a brand new ruleset would need a
+    // round-trip through commit+refetch before its very first rule
+    // could be added. Queuing a simple first rule here (VyOS's own
+    // "start at 10, increment by 10" numbering convention) avoids
+    // that detour - further rules, and refining this one with the
+    // full RuleForm's match/interface/logging options, both work the
+    // normal way once the ruleset exists.
+    if (firstRuleAction) {
+      const ruleOps = ruleFormToOps(ref, '10', undefined, {
+        ...blankRuleFormValues(),
+        action: firstRuleAction,
+        protocol: firstRuleProtocol,
+        description: firstRuleDescription,
+      })
+      for (const op of ruleOps) {
+        add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+      }
     }
     onDone()
   }
@@ -133,6 +160,49 @@ function CreateRulesetForm({ onDone }: { onDone: () => void }) {
           />
         </label>
       </div>
+
+      <div className="mt-3 border-t border-surface-border pt-3">
+        <p className="mb-2 text-xs text-slate-500">
+          First rule (optional) - numbered 10, VyOS's own convention for leaving room to insert
+          rules before it later. Add more rules, or refine this one (matching by address/port/
+          interface/group, jump targets, logging), from the ruleset's own page once it exists.
+        </p>
+        <div className="grid grid-cols-3 gap-3">
+          <label className={labelClass}>
+            Action
+            <select
+              value={firstRuleAction}
+              onChange={(e) => setFirstRuleAction(e.target.value as RuleAction | '')}
+              className={inputClass}
+            >
+              <option value="">None (skip this rule)</option>
+              <option value="accept">accept</option>
+              <option value="drop">drop</option>
+              <option value="reject">reject</option>
+            </select>
+          </label>
+          <label className={labelClass}>
+            Protocol (optional)
+            <input
+              {...noExtensionInputProps}
+              value={firstRuleProtocol}
+              onChange={(e) => setFirstRuleProtocol(e.target.value)}
+              placeholder="tcp"
+              className={inputClass}
+            />
+          </label>
+          <label className={labelClass}>
+            Description (optional)
+            <input
+              {...noExtensionInputProps}
+              value={firstRuleDescription}
+              onChange={(e) => setFirstRuleDescription(e.target.value)}
+              className={inputClass}
+            />
+          </label>
+        </div>
+      </div>
+
       <button onClick={submit} disabled={!valid} className={`mt-3 bg-accent-600 ${buttonClass}`}>
         Queue ruleset creation
       </button>
