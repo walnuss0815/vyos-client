@@ -8,9 +8,9 @@ import { usePendingChangesStore } from '../store/pendingChanges'
  * Generic add/remove UI for any VyOS tagNode-keyed id+value pair list
  * (`<tag> <id> value <value>`) - e.g. container `environment`/`label`
  * entries, or a container's `sysctl parameter`. Mirrors ChipList.tsx's
- * "build ops inline, queue immediately" convention for simple
- * multi-entry leaves, extended to two fields (an id and a value)
- * instead of one.
+ * "build ops inline, queue immediately by default" convention for
+ * simple multi-entry leaves, extended to two fields (an id and a
+ * value) instead of one.
  */
 export default function KeyValuePairList({
   items,
@@ -18,6 +18,8 @@ export default function KeyValuePairList({
   pathLabel,
   idPlaceholder,
   valuePlaceholder,
+  onAdd,
+  onRemove,
 }: {
   items: { id: string; value: string }[]
   /** Path up to and including the tagNode name itself, e.g.
@@ -28,6 +30,15 @@ export default function KeyValuePairList({
   pathLabel: string
   idPlaceholder?: string
   valuePlaceholder?: string
+  /** Overrides what "Add" does, in place of the default "immediately
+   * queue a real `set` op" - see ChipList.tsx's onAdd doc comment for
+   * why (buffering a not-yet-created parent's nested entries locally
+   * until its own submit, so an abandoned creation never leaves an
+   * orphaned queued op behind). `items` must then be whatever local
+   * state `onAdd`/`onRemove` write to. */
+  onAdd?: (id: string, value: string) => void
+  /** The mirror of onAdd, for Remove. */
+  onRemove?: (id: string) => void
 }) {
   const [newId, setNewId] = useState('')
   const [newValue, setNewValue] = useState('')
@@ -39,13 +50,21 @@ export default function KeyValuePairList({
 
   function queueAdd() {
     if (!valid) return
-    const op: ConfigOp = { op: 'set', path: [...basePath, trimmedId, 'value'], value: newValue.trim() }
-    add({ op, label: `set ${pathLabel} ${trimmedId} value '${newValue.trim()}'` })
+    if (onAdd) {
+      onAdd(trimmedId, newValue.trim())
+    } else {
+      const op: ConfigOp = { op: 'set', path: [...basePath, trimmedId, 'value'], value: newValue.trim() }
+      add({ op, label: `set ${pathLabel} ${trimmedId} value '${newValue.trim()}'` })
+    }
     setNewId('')
     setNewValue('')
   }
 
   function queueRemove(id: string) {
+    if (onRemove) {
+      onRemove(id)
+      return
+    }
     const op: ConfigOp = { op: 'delete', path: [...basePath, id] }
     add({ op, label: `delete ${pathLabel} ${id}` })
   }

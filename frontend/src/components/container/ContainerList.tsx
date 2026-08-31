@@ -54,6 +54,7 @@ export default function ContainerList({
         <div className="mb-3">
           <ContainerForm
             existingNames={containers.map((c) => c.name)}
+            networks={networks}
             onDone={() => setShowCreate(false)}
           />
         </div>
@@ -64,6 +65,7 @@ export default function ContainerList({
           <ContainerForm
             container={editing}
             existingNames={containers.map((c) => c.name)}
+            networks={networks}
             onDone={() => setEditingName(null)}
           />
         </div>

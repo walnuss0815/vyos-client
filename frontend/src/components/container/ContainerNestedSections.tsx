@@ -49,26 +49,30 @@ export default function ContainerNestedSections({
       </Section>
 
       <Section title="Network attachments">
-        <ContainerNetworkAttachmentsSection container={container} networks={networks} />
+        <ContainerNetworkAttachmentsSection
+          containerName={container.name}
+          attachments={container.networks}
+          networks={networks}
+        />
       </Section>
 
       <Section title="Port mappings">
-        <ContainerPortsSection container={container} />
+        <ContainerPortsSection containerName={container.name} ports={container.ports} />
       </Section>
 
       <Section title="Volume mounts">
-        <ContainerVolumesSection container={container} />
+        <ContainerVolumesSection containerName={container.name} volumes={container.volumes} />
       </Section>
 
       <Section
         title="tmpfs mounts"
         hint="A directory backed by RAM instead of disk inside the container - fast, but its contents are lost whenever the container restarts."
       >
-        <ContainerTmpfsSection container={container} />
+        <ContainerTmpfsSection containerName={container.name} tmpfs={container.tmpfs} />
       </Section>
 
       <Section title="Devices">
-        <ContainerDevicesSection container={container} />
+        <ContainerDevicesSection containerName={container.name} devices={container.devices} />
       </Section>
 
       <Section title="Environment variables">
@@ -105,7 +109,7 @@ export default function ContainerNestedSections({
       </Section>
 
       <Section title="Health check">
-        <ContainerHealthCheckSection container={container} />
+        <ContainerHealthCheckSection containerName={container.name} healthCheck={container.healthCheck} />
       </Section>
     </div>
   )

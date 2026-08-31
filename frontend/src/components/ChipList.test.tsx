@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { usePendingChangesStore } from '../store/pendingChanges'
 import ChipList from './ChipList'
 
@@ -80,5 +80,63 @@ describe('ChipList', () => {
     await user.type(input, '0')
     expect(screen.getByRole('button', { name: 'Add' })).not.toBeDisabled()
     expect(screen.queryByText(/already added/i)).not.toBeInTheDocument()
+  })
+
+  // Regression coverage for the container-create-time feature: onAdd/
+  // onRemove let a caller manage a not-yet-created parent's nested
+  // values as local draft state instead of immediately queuing a real
+  // pending change - see ContainerCreateNestedSections.tsx.
+  describe('with onAdd/onRemove overrides', () => {
+    it('calls onAdd with the trimmed value instead of queuing a pending change', async () => {
+      const user = userEvent.setup()
+      const onAdd = vi.fn()
+      render(
+        <ChipList values={[]} basePath={basePath} leaf="name-server" pathLabel={pathLabel} onAdd={onAdd} />,
+      )
+
+      await user.type(screen.getByRole('textbox'), '  1.1.1.1  ')
+      await user.click(screen.getByRole('button', { name: 'Add' }))
+
+      expect(onAdd).toHaveBeenCalledExactlyOnceWith('1.1.1.1')
+      expect(usePendingChangesStore.getState().changes).toHaveLength(0)
+    })
+
+    it('calls onRemove with the value instead of queuing a pending change', async () => {
+      const user = userEvent.setup()
+      const onRemove = vi.fn()
+      render(
+        <ChipList
+          values={['1.1.1.1']}
+          basePath={basePath}
+          leaf="name-server"
+          pathLabel={pathLabel}
+          onRemove={onRemove}
+        />,
+      )
+
+      await user.click(screen.getByLabelText('Remove 1.1.1.1'))
+
+      expect(onRemove).toHaveBeenCalledExactlyOnceWith('1.1.1.1')
+      expect(usePendingChangesStore.getState().changes).toHaveLength(0)
+    })
+
+    it('still duplicate-checks and clears the input against whatever values is set to', async () => {
+      const user = userEvent.setup()
+      const onAdd = vi.fn()
+      render(
+        <ChipList values={['1.1.1.1']} basePath={basePath} leaf="name-server" pathLabel={pathLabel} onAdd={onAdd} />,
+      )
+
+      const input = screen.getByRole('textbox')
+      await user.type(input, '1.1.1.1')
+      expect(screen.getByRole('button', { name: 'Add' })).toBeDisabled()
+
+      await user.clear(input)
+      await user.type(input, '8.8.8.8')
+      await user.click(screen.getByRole('button', { name: 'Add' }))
+
+      expect(onAdd).toHaveBeenCalledExactlyOnceWith('8.8.8.8')
+      expect(input).toHaveValue('')
+    })
   })
 })
