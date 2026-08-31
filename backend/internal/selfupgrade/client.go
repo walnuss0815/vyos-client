@@ -29,6 +29,13 @@ const defaultBaseURL = "https://api.github.com"
 const (
 	defaultTimeout  = 10 * time.Second
 	defaultCacheTTL = 30 * time.Minute
+	// defaultNegativeCacheTTL bounds how often a failed fetch is
+	// retried - deliberately much shorter than defaultCacheTTL, but
+	// still long enough to avoid repeatedly hammering GitHub's API
+	// while it's down or (more likely) this Client's own source IP is
+	// already rate-limited, which would otherwise only prolong that
+	// limit.
+	defaultNegativeCacheTTL = 2 * time.Minute
 )
 
 // Config configures a Client.
@@ -52,19 +59,27 @@ type Config struct {
 	// 30 minutes - see ListReleases's own doc comment for why this
 	// matters.
 	CacheTTL time.Duration
+	// NegativeCacheTTL bounds how often a failed fetch is retried when
+	// there's no previous successful result to fall back to serving.
+	// Defaults to 2 minutes. Only for tests - production has no
+	// reason to override this.
+	NegativeCacheTTL time.Duration
 }
 
 // Client fetches this app's own GitHub releases. See the package doc
 // comment for when this is constructed at all.
 type Client struct {
-	repo       string
-	baseURL    string
-	httpClient *http.Client
-	cacheTTL   time.Duration
+	repo             string
+	baseURL          string
+	httpClient       *http.Client
+	cacheTTL         time.Duration
+	negativeCacheTTL time.Duration
 
-	mu       sync.Mutex
-	cached   []Release
-	cachedAt time.Time
+	mu        sync.Mutex
+	cached    []Release
+	cachedAt  time.Time
+	lastErr   error
+	lastErrAt time.Time
 }
 
 // New constructs a Client from cfg.
@@ -86,6 +101,10 @@ func New(cfg Config) (*Client, error) {
 	if cacheTTL == 0 {
 		cacheTTL = defaultCacheTTL
 	}
+	negativeCacheTTL := cfg.NegativeCacheTTL
+	if negativeCacheTTL == 0 {
+		negativeCacheTTL = defaultNegativeCacheTTL
+	}
 
 	baseURL := cfg.BaseURL
 	if baseURL == "" {
@@ -93,10 +112,11 @@ func New(cfg Config) (*Client, error) {
 	}
 
 	return &Client{
-		repo:       cfg.Repo,
-		baseURL:    strings.TrimRight(baseURL, "/"),
-		httpClient: httpClient,
-		cacheTTL:   cacheTTL,
+		repo:             cfg.Repo,
+		baseURL:          strings.TrimRight(baseURL, "/"),
+		httpClient:       httpClient,
+		cacheTTL:         cacheTTL,
+		negativeCacheTTL: negativeCacheTTL,
 	}, nil
 }
 
@@ -137,6 +157,20 @@ type Release struct {
 // like this one (GitHub itself filters them out), but prereleases are
 // still returned by the API and are explicitly excluded here - a
 // self-upgrade should only ever offer stable releases.
+//
+// Failures are handled in two ways, both aimed at not compounding a
+// GitHub-side problem (an outage, or - far more likely - this
+// Client's own source IP already being rate-limited) into a worse one
+// for the operator:
+//   - If a previous successful result exists at all, even one older
+//     than CacheTTL, a failed refresh falls back to serving that
+//     stale result rather than erroring - "tell the operator what we
+//     last knew" beats "tell the operator nothing" when GitHub is
+//     temporarily unreachable.
+//   - If there's no previous result to fall back to, the failure
+//     itself is cached for a short negativeCacheTTL, so repeated page
+//     loads during an outage/rate-limit don't each retry immediately
+//     and prolong it further.
 func (c *Client) ListReleases(ctx context.Context) ([]Release, error) {
 	c.mu.Lock()
 	if !c.cachedAt.IsZero() && time.Since(c.cachedAt) < c.cacheTTL {
@@ -144,17 +178,30 @@ func (c *Client) ListReleases(ctx context.Context) ([]Release, error) {
 		c.mu.Unlock()
 		return cached, nil
 	}
+	hasStaleCache := !c.cachedAt.IsZero()
+	if !hasStaleCache && !c.lastErrAt.IsZero() && time.Since(c.lastErrAt) < c.negativeCacheTTL {
+		err := c.lastErr
+		c.mu.Unlock()
+		return nil, err
+	}
 	c.mu.Unlock()
 
 	releases, err := c.fetchReleases(ctx)
-	if err != nil {
-		return nil, err
-	}
 
 	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err != nil {
+		c.lastErr = err
+		c.lastErrAt = time.Now()
+		if hasStaleCache {
+			return c.cached, nil
+		}
+		return nil, err
+	}
+	c.lastErr = nil
+	c.lastErrAt = time.Time{}
 	c.cached = releases
 	c.cachedAt = time.Now()
-	c.mu.Unlock()
 	return releases, nil
 }
 
