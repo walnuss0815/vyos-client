@@ -78,6 +78,29 @@ describe('VrrpPage', () => {
     )
   })
 
+  it('also queues a first virtual address when creating a group with its optional fields filled in', async () => {
+    // Regression test: a group's virtual addresses used to only be
+    // configurable AFTER the group already existed -
+    // VrrpAddressesSection only ever operates on an already-fetched
+    // group.
+    const user = userEvent.setup()
+    renderWithProviders(<VrrpPage />)
+    await screen.findByText('OUTSIDE')
+
+    await user.click(screen.getByRole('button', { name: '+ Add group' }))
+    await user.type(screen.getByPlaceholderText('OUTSIDE'), 'INSIDE')
+    await user.type(screen.getByPlaceholderText('eth0'), 'eth1')
+    await user.type(screen.getByPlaceholderText('192.0.2.254/24'), '198.51.100.254/24')
+    await user.click(screen.getByRole('button', { name: 'Add group' }))
+
+    const { changes } = usePendingChangesStore.getState()
+    const ops = changes.map((c) => c.op)
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['high-availability', 'vrrp', 'group', 'INSIDE', 'address', '198.51.100.254/24'],
+    })
+  })
+
   it('deletes a group', async () => {
     const user = userEvent.setup()
     renderWithProviders(<VrrpPage />)
