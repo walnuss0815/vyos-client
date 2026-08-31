@@ -178,6 +178,10 @@ function HaproxyServiceFormPanel({
     service ? haproxyServiceToFormValues(service) : blankHAProxyServiceFormValues(),
   )
   const [selectedBackends, setSelectedBackends] = useState<string[]>(service?.backends ?? [])
+  const isCreate = service === undefined
+  const [firstListenAddress, setFirstListenAddress] = useState('')
+  const [firstRuleDomainNames, setFirstRuleDomainNames] = useState('')
+  const [firstRuleSetBackend, setFirstRuleSetBackend] = useState('')
 
   function update<K extends keyof HAProxyServiceFormValues>(key: K, value: HAProxyServiceFormValues[K]) {
     setValues((v) => ({ ...v, [key]: value }))
@@ -197,6 +201,30 @@ function HaproxyServiceFormPanel({
     for (const b of after) if (!before.has(b)) ops.push({ op: 'set', path: [...base, 'backend'], value: b })
     for (const b of before) if (!after.has(b)) ops.push({ op: 'delete', path: [...base, 'backend'], value: b })
     for (const op of ops) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    // A service's listen addresses and routing rules used to only be
+    // addable AFTER the service already existed -
+    // HaproxyListenAddressesSection/HaproxyServiceRulesSection only
+    // ever operate on an already-fetched service. Queuing a first one
+    // of each here, in the same commit as the service itself, avoids
+    // a detour through commit+refetch.
+    if (isCreate && firstListenAddress.trim()) {
+      const listenOps = addHAProxyListenAddressOps(name, firstListenAddress.trim(), false)
+      for (const op of listenOps) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    }
+    if (isCreate && (firstRuleDomainNames.trim() || firstRuleSetBackend.trim())) {
+      const ruleOps = addHAProxyServiceRuleOps(name, '1', {
+        domainNames: firstRuleDomainNames,
+        wildcardDomain: false,
+        ssl: '',
+        urlPathBegin: '',
+        urlPathEnd: '',
+        urlPathExact: '',
+        setRedirectLocation: '',
+        setBackend: firstRuleSetBackend,
+        setServer: '',
+      })
+      for (const op of ruleOps) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    }
     onDone()
   }
 
@@ -312,6 +340,43 @@ function HaproxyServiceFormPanel({
           />
         </FieldLabel>
       </div>
+
+      {isCreate && (
+        <div className="mb-3 grid grid-cols-1 gap-3 border-t border-surface-border pt-3 sm:grid-cols-2">
+          <label className={labelClass}>
+            First listen address (optional)
+            <input
+              {...noExtensionInputProps}
+              value={firstListenAddress}
+              onChange={(e) => setFirstListenAddress(e.target.value)}
+              placeholder="0.0.0.0 or ::"
+              className={`font-mono ${inputClass}`}
+            />
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <label className={labelClass}>
+              First rule: domain names (optional)
+              <input
+                {...noExtensionInputProps}
+                value={firstRuleDomainNames}
+                onChange={(e) => setFirstRuleDomainNames(e.target.value)}
+                placeholder="example.com"
+                className={inputClass}
+              />
+            </label>
+            <label className={labelClass}>
+              First rule: route to backend
+              <input
+                {...noExtensionInputProps}
+                value={firstRuleSetBackend}
+                onChange={(e) => setFirstRuleSetBackend(e.target.value)}
+                placeholder="backend name"
+                className={`font-mono ${inputClass}`}
+              />
+            </label>
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center gap-2">
         <button onClick={submit} className={`bg-accent-600 ${buttonClass}`}>

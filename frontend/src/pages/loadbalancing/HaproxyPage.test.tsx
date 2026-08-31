@@ -100,6 +100,72 @@ describe('HaproxyPage', () => {
     })
   })
 
+  it('also queues a first routing rule for a new backend when its optional fields are filled in', async () => {
+    // Regression test: a backend's routing rules used to only be
+    // addable AFTER the backend already existed -
+    // HaproxyBackendRulesSection only ever operates on an
+    // already-fetched backend.
+    const user = userEvent.setup()
+    renderWithProviders(<HaproxyPage />)
+    await screen.findByText('app-servers')
+
+    await user.click(screen.getByRole('button', { name: '+ Add backend' }))
+    await user.type(screen.getByPlaceholderText('app-servers'), 'db-servers')
+    await user.type(screen.getByPlaceholderText('example.com'), 'db.example.com')
+    await user.type(screen.getByPlaceholderText('route to server name'), 'db1')
+    await user.click(screen.getByRole('button', { name: 'Add backend' }))
+
+    const { changes } = usePendingChangesStore.getState()
+    const ops = changes.map((c) => c.op)
+    expect(ops).toContainEqual({ op: 'set', path: ['load-balancing', 'haproxy', 'backend', 'db-servers', 'rule', '1'] })
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['load-balancing', 'haproxy', 'backend', 'db-servers', 'rule', '1', 'domain-name'],
+      value: 'db.example.com',
+    })
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['load-balancing', 'haproxy', 'backend', 'db-servers', 'rule', '1', 'set', 'server'],
+      value: 'db1',
+    })
+  })
+
+  it('adds a new service with a first listen address and a first rule', async () => {
+    // Regression test: a service's listen addresses and routing rules
+    // used to only be addable AFTER the service already existed -
+    // HaproxyListenAddressesSection/HaproxyServiceRulesSection only
+    // ever operate on an already-fetched service.
+    const user = userEvent.setup()
+    renderWithProviders(<HaproxyPage />)
+    await screen.findByText('web')
+
+    await user.click(screen.getByRole('button', { name: '+ Add service' }))
+    await user.type(screen.getByPlaceholderText('web'), 'api')
+    await user.type(screen.getByPlaceholderText('0.0.0.0 or ::'), '203.0.113.10')
+    await user.type(screen.getByPlaceholderText('example.com'), 'api.example.com')
+    await user.type(screen.getByPlaceholderText('backend name'), 'app-servers')
+    await user.click(screen.getByRole('button', { name: 'Add service' }))
+
+    const { changes } = usePendingChangesStore.getState()
+    const ops = changes.map((c) => c.op)
+    expect(ops).toContainEqual({ op: 'set', path: ['load-balancing', 'haproxy', 'service', 'api'] })
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['load-balancing', 'haproxy', 'service', 'api', 'listen-address', '203.0.113.10'],
+    })
+    expect(ops).toContainEqual({ op: 'set', path: ['load-balancing', 'haproxy', 'service', 'api', 'rule', '1'] })
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['load-balancing', 'haproxy', 'service', 'api', 'rule', '1', 'domain-name'],
+      value: 'api.example.com',
+    })
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['load-balancing', 'haproxy', 'service', 'api', 'rule', '1', 'set', 'backend'],
+      value: 'app-servers',
+    })
+  })
+
   it('deletes a service', async () => {
     const user = userEvent.setup()
     renderWithProviders(<HaproxyPage />)
