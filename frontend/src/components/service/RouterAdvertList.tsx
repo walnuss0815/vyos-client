@@ -132,6 +132,8 @@ function InterfaceForm({
   const [values, setValues] = useState<RouterAdvertInterfaceFormValues>(
     iface ? routerAdvertInterfaceToFormValues(iface) : blankRouterAdvertInterfaceFormValues(),
   )
+  const [firstPrefix, setFirstPrefix] = useState('')
+  const [firstRoutePrefix, setFirstRoutePrefix] = useState('')
   const add = usePendingChangesStore((s) => s.add)
 
   const isCreate = iface === undefined
@@ -148,6 +150,32 @@ function InterfaceForm({
     const ops = routerAdvertInterfaceFormToOps(trimmedName, iface, values)
     for (const op of ops) {
       add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    }
+    // An interface's prefixes and routes used to only be configurable
+    // AFTER RA was already enabled on it - PrefixesSection/
+    // RoutesSection only ever operate on an already-fetched
+    // interface. Queuing a first one of each here, in the same
+    // commit as enabling RA itself, avoids a detour through
+    // commit+refetch.
+    if (isCreate && firstPrefix.trim()) {
+      const prefixOps = addRouterAdvertPrefixOps(trimmedName, firstPrefix.trim(), {
+        noAutonomousFlag: false,
+        noOnLinkFlag: false,
+        deprecatePrefix: false,
+        decrementLifetime: false,
+        baseInterface: '',
+        preferredLifetime: '',
+        validLifetime: '',
+      })
+      for (const op of prefixOps) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    }
+    if (isCreate && firstRoutePrefix.trim()) {
+      const routeOps = addRouterAdvertRouteOps(trimmedName, firstRoutePrefix.trim(), {
+        validLifetime: '',
+        routePreference: '',
+        noRemoveRoute: false,
+      })
+      for (const op of routeOps) add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
     }
     onDone()
   }
@@ -238,6 +266,31 @@ function InterfaceForm({
           <InfoTooltip text="Leaves out the optional field stating how often advertisements are sent - some older/simpler clients don't expect it and can be confused by its presence." />
         </label>
       </div>
+
+      {isCreate && (
+        <div className="mt-3 grid grid-cols-2 gap-3 border-t border-surface-border pt-3">
+          <label className={labelClass}>
+            First prefix (optional)
+            <input
+              {...noExtensionInputProps}
+              value={firstPrefix}
+              onChange={(e) => setFirstPrefix(e.target.value)}
+              placeholder="2001:db8::/64"
+              className={`font-mono ${inputClass}`}
+            />
+          </label>
+          <label className={labelClass}>
+            First route (optional)
+            <input
+              {...noExtensionInputProps}
+              value={firstRoutePrefix}
+              onChange={(e) => setFirstRoutePrefix(e.target.value)}
+              placeholder="2001:db8:1::/64"
+              className={`font-mono ${inputClass}`}
+            />
+          </label>
+        </div>
+      )}
 
       <div className="mt-4 flex items-center gap-2">
         <button onClick={submit} disabled={!canSubmit} className={`bg-accent-600 ${buttonClass}`}>
