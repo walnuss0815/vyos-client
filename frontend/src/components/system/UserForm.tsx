@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import {
+  addPublicKeyOps,
   blankUserFormValues,
   userFormToOps,
   userToFormValues,
   type SystemUserFormValues,
 } from '../../lib/systemUserForm'
-import type { SystemUser } from '../../lib/systemTypes'
+import { SSH_KEY_TYPES, type SystemUser } from '../../lib/systemTypes'
 import { buttonClass, inputClass, labelClass } from '../../lib/formStyles'
 import { noExtensionInputProps } from '../../lib/inputProtection'
 import { usePendingChangesStore } from '../../store/pendingChanges'
@@ -24,6 +25,9 @@ export default function UserForm({ user, existingUsernames, onDone }: UserFormPr
   const [values, setValues] = useState<SystemUserFormValues>(
     user ? userToFormValues(user) : blankUserFormValues(),
   )
+  const [firstKeyIdentifier, setFirstKeyIdentifier] = useState('')
+  const [firstKeyData, setFirstKeyData] = useState('')
+  const [firstKeyType, setFirstKeyType] = useState('ssh-ed25519')
   const add = usePendingChangesStore((s) => s.add)
 
   const isCreate = user === undefined
@@ -40,6 +44,20 @@ export default function UserForm({ user, existingUsernames, onDone }: UserFormPr
     const ops = userFormToOps(trimmedUsername, user, values)
     for (const op of ops) {
       add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+    }
+    // SSH public keys used to only be addable AFTER a user already
+    // existed - UserList.tsx's PublicKeysSection only ever operates on
+    // an already-fetched user. Not a VyOS commit-blocking requirement
+    // (a password-only user commits fine), but a real convenience gap
+    // for the common case of wanting key-only auth from the start,
+    // without ever setting a password at all. Queuing it here, in the
+    // same commit as creation, avoids that detour.
+    const trimmedIdentifier = firstKeyIdentifier.trim()
+    if (isCreate && trimmedIdentifier && firstKeyData.trim()) {
+      const keyOps = addPublicKeyOps(trimmedUsername, trimmedIdentifier, firstKeyData.trim(), firstKeyType, '')
+      for (const op of keyOps) {
+        add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
+      }
     }
     onDone()
   }
@@ -95,6 +113,38 @@ export default function UserForm({ user, existingUsernames, onDone }: UserFormPr
           <InfoTooltip text="Locks out login for this user without deleting their account or configuration - re-enable it later to restore access exactly as it was." />
         </label>
       </div>
+
+      {isCreate && (
+        <div className="mt-3 border-t border-surface-border pt-3">
+          <p className="mb-2 flex items-center gap-1 text-xs text-slate-500">
+            First SSH public key (optional)
+            <InfoTooltip text="Lets this user log in by key from the very first commit, without ever setting a password - more keys can be added afterward from this user's own card. Type must match the key's algorithm and the data field takes only the base64 blob from a standard authorized_keys line (not the leading type or trailing comment)." />
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              {...noExtensionInputProps}
+              value={firstKeyIdentifier}
+              onChange={(e) => setFirstKeyIdentifier(e.target.value)}
+              placeholder="alice@laptop"
+              className={inputClass}
+            />
+            <select value={firstKeyType} onChange={(e) => setFirstKeyType(e.target.value)} className={inputClass}>
+              {SSH_KEY_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+          <textarea
+            value={firstKeyData}
+            onChange={(e) => setFirstKeyData(e.target.value)}
+            placeholder="AAAAB3NzaC1yc2EA... (base64 key data only, no type prefix or comment)"
+            rows={2}
+            className={`mt-2 w-full ${inputClass}`}
+          />
+        </div>
+      )}
 
       <div className="mt-4 flex items-center gap-2">
         <button onClick={submit} disabled={!canSubmit} className={`bg-accent-600 ${buttonClass}`}>
