@@ -248,6 +248,29 @@ describe('PoliciesPage', () => {
     })
   })
 
+  it('strips non-numeric characters from the shaper first-class and post-create class ID fields', async () => {
+    // Regression test: VyOS class IDs are always numeric, but neither
+    // field constrained input to digits - a stray character would
+    // only fail at commit time instead of being caught inline.
+    const user = userEvent.setup()
+    renderWithProviders(<PoliciesPage />)
+    await screen.findByText('WAN-OUT')
+
+    const shaperHeading = screen.getByText('Shaper (HTB)')
+    const shaperSection = shaperHeading.closest('.mb-8') as HTMLElement
+
+    await user.click(within(shaperSection).getByRole('button', { name: '+ Add policy' }))
+    await user.type(within(shaperSection).getByPlaceholderText('WAN-OUT'), 'LAN-OUT')
+    await user.type(within(shaperSection).getByPlaceholderText('class ID (2-4095)'), 'a1b2')
+    expect(within(shaperSection).getByPlaceholderText('class ID (2-4095)')).toHaveValue('12')
+    await user.click(within(shaperSection).getByRole('button', { name: 'Add policy' }))
+
+    await user.click(within(shaperSection).getByRole('button', { name: 'Manage' }))
+    await user.click(within(shaperSection).getByRole('button', { name: '+ Add class' }))
+    await user.type(within(shaperSection).getByPlaceholderText('class ID (2-4095)'), 'x9y8')
+    expect(within(shaperSection).getByPlaceholderText('class ID (2-4095)')).toHaveValue('98')
+  })
+
   it('does not leak a previous shaper policy\'s first-class/default-class draft into the next one', async () => {
     // Regression test: firstClassId/firstClassBandwidth/
     // firstClassCeiling/defaultBandwidth/defaultCeiling used to live

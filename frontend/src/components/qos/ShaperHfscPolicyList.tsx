@@ -135,7 +135,7 @@ export default function ShaperHfscPolicyList({
                   <input
                     {...noExtensionInputProps}
                     value={firstClassId}
-                    onChange={(e) => setFirstClassId(e.target.value)}
+                    onChange={(e) => setFirstClassId(e.target.value.replace(/[^0-9]/g, ''))}
                     placeholder="class ID (1-4095)"
                     className={inputClass}
                   />
@@ -314,7 +314,7 @@ function HfscClassList({ policy, availableMatchGroups }: { policy: QosShaperHfsc
           <input
             {...noExtensionInputProps}
             value={newId}
-            onChange={(e) => setNewId(e.target.value)}
+            onChange={(e) => setNewId(e.target.value.replace(/[^0-9]/g, ''))}
             placeholder="class ID (1-4095)"
             className={inputClass}
           />

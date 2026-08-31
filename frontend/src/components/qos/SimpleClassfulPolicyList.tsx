@@ -118,7 +118,7 @@ export default function SimpleClassfulPolicyList({
                 <input
                   {...noExtensionInputProps}
                   value={firstClassId}
-                  onChange={(e) => setFirstClassId(e.target.value)}
+                  onChange={(e) => setFirstClassId(e.target.value.replace(/[^0-9]/g, ''))}
                   placeholder={classIdHint}
                   className={inputClass}
                 />
@@ -211,7 +211,7 @@ function ClassList({
           <input
             {...noExtensionInputProps}
             value={newId}
-            onChange={(e) => setNewId(e.target.value)}
+            onChange={(e) => setNewId(e.target.value.replace(/[^0-9]/g, ''))}
             placeholder={classIdHint}
             className={inputClass}
           />

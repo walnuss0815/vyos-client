@@ -83,6 +83,21 @@ describe('IpsecSiteToSitePage', () => {
     })
   })
 
+  it('strips non-numeric characters from the first-tunnel and post-create tunnel # fields', async () => {
+    // Regression test: VyOS tunnel IDs are always numeric, but neither
+    // field constrained input to digits - a stray character would
+    // only fail at commit time instead of being caught inline.
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: {} })))
+    const user = userEvent.setup()
+    renderWithProviders(<IpsecSiteToSitePage />)
+    await screen.findByRole('button', { name: /\+ new peer/i })
+
+    await user.click(screen.getByRole('button', { name: /\+ new peer/i }))
+    await user.type(screen.getByLabelText(/^name/i), 'peer-1')
+    await user.type(screen.getByLabelText(/tunnel #/i), 'a1b2')
+    expect(screen.getByLabelText(/tunnel #/i)).toHaveValue('12')
+  })
+
   it('shows peer details and adds a tunnel', async () => {
     const vpn = { ipsec: { 'site-to-site': { peer: { 'peer-1': { 'remote-address': ['203.0.113.1'] } } } } }
     server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: vpn })))
@@ -102,6 +117,21 @@ describe('IpsecSiteToSitePage', () => {
       op: 'set',
       path: ['vpn', 'ipsec', 'site-to-site', 'peer', 'peer-1', 'tunnel', '0'],
     })
+  })
+
+  it('strips non-numeric characters from the post-create "+ Add tunnel" field', async () => {
+    const vpn = { ipsec: { 'site-to-site': { peer: { 'peer-1': { 'remote-address': ['203.0.113.1'] } } } } }
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: vpn })))
+    const user = userEvent.setup()
+    renderWithProviders(<IpsecSiteToSitePage />)
+
+    expect(await screen.findByText('peer-1')).toBeInTheDocument()
+    const card = screen.getByText('peer-1').closest('div.rounded-xl')
+    if (!card) throw new Error('peer card not found')
+    await user.click(within(card as HTMLElement).getByRole('button', { name: /details/i }))
+    await user.click(within(card as HTMLElement).getByRole('button', { name: /\+ add tunnel/i }))
+    await user.type(within(card as HTMLElement).getByPlaceholderText('tunnel #'), 'a1b2')
+    expect(within(card as HTMLElement).getByPlaceholderText('tunnel #')).toHaveValue('12')
   })
 
   it('deletes a peer', async () => {

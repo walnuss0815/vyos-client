@@ -136,7 +136,7 @@ export default function ShaperPolicyList({
                   <input
                     {...noExtensionInputProps}
                     value={firstClassId}
-                    onChange={(e) => setFirstClassId(e.target.value)}
+                    onChange={(e) => setFirstClassId(e.target.value.replace(/[^0-9]/g, ''))}
                     placeholder="class ID (2-4095)"
                     className={inputClass}
                   />
@@ -289,7 +289,7 @@ function ShaperClassList({ policy, availableMatchGroups }: { policy: QosShaperPo
           <input
             {...noExtensionInputProps}
             value={newId}
-            onChange={(e) => setNewId(e.target.value)}
+            onChange={(e) => setNewId(e.target.value.replace(/[^0-9]/g, ''))}
             placeholder="class ID (2-4095)"
             className={inputClass}
           />
