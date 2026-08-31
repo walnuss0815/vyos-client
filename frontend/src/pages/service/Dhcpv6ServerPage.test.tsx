@@ -73,6 +73,47 @@ describe('Dhcpv6ServerPage', () => {
     })
   })
 
+  // Regression test: a DHCPv6 shared network's own subnet (and that
+  // subnet's own range) used to only be addable AFTER the network
+  // already existed - see Dhcpv6ServerSettings.tsx's SharedNetworkForm,
+  // mirroring dhcp/NetworksPage.tsx's CreateNetworkForm for the
+  // DHCPv4 sibling feature.
+  it('creates a new shared network with a first subnet and range, all in one commit', async () => {
+    server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: { 'dhcpv6-server': {} } })))
+    const user = userEvent.setup()
+    renderWithProviders(<Dhcpv6ServerPage />)
+    await screen.findByRole('button', { name: /\+ new shared network/i })
+
+    await user.click(screen.getByRole('button', { name: /\+ new shared network/i }))
+    await user.type(screen.getByLabelText(/^name/i), 'LAN')
+    await user.type(screen.getByLabelText(/first subnet cidr/i), '2001:db8::/64')
+    await user.type(screen.getByLabelText(/first subnet id/i), '1')
+    await user.type(screen.getByLabelText(/first range start/i), '2001:db8::100')
+    await user.type(screen.getByLabelText(/first range stop/i), '2001:db8::1ff')
+    await user.click(screen.getByRole('button', { name: /queue creation/i }))
+
+    const ops = usePendingChangesStore.getState().changes.map((c) => c.op)
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['service', 'dhcpv6-server', 'shared-network-name', 'LAN'],
+    })
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['service', 'dhcpv6-server', 'shared-network-name', 'LAN', 'subnet', '2001:db8::/64', 'subnet-id'],
+      value: '1',
+    })
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['service', 'dhcpv6-server', 'shared-network-name', 'LAN', 'subnet', '2001:db8::/64', 'range', '0', 'start'],
+      value: '2001:db8::100',
+    })
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['service', 'dhcpv6-server', 'shared-network-name', 'LAN', 'subnet', '2001:db8::/64', 'range', '0', 'stop'],
+      value: '2001:db8::1ff',
+    })
+  })
+
   it('disables the DHCPv6 server entirely', async () => {
     server.use(http.get('/api/config/tree', () => HttpResponse.json({ data: { 'dhcpv6-server': {} } })))
     const user = userEvent.setup()
