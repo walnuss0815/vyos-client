@@ -234,6 +234,42 @@ func TestNewStore_LoadsExistingFile(t *testing.T) {
 	}
 }
 
+// TestNewStore_LoadsDocumentedExampleFile guards
+// deploy/ingress.json.example against drifting out of sync with the
+// real Entry/Header schema (see docs/architecture.md's "ingress.json
+// format" section, which points readers at this file) - if either
+// side changes shape without the other, this fails instead of only
+// being discovered when an operator copies the example and it's
+// rejected at startup.
+func TestNewStore_LoadsDocumentedExampleFile(t *testing.T) {
+	example, err := os.ReadFile("../../../deploy/ingress.json.example")
+	if err != nil {
+		t.Fatalf("reading deploy/ingress.json.example: %v", err)
+	}
+
+	dataDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dataDir, "ingress.json"), example, 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	store, err := ingress.NewStore(dataDir)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	list := store.List()
+	if len(list) != 2 {
+		t.Fatalf("expected 2 entries from the example file, got %d: %+v", len(list), list)
+	}
+	if list[0].Name != "nas" || list[1].Name != "switch" {
+		t.Errorf("unexpected entry names: %+v", list)
+	}
+	for _, e := range list {
+		if err := ingress.Validate(e); err != nil {
+			t.Errorf("example entry %q fails validation: %v", e.Name, err)
+		}
+	}
+}
+
 func TestNewStore_RejectsMalformedFile(t *testing.T) {
 	dataDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dataDir, "ingress.json"), []byte("not json"), 0o600); err != nil {

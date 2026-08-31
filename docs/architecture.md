@@ -456,6 +456,49 @@ of the app works:
   management (see above) - there's nothing to review before a commit,
   because there's no VyOS commit involved.
 
+### `ingress.json` format
+
+`internal/ingress.Store` (see `store.go`'s `Entry`/`Header` types and
+`Validate`) persists a top-level JSON **array** of entries - not an
+object keyed by name - written with 2-space indentation:
+
+```json
+[
+  {
+    "name": "nas",
+    "description": "Home NAS web UI",
+    "targetUrl": "http://10.0.0.5:8080",
+    "headers": [{ "name": "Authorization", "value": "Bearer <TOKEN>" }],
+    "skipTlsVerify": false
+  },
+  {
+    "name": "switch",
+    "targetUrl": "https://10.0.0.6",
+    "skipTlsVerify": true
+  }
+]
+```
+
+A ready-to-copy version of this lives at
+[`deploy/ingress.json.example`](../deploy/ingress.json.example) -
+mount it (or a copy) at `<INGRESS_DATA_DIR>/ingress.json` to seed
+entries without going through the UI first.
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `name` | string | yes | Identifies the entry in the UI and its proxy path (`/ingress/<name>/...`). Lowercase letters, digits, and `-` only, must start with a letter or digit, max 63 characters. Immutable after creation - there's no rename, only delete-and-recreate. |
+| `description` | string | no | Operator-facing note, shown in the management UI only - not interpreted otherwise. Omitted from the file entirely when empty. |
+| `targetUrl` | string | yes | Absolute `http://` or `https://` URL with a host, e.g. `http://10.0.0.5:8080`. Any path component is kept as a prefix ahead of whatever the browser requests past the ingress name. |
+| `headers` | array of `{name, value}` | no | Injected into every proxied request, overriding any header of the same name the browser sent - typically a static API key or bearer token the target expects. Header names must be unique (case-insensitive) within an entry; at most 32 per entry. **Values are stored here in plaintext** - see [security.md](security.md#threat-model-notes). Omitted entirely when there are none. |
+| `skipTlsVerify` | boolean | no | Disables TLS certificate verification when `targetUrl` is `https://`, for a target using a self-signed certificate. Defaults to (and is omitted from the file when) `false`. |
+
+This file is managed through the Ingress UI (`/ingresses`) via the
+`/api/ingress` endpoints, not intended for hand-editing while the
+backend is running - a manual edit is only picked up on the next
+restart, since entries are cached in memory (see `Store`'s own doc
+comment) and only ever written back by `Store.Create`/`Update`/
+`Delete`, never re-read from disk mid-run.
+
 The proxy itself (`internal/ingress.Proxy`, an `httputil.ReverseProxy`
 wired up in `Server.Routes`) handles a few things a naive "forward the
 request" implementation would get wrong:
