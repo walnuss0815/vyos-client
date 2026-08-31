@@ -101,6 +101,39 @@ describe('RulesetsPage', () => {
     })
   })
 
+  // Regression test: a ruleset's first rule used to only be addable
+  // AFTER the ruleset already existed - RuleForm.tsx is only ever
+  // reachable from RulesetDetailPage.tsx, which requires the ruleset
+  // to already be in the fetched list.
+  it('creates a new custom ruleset with a first rule, all in one commit', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<RulesetsPage />)
+    await screen.findByText('forward')
+
+    await user.click(screen.getByRole('button', { name: /new custom ruleset/i }))
+    await user.type(screen.getByPlaceholderText('WAN-LAN-v4'), 'DMZ-LAN-v4')
+    await user.selectOptions(screen.getByLabelText(/^action/i), 'accept')
+    await user.type(screen.getByPlaceholderText('tcp'), 'tcp')
+    await user.click(screen.getByRole('button', { name: /queue ruleset creation/i }))
+
+    const ops = usePendingChangesStore.getState().changes.map((c) => c.op)
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['firewall', 'ipv4', 'name', 'DMZ-LAN-v4', 'default-action'],
+      value: 'drop',
+    })
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['firewall', 'ipv4', 'name', 'DMZ-LAN-v4', 'rule', '10', 'action'],
+      value: 'accept',
+    })
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['firewall', 'ipv4', 'name', 'DMZ-LAN-v4', 'rule', '10', 'protocol'],
+      value: 'tcp',
+    })
+  })
+
   it('rejects an invalid ruleset name', async () => {
     const user = userEvent.setup()
     renderWithProviders(<RulesetsPage />)
