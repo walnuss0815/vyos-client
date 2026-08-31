@@ -101,6 +101,33 @@ describe('VrrpPage', () => {
     })
   })
 
+  it('does not lose group draft fields when the name is cleared and retyped mid-fill', async () => {
+    // Regression test: the create panel's Name field used to live
+    // outside VrrpGroupFormPanel, gating the whole panel's existence
+    // on it being non-empty - clearing it back to '' (even briefly,
+    // e.g. to retype a typo) unmounted the panel and discarded every
+    // other field already filled in.
+    const user = userEvent.setup()
+    renderWithProviders(<VrrpPage />)
+    await screen.findByText('OUTSIDE')
+
+    await user.click(screen.getByRole('button', { name: '+ Add group' }))
+    const nameInput = screen.getByPlaceholderText('OUTSIDE')
+    await user.type(nameInput, 'INSIDE')
+    await user.type(screen.getByPlaceholderText('eth0'), 'eth1')
+    await user.clear(nameInput)
+    await user.type(nameInput, 'INSIDE')
+    await user.click(screen.getByRole('button', { name: 'Add group' }))
+
+    const { changes } = usePendingChangesStore.getState()
+    const ops = changes.map((c) => c.op)
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['high-availability', 'vrrp', 'group', 'INSIDE', 'interface'],
+      value: 'eth1',
+    })
+  })
+
   it('deletes a group', async () => {
     const user = userEvent.setup()
     renderWithProviders(<VrrpPage />)
@@ -119,6 +146,34 @@ describe('VrrpPage', () => {
     renderWithProviders(<VrrpPage />)
     expect(await screen.findByText('INTERNAL')).toBeInTheDocument()
     expect(screen.getByText(/members: OUTSIDE/)).toBeInTheDocument()
+  })
+
+  it('adds a new sync group, keeping member selections when the name is cleared and retyped mid-fill', async () => {
+    // Regression test: the create panel's Name field used to live
+    // outside VrrpSyncGroupFormPanel, gating the whole panel's
+    // existence on it being non-empty - clearing it back to '' (even
+    // briefly, e.g. to retype a typo) unmounted the panel and
+    // discarded the already-checked member-group selections below.
+    const user = userEvent.setup()
+    renderWithProviders(<VrrpPage />)
+    await screen.findByText('INTERNAL')
+
+    await user.click(screen.getByRole('button', { name: '+ Add sync group' }))
+    const nameInput = screen.getByPlaceholderText('INTERNAL')
+    await user.type(nameInput, 'EDGE')
+    await user.click(screen.getByRole('checkbox', { name: 'OUTSIDE' }))
+    await user.clear(nameInput)
+    await user.type(nameInput, 'EDGE')
+    await user.click(screen.getByRole('button', { name: 'Add sync group' }))
+
+    const { changes } = usePendingChangesStore.getState()
+    const ops = changes.map((c) => c.op)
+    expect(ops).toContainEqual({ op: 'set', path: ['high-availability', 'vrrp', 'sync-group', 'EDGE'] })
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['high-availability', 'vrrp', 'sync-group', 'EDGE', 'member'],
+      value: 'OUTSIDE',
+    })
   })
 
   it('shows the live VRRP status panel', async () => {
