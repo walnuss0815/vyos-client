@@ -54,6 +54,33 @@ describe('RouterAdvertPage', () => {
     })
   })
 
+  it('also queues a first prefix and route when enabling RA on a new interface with optional fields filled in', async () => {
+    // Regression test: an interface's prefixes and routes used to
+    // only be configurable AFTER RA was already enabled on it -
+    // PrefixesSection/RoutesSection only ever operate on an
+    // already-fetched interface.
+    const user = userEvent.setup()
+    renderWithProviders(<RouterAdvertPage />)
+    await screen.findByText('eth0')
+
+    await user.click(screen.getByRole('button', { name: /\+ enable on interface/i }))
+    await user.type(screen.getByLabelText(/^interface/i), 'eth1')
+    await user.type(screen.getByLabelText(/first prefix/i), '2001:db8:3::/64')
+    await user.type(screen.getByLabelText(/first route/i), '2001:db8:4::/64')
+    await user.click(screen.getByRole('button', { name: /^enable$/i }))
+
+    const { changes } = usePendingChangesStore.getState()
+    const ops = changes.map((c) => c.op)
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['service', 'router-advert', 'interface', 'eth1', 'prefix', '2001:db8:3::/64'],
+    })
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['service', 'router-advert', 'interface', 'eth1', 'route', '2001:db8:4::/64'],
+    })
+  })
+
   it('shows details including advertised prefixes and lets a route be added', async () => {
     const user = userEvent.setup()
     renderWithProviders(<RouterAdvertPage />)
