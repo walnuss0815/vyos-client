@@ -61,6 +61,35 @@ describe('ListsPage', () => {
     })
   })
 
+  it('also queues a first rule when creating a list with its optional fields filled in', async () => {
+    // Regression test: a list's rules used to only be configurable
+    // AFTER the list already existed - RulesSection only ever
+    // operates on an already-fetched list.
+    const user = userEvent.setup()
+    renderWithProviders(<ListsPage />)
+    await screen.findByText('ASPL')
+
+    await user.click(screen.getByRole('button', { name: /\+ new list/i }))
+    await user.type(screen.getByLabelText(/^name/i), 'ASPL-NEW')
+    await user.type(screen.getByLabelText(/^description/i), 'upstream filter')
+    await user.selectOptions(screen.getByLabelText(/^action/i), 'deny')
+    await user.type(screen.getByLabelText(/^regex/i), '^64514')
+    await user.click(screen.getByRole('button', { name: /queue list creation/i }))
+
+    const { changes } = usePendingChangesStore.getState()
+    const ops = changes.map((c) => c.op)
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['policy', 'as-path-list', 'ASPL-NEW', 'rule', '10', 'action'],
+      value: 'deny',
+    })
+    expect(ops).toContainEqual({
+      op: 'set',
+      path: ['policy', 'as-path-list', 'ASPL-NEW', 'rule', '10', 'regex'],
+      value: '^64514',
+    })
+  })
+
   it('deletes an existing list', async () => {
     const user = userEvent.setup()
     renderWithProviders(<ListsPage />)
