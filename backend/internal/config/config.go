@@ -304,6 +304,12 @@ func Load(getenv func(string) string) (*Config, error) {
 	}
 	rawSelfUpgradeContainerName := getenv("SELF_UPGRADE_CONTAINER_NAME")
 	rawSelfUpgradeGitHubRepo := getenv("SELF_UPGRADE_GITHUB_REPO")
+	// Applied unconditionally (not just when SelfUpgradeEnabled), so
+	// SelfUpgradeGitHubRepo is never left as "" for a future reader to
+	// trip over - nothing reads it while the feature is disabled, but
+	// there's no reason for the zero value to be a lie about what the
+	// effective default actually is.
+	cfg.SelfUpgradeGitHubRepo = orDefault(rawSelfUpgradeGitHubRepo, defaultSelfUpgradeGitHubRepo)
 	if cfg.SelfUpgradeEnabled {
 		cfg.SelfUpgradeContainerName = rawSelfUpgradeContainerName
 		if cfg.SelfUpgradeContainerName == "" {
@@ -319,7 +325,6 @@ func Load(getenv func(string) string) (*Config, error) {
 				cfg.SelfUpgradeContainerName,
 			)
 		}
-		cfg.SelfUpgradeGitHubRepo = orDefault(rawSelfUpgradeGitHubRepo, defaultSelfUpgradeGitHubRepo)
 		if !selfUpgradeGitHubRepoPattern.MatchString(cfg.SelfUpgradeGitHubRepo) {
 			return nil, fmt.Errorf(
 				"config: SELF_UPGRADE_GITHUB_REPO %q is not a valid \"owner/repo\" (got via env or the default)",

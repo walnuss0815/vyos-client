@@ -380,6 +380,12 @@ func TestLoad_SelfUpgradeDisabledByDefault(t *testing.T) {
 	if cfg.SelfUpgradeContainerName != "" {
 		t.Errorf("expected empty SelfUpgradeContainerName when disabled, got %q", cfg.SelfUpgradeContainerName)
 	}
+	// SelfUpgradeGitHubRepo is still populated with its default even
+	// when disabled - nothing reads it in that case, but the zero
+	// value shouldn't misrepresent what the effective default is.
+	if cfg.SelfUpgradeGitHubRepo != "walnuss0815/vyos-client" {
+		t.Errorf("SelfUpgradeGitHubRepo = %q, want the default even when disabled", cfg.SelfUpgradeGitHubRepo)
+	}
 }
 
 func TestLoad_SelfUpgradeEnabledRequiresContainerName(t *testing.T) {
