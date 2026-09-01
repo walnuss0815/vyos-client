@@ -1106,6 +1106,38 @@ func TestSystemInfo_SelfUpgradeEnabledReflectsServerSetting(t *testing.T) {
 	}
 }
 
+func TestSystemInfo_FileBrowserEnabledDefaultsToFalse(t *testing.T) {
+	e := newTestEnv(t)
+	resp := e.doJSON(t, http.MethodGet, "/api/system/info", nil)
+	defer func() { _ = resp.Body.Close() }()
+	var out struct {
+		FileBrowserEnabled bool `json:"fileBrowserEnabled"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if out.FileBrowserEnabled {
+		t.Error("expected fileBrowserEnabled to be false by default")
+	}
+}
+
+func TestSystemInfo_FileBrowserEnabledReflectsServerSetting(t *testing.T) {
+	e := newTestEnv(t)
+	e.apiServer.FileBrowserEnabled = true
+
+	resp := e.doJSON(t, http.MethodGet, "/api/system/info", nil)
+	defer func() { _ = resp.Body.Close() }()
+	var out struct {
+		FileBrowserEnabled bool `json:"fileBrowserEnabled"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !out.FileBrowserEnabled {
+		t.Error("expected fileBrowserEnabled to be true when Server.FileBrowserEnabled is set")
+	}
+}
+
 func TestSystemInfo_ReturnsHostnameAndVersion(t *testing.T) {
 	e := newTestEnv(t)
 	e.login(t)
@@ -1871,7 +1903,7 @@ func TestFileBrowserRoots_RequiresAuth(t *testing.T) {
 	}
 }
 
-func TestFileBrowserRoots_ReturnsTheCuratedList(t *testing.T) {
+func TestFileBrowserRoots_DisabledByDefault(t *testing.T) {
 	e := newTestEnv(t)
 	e.login(t)
 	resp := e.doJSON(t, http.MethodGet, "/api/files/roots", nil)
@@ -1881,10 +1913,39 @@ func TestFileBrowserRoots_ReturnsTheCuratedList(t *testing.T) {
 		t.Fatalf("status=%d body=%s", resp.StatusCode, b)
 	}
 	var out struct {
-		Roots []string `json:"roots"`
+		Enabled bool     `json:"enabled"`
+		Roots   []string `json:"roots"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		t.Fatalf("decode: %v", err)
+	}
+	if out.Enabled {
+		t.Error("expected enabled=false when Server.FileBrowserEnabled is unset")
+	}
+	if len(out.Roots) != 0 {
+		t.Errorf("expected no roots when disabled, got %+v", out.Roots)
+	}
+}
+
+func TestFileBrowserRoots_ReturnsTheCuratedList(t *testing.T) {
+	e := newTestEnv(t)
+	e.apiServer.FileBrowserEnabled = true
+	e.login(t)
+	resp := e.doJSON(t, http.MethodGet, "/api/files/roots", nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status=%d body=%s", resp.StatusCode, b)
+	}
+	var out struct {
+		Enabled bool     `json:"enabled"`
+		Roots   []string `json:"roots"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !out.Enabled {
+		t.Error("expected enabled=true")
 	}
 	if len(out.Roots) == 0 {
 		t.Fatal("expected at least one browsable root")
@@ -1900,8 +1961,37 @@ func TestFiles_RequiresAuth(t *testing.T) {
 	}
 }
 
+// TestFiles_DisabledByDefault guards the same {"enabled": false}
+// convention as self-upgrade/container-update-checks - the frontend
+// distinguishes this from an ordinary empty directory by checking
+// Enabled first.
+func TestFiles_DisabledByDefault(t *testing.T) {
+	e := newTestEnv(t)
+	e.login(t)
+	resp := e.doJSON(t, http.MethodGet, "/api/files?path=/config", nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status=%d body=%s", resp.StatusCode, b)
+	}
+	var out struct {
+		Enabled bool   `json:"enabled"`
+		Path    string `json:"path"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if out.Enabled {
+		t.Error("expected enabled=false when Server.FileBrowserEnabled is unset")
+	}
+	if out.Path != "" {
+		t.Errorf("expected no path when disabled, got %q", out.Path)
+	}
+}
+
 func TestFiles_DirectoryListing(t *testing.T) {
 	e := newTestEnv(t)
+	e.apiServer.FileBrowserEnabled = true
 	e.login(t)
 	e.fakeVyOS.ShowOutputs["file /config"] = "########## DIRECTORY LISTING ##########\n" +
 		"Path:\t /config\n" +
@@ -1936,6 +2026,7 @@ func TestFiles_DirectoryListing(t *testing.T) {
 
 func TestFiles_FileView(t *testing.T) {
 	e := newTestEnv(t)
+	e.apiServer.FileBrowserEnabled = true
 	e.login(t)
 	e.fakeVyOS.ShowOutputs["file /config/config.boot"] = "########## FILE INFO ##########\n" +
 		"Type:\t\tASCII text\n" +
@@ -1974,6 +2065,7 @@ func TestFiles_FileView(t *testing.T) {
 // happily return e.g. /etc/shadow.
 func TestFiles_RejectsPathsOutsideBrowsableRoots(t *testing.T) {
 	e := newTestEnv(t)
+	e.apiServer.FileBrowserEnabled = true
 	e.login(t)
 	for _, p := range []string{"/etc/shadow", "/config/../etc/shadow", "relative", ""} {
 		resp := e.doJSON(t, http.MethodGet, "/api/files?path="+url.QueryEscape(p), nil)
@@ -1992,6 +2084,7 @@ func TestFiles_RejectsPathsOutsideBrowsableRoots(t *testing.T) {
 
 func TestFiles_DefaultsToFirstRootWhenPathOmitted(t *testing.T) {
 	e := newTestEnv(t)
+	e.apiServer.FileBrowserEnabled = true
 	e.login(t)
 	e.fakeVyOS.ShowOutputs["file /config"] = "########## DIRECTORY LISTING ##########\nPath:\t /config\ntotal 0\n"
 
@@ -2014,6 +2107,7 @@ func TestFiles_DefaultsToFirstRootWhenPathOmitted(t *testing.T) {
 
 func TestFiles_PropagatesVyOSNotFoundError(t *testing.T) {
 	e := newTestEnv(t)
+	e.apiServer.FileBrowserEnabled = true
 	e.login(t)
 	e.fakeVyOS.ShowErrors["file /config/nonexistent"] = "File or directory /config/nonexistent not found."
 

@@ -34,6 +34,14 @@ type systemInfoResponse struct {
 	// round trip. Not sensitive - it's just a deployment-time feature
 	// flag, not VyOS state.
 	SelfUpgradeEnabled bool `json:"selfUpgradeEnabled"`
+	// FileBrowserEnabled mirrors Server.FileBrowserEnabled - same
+	// piggy-backing reasoning as SelfUpgradeEnabled above, so
+	// Layout.tsx can hint the Files nav item is off before the
+	// operator even clicks into it (mirroring SystemLayout.tsx's own
+	// "(off)" suffix for the Upgrades tab). The actual gating still
+	// happens at handleFileBrowserRoots/handleFiles themselves, not
+	// here - this is purely a UI hint.
+	FileBrowserEnabled bool `json:"fileBrowserEnabled"`
 }
 
 // handleSystemInfo wraps VyOS's unauthenticated GET /info (hostname,
@@ -56,6 +64,7 @@ func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
 		LoginBanner:           info.Banner,
 		ConfigWarningsEnabled: s.ConfigWarningsEnabled,
 		SelfUpgradeEnabled:    s.SelfUpgradeEnabled,
+		FileBrowserEnabled:    s.FileBrowserEnabled,
 	})
 }
 

@@ -31,12 +31,22 @@ var fileBrowserRoots = []string{"/config", "/var/log"}
 // LOG_FACILITIES/LOG_PRIORITIES (there they're duplicated deliberately
 // since they're VyOS-version-independent constants; here it's cheap
 // to just serve them, so this endpoint does that instead).
+//
+// Enabled mirrors Server.FileBrowserEnabled - when false, Roots is
+// left nil/omitted and FilesPage.tsx shows an explanatory disabled
+// state, the same {"enabled": false} convention
+// handleSelfUpgradeStatus/handleCheckContainerImageUpdate already use.
 type fileBrowserRootsResponse struct {
-	Roots []string `json:"roots"`
+	Enabled bool     `json:"enabled"`
+	Roots   []string `json:"roots,omitempty"`
 }
 
 func (s *Server) handleFileBrowserRoots(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, fileBrowserRootsResponse{Roots: fileBrowserRoots})
+	if !s.FileBrowserEnabled {
+		writeJSON(w, http.StatusOK, fileBrowserRootsResponse{Enabled: false})
+		return
+	}
+	writeJSON(w, http.StatusOK, fileBrowserRootsResponse{Enabled: true, Roots: fileBrowserRoots})
 }
 
 // validateFileBrowserPath reports whether p is one of fileBrowserRoots
@@ -76,9 +86,14 @@ type fileBrowserEntryResponse struct {
 // field below populated) - GET /api/files?path=... returns whichever
 // one `show file <path>` decided the path was; see
 // vyos.ParseShowFile's own doc comment.
+//
+// Enabled mirrors Server.FileBrowserEnabled - when false, every other
+// field is left at its zero value, same {"enabled": false} convention
+// as fileBrowserRootsResponse above.
 type fileBrowserResponse struct {
-	Path        string                     `json:"path"`
-	IsDirectory bool                       `json:"isDirectory"`
+	Enabled     bool                       `json:"enabled"`
+	Path        string                     `json:"path,omitempty"`
+	IsDirectory bool                       `json:"isDirectory,omitempty"`
 	Entries     []fileBrowserEntryResponse `json:"entries,omitempty"`
 
 	Type        string `json:"type,omitempty"`
@@ -97,6 +112,10 @@ type fileBrowserResponse struct {
 // schema-validated save/load/merge), so there is no corresponding
 // POST/PUT here - this is a viewer, not an editor.
 func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request) {
+	if !s.FileBrowserEnabled {
+		writeJSON(w, http.StatusOK, fileBrowserResponse{Enabled: false})
+		return
+	}
 	reqPath := r.URL.Query().Get("path")
 	if reqPath == "" {
 		reqPath = fileBrowserRoots[0]
@@ -125,6 +144,7 @@ func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 		writeJSON(w, http.StatusOK, fileBrowserResponse{
+			Enabled:     true,
 			Path:        dir.Path,
 			IsDirectory: true,
 			Entries:     entries,
@@ -133,6 +153,7 @@ func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, fileBrowserResponse{
+		Enabled:     true,
 		Path:        file.Path,
 		IsDirectory: false,
 		Type:        file.Type,
