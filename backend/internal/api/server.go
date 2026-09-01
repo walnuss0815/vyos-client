@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/walnuss0815/vyos-client/backend/internal/auth"
+	"github.com/walnuss0815/vyos-client/backend/internal/imageupdate"
 	"github.com/walnuss0815/vyos-client/backend/internal/selfupgrade"
 	"github.com/walnuss0815/vyos-client/backend/internal/vyos"
 )
@@ -69,6 +70,20 @@ type Server struct {
 	// would otherwise need to construct one just to avoid a nil
 	// dereference).
 	CommitLimiter *auth.RequestLimiter
+
+	// ContainerUpdateChecksEnabled mirrors
+	// config.Config.ContainerUpdateChecksEnabled - surfaced here (not
+	// via handleSystemInfo) since, like self-upgrade, the one endpoint
+	// that needs it (handleCheckContainerImageUpdate) already reports
+	// its own disabled state directly in its response.
+	ContainerUpdateChecksEnabled bool
+	// ImageRegistry lists tags from whatever registry a container's
+	// image reference resolves to - see
+	// handleCheckContainerImageUpdate. Constructed unconditionally in
+	// cmd/vyos-client/serve.go (unlike SelfUpgradeGitHub, it takes no
+	// per-deployment configuration to build), but never actually
+	// contacts a registry unless ContainerUpdateChecksEnabled is true.
+	ImageRegistry *imageupdate.Client
 }
 
 // Routes returns the fully-wired HTTP handler for the backend, with all
@@ -128,6 +143,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /api/container/images", authed(s.handleContainerImages))
 	mux.Handle("POST /api/container/images", authed(s.handlePullContainerImage))
 	mux.Handle("DELETE /api/container/images", authed(s.handleDeleteContainerImage))
+	mux.Handle("POST /api/container/images/check-update", authed(s.handleCheckContainerImageUpdate))
 
 	mux.Handle("GET /api/files/roots", authed(s.handleFileBrowserRoots))
 	mux.Handle("GET /api/files", authed(s.handleFiles))

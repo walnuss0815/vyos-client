@@ -181,6 +181,19 @@ type Config struct {
 	// silently unused - same "you configured X but it's ignored"
 	// pattern as UIAdminVarsIgnored/TLSCertFilesIgnored above.
 	SelfUpgradeVarsIgnored bool
+
+	// ContainerUpdateChecksEnabled turns on the Containers page's
+	// "Check for update" button (see docs/architecture.md's
+	// "Container image update checks" section) - disabled by default.
+	// Like SelfUpgradeEnabled above, this makes the backend call an
+	// external service (whichever registry a container's own image
+	// reference points at - not just GitHub, unlike self-upgrade) on
+	// an authenticated operator's explicit request, so it's opt-in
+	// rather than always-on. Unlike self-upgrade, there's no
+	// associated container-name/repo configuration to validate: the
+	// registry and repository are derived entirely from whatever
+	// image string the operator is already looking at on that page.
+	ContainerUpdateChecksEnabled bool
 }
 
 // defaultSelfUpgradeGitHubRepo is this project's own GitHub repo -
@@ -363,6 +376,14 @@ func Load(getenv func(string) string) (*Config, error) {
 		}
 	} else {
 		cfg.SelfUpgradeVarsIgnored = rawSelfUpgradeContainerName != "" || rawSelfUpgradeGitHubRepo != ""
+	}
+
+	if v := getenv("CONTAINER_UPDATE_CHECKS_ENABLED"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return nil, fmt.Errorf("config: CONTAINER_UPDATE_CHECKS_ENABLED: %w", err)
+		}
+		cfg.ContainerUpdateChecksEnabled = b
 	}
 
 	return cfg, nil

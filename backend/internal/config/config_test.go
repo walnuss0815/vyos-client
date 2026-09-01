@@ -647,6 +647,47 @@ func TestLoad_SelfUpgradeVarsIgnoredWhenDisabled(t *testing.T) {
 	}
 }
 
+func TestLoad_ContainerUpdateChecksDisabledByDefault(t *testing.T) {
+	cfg, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":           "test-key",
+		"UI_ADMIN_USER":          "admin",
+		"UI_ADMIN_PASSWORD_HASH": "$2a$10$fakehash",
+	}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ContainerUpdateChecksEnabled {
+		t.Error("expected ContainerUpdateChecksEnabled to default to false when CONTAINER_UPDATE_CHECKS_ENABLED is unset")
+	}
+}
+
+func TestLoad_ContainerUpdateChecksEnabled(t *testing.T) {
+	cfg, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":                    "test-key",
+		"UI_ADMIN_USER":                   "admin",
+		"UI_ADMIN_PASSWORD_HASH":          "$2a$10$fakehash",
+		"CONTAINER_UPDATE_CHECKS_ENABLED": "true",
+	}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.ContainerUpdateChecksEnabled {
+		t.Error("expected ContainerUpdateChecksEnabled to be true when CONTAINER_UPDATE_CHECKS_ENABLED=true")
+	}
+}
+
+func TestLoad_ContainerUpdateChecksEnabledRejectsInvalidBoolean(t *testing.T) {
+	_, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":                    "test-key",
+		"UI_ADMIN_USER":                   "admin",
+		"UI_ADMIN_PASSWORD_HASH":          "$2a$10$fakehash",
+		"CONTAINER_UPDATE_CHECKS_ENABLED": "not-a-bool",
+	}))
+	if err == nil {
+		t.Fatal("expected error for an invalid CONTAINER_UPDATE_CHECKS_ENABLED value")
+	}
+}
+
 func TestSessionSecretIsEphemeral(t *testing.T) {
 	withoutSecret, err := config.Load(fakeEnv(map[string]string{
 		"VYOS_API_KEY":           "test-key",
