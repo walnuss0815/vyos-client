@@ -217,12 +217,20 @@ export default function UpgradesPage() {
               </div>
               <button
                 onClick={() => void handleUpgrade(release.version)}
-                disabled={pullingVersion !== null || upgradeAlreadyQueued}
+                disabled={pullingVersion !== null || upgradeAlreadyQueued || !release.imageExists}
+                title={release.imageExists ? undefined : `The ghcr.io image for ${release.version} isn't available yet`}
                 className={`bg-accent-600 ${buttonClass}`}
               >
                 {pullingVersion === release.version ? 'Pulling…' : `Upgrade to ${release.version}`}
               </button>
             </div>
+            {!release.imageExists && (
+              <p className="mt-2 text-xs text-slate-500">
+                The image for this release isn&apos;t available on ghcr.io yet (the release and its image are
+                published separately, so this can lag behind briefly, or mean the image build failed) - try
+                refreshing in a few minutes.
+              </p>
+            )}
             {pullingVersion === release.version && (
               <p className="mt-2 text-xs text-slate-500">
                 Pulling can take several minutes for a large image, with no progress shown until it

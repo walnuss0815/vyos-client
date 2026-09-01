@@ -264,3 +264,105 @@ func TestListTags_NotInsecureDoesNotFallBackToPlainHTTP(t *testing.T) {
 		t.Error("expected an error: an https request against a plain-HTTP-only server should fail when insecure=false")
 	}
 }
+
+func TestTagExists_Found(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v2/library/nginx/manifests/1.25.3" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if got := r.Header.Get("Accept"); !strings.Contains(got, "application/vnd.oci.image.manifest.v1+json") {
+			t.Errorf("unexpected Accept header: %q", got)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	c := NewClient(Config{HTTPClient: server.Client()})
+	ref := testRef(t, strings.TrimPrefix(server.URL, "https://"))
+	exists, err := c.TagExists(context.Background(), ref, nil, false)
+	if err != nil {
+		t.Fatalf("TagExists: %v", err)
+	}
+	if !exists {
+		t.Error("expected exists=true for a 200 response")
+	}
+}
+
+func TestTagExists_NotFoundIsNotAnError(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	c := NewClient(Config{HTTPClient: server.Client()})
+	ref := testRef(t, strings.TrimPrefix(server.URL, "https://"))
+	exists, err := c.TagExists(context.Background(), ref, nil, false)
+	if err != nil {
+		t.Fatalf("TagExists: %v", err)
+	}
+	if exists {
+		t.Error("expected exists=false for a 404 response")
+	}
+}
+
+func TestTagExists_RegistryErrorResponse(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	c := NewClient(Config{HTTPClient: server.Client()})
+	ref := testRef(t, strings.TrimPrefix(server.URL, "https://"))
+	if _, err := c.TagExists(context.Background(), ref, nil, false); err == nil {
+		t.Error("expected an error for a 500 response")
+	}
+}
+
+func TestTagExists_HandlesBearerChallenge(t *testing.T) {
+	var tokenServer *httptest.Server
+	registry := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "" {
+			w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Bearer realm="%s",service="ghcr.io",scope="repository:library/nginx:pull"`, tokenServer.URL))
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
+			t.Errorf("unexpected Authorization on manifest request: %q", got)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer registry.Close()
+
+	tokenServer = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"token":"test-token"}`))
+	}))
+	defer tokenServer.Close()
+
+	c := NewClient(Config{HTTPClient: httpsTestClient(t, registry, tokenServer)})
+	ref := testRef(t, strings.TrimPrefix(registry.URL, "https://"))
+	exists, err := c.TagExists(context.Background(), ref, nil, false)
+	if err != nil {
+		t.Fatalf("TagExists: %v", err)
+	}
+	if !exists {
+		t.Error("expected exists=true")
+	}
+}
+
+func TestTagExists_InsecureFallsBackToPlainHTTP(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	c := NewClient(Config{})
+	ref := testRef(t, strings.TrimPrefix(server.URL, "http://"))
+	exists, err := c.TagExists(context.Background(), ref, nil, true)
+	if err != nil {
+		t.Fatalf("TagExists with insecure=true: %v", err)
+	}
+	if !exists {
+		t.Error("expected exists=true")
+	}
+}

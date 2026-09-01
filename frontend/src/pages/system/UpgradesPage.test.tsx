@@ -35,6 +35,7 @@ const UPDATE_AVAILABLE_STATUS = {
       body: '## Features\n\n- Added a thing\n\nSee [the diff](https://example.com) for more.',
       publishedAt: '2026-02-01T00:00:00Z',
       htmlUrl: 'https://github.com/walnuss0815/vyos-client/releases/tag/v1.3.0',
+      imageExists: true,
     },
   ],
 }
@@ -183,5 +184,18 @@ describe('UpgradesPage', () => {
 
     const { changes } = usePendingChangesStore.getState()
     expect(changes).toHaveLength(0)
+  })
+
+  it('disables Upgrade and explains when the release image does not exist yet on ghcr.io', async () => {
+    const NOT_YET_PUBLISHED_STATUS = {
+      ...UPDATE_AVAILABLE_STATUS,
+      releases: [{ ...UPDATE_AVAILABLE_STATUS.releases[0], imageExists: false }],
+    }
+    server.use(http.get('/api/system/self-upgrade', () => HttpResponse.json(NOT_YET_PUBLISHED_STATUS)))
+    renderWithProviders(<UpgradesPage />)
+
+    const upgradeButton = await screen.findByRole('button', { name: 'Upgrade to 1.3.0' })
+    expect(upgradeButton).toBeDisabled()
+    expect(screen.getByText(/isn't available on ghcr.io yet/i)).toBeInTheDocument()
   })
 })

@@ -110,6 +110,19 @@ export interface SelfUpgradeRelease {
   /** ISO 8601, or '' if GitHub didn't report one. */
   publishedAt: string
   htmlUrl: string
+  /** Whether ghcr.io/<repo>:<version> was verified to actually exist,
+   * checked server-side (a manifest existence check against the same
+   * registry client the Containers page's own "Check for update"
+   * uses). False whenever this couldn't be verified at all, not only
+   * when the registry gave a definite "not found" - .github/workflows
+   * /release.yml publishes the GitHub Release and the GHCR image as
+   * two separate jobs with only a one-directional dependency, so a
+   * release can legitimately exist before (or without ever) having a
+   * matching image - see docs/architecture.md's "Self-upgrade"
+   * section. UpgradesPage.tsx disables "Upgrade" when this is false,
+   * rather than only discovering a missing image when the pull
+   * itself fails. */
+  imageExists: boolean
 }
 
 /** GET /api/system/self-upgrade's response. When `enabled` is false

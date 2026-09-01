@@ -1,9 +1,11 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"time"
 
+	"github.com/walnuss0815/vyos-client/backend/internal/imageupdate"
 	"github.com/walnuss0815/vyos-client/backend/internal/selfupgrade"
 )
 
@@ -14,6 +16,16 @@ type selfUpgradeReleaseResponse struct {
 	// PublishedAt is RFC3339, or "" if GitHub didn't report one.
 	PublishedAt string `json:"publishedAt"`
 	HTMLURL     string `json:"htmlUrl"`
+	// ImageExists reports whether ghcr.io/<repo>:<Version> was
+	// verified to actually exist - see handleSelfUpgradeStatus's own
+	// doc comment for why a published GitHub Release doesn't
+	// guarantee its image was published too. False (not just
+	// "unknown") whenever this couldn't be verified at all, not only
+	// when the registry gave a definite "not found" - a fail-safe
+	// choice: a transient registry hiccup blocking a legitimate
+	// upgrade for one refresh is a better trade-off than enabling
+	// "Upgrade" for an image that isn't actually there yet.
+	ImageExists bool `json:"imageExists"`
 }
 
 type selfUpgradeStatusResponse struct {
@@ -59,6 +71,20 @@ type selfUpgradeStatusResponse struct {
 // deployment that hasn't opted in makes no outbound-to-the-internet
 // request at all (this is otherwise the only such call anywhere in
 // this backend - see internal/selfupgrade's package doc comment).
+//
+// Also verifies (via s.ImageRegistry.TagExists, the same registry
+// client the Containers page's own "Check for update" button uses)
+// that each newer release's corresponding ghcr.io image actually
+// exists, before reporting it as upgradable. .github/workflows/
+// release.yml publishes the GitHub Release and the GHCR image as two
+// separate jobs with only a one-directional dependency (the image
+// build only runs if the release was published, never the converse),
+// so there's a real window - the image build can take minutes, or
+// fail outright - where a release is visible via GitHub's API before
+// (or without ever) having a matching image on GHCR. Checking this
+// makes the "Upgrade" button (client-side) accurately reflect whether
+// clicking it can actually succeed, rather than only discovering a
+// missing image when the pull itself fails.
 func (s *Server) handleSelfUpgradeStatus(w http.ResponseWriter, r *http.Request) {
 	if !s.SelfUpgradeEnabled {
 		writeJSON(w, http.StatusOK, selfUpgradeStatusResponse{Enabled: false})
@@ -125,9 +151,49 @@ func (s *Server) handleSelfUpgradeStatus(w http.ResponseWriter, r *http.Request)
 				Body:        rel.Body,
 				PublishedAt: publishedAt,
 				HTMLURL:     rel.HTMLURL,
+				ImageExists: s.selfUpgradeImageExists(r.Context(), rel.Version),
 			})
 		}
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// selfUpgradeImageExists checks whether ghcr.io/<repo>:<version>
+// exists, for a fixed, known-public repo (this project's own image,
+// or a fork's) - always anonymous (no `container registry` lookup the
+// way handleCheckContainerImageUpdate does for operator-supplied
+// images, since the location here is fixed by SELF_UPGRADE_GITHUB_REPO,
+// not user input) and never treated as fatal to the whole status
+// response: a registry hiccup checking one release shouldn't hide
+// every other release's data, it should just fail safe for that one
+// release's own ImageExists (see that field's own doc comment for why
+// false, not left ambiguous, on error).
+//
+// s.ImageRegistry is only ever nil here if a *Server was constructed
+// without it (shouldn't happen outside tests - cmd/vyos-client/
+// serve.go always builds it unconditionally), guarded the same way
+// s.SelfUpgradeGitHub's own nilness is guarded just above, so a
+// missing client fails safe (ImageExists=false) rather than panicking
+// this request.
+func (s *Server) selfUpgradeImageExists(ctx context.Context, version string) bool {
+	if s.ImageRegistry == nil {
+		return false
+	}
+	host := s.SelfUpgradeGHCRHost
+	if host == "" {
+		host = "ghcr.io"
+	}
+	ref := imageupdate.Reference{
+		RegistryName: host,
+		APIHost:      host,
+		Repository:   s.SelfUpgradeGitHub.Repo(),
+		Tag:          version,
+	}
+	exists, err := s.ImageRegistry.TagExists(ctx, ref, &imageupdate.Credentials{}, false)
+	if err != nil {
+		s.Logger.Warn("checking self-upgrade image existence", "repo", ref.Repository, "version", version, "error", err)
+		return false
+	}
+	return exists
 }

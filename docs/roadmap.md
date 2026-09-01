@@ -1915,6 +1915,26 @@ not a silently-missing gap.
   page being always-available need to set `FILE_BROWSER_ENABLED=true`
   after upgrading.**
 
+- **Self-upgrade: verify the release's image actually exists**: the
+  "Upgrade to X" button is now disabled (with an explanation) unless
+  `ghcr.io/<repo>:X` was verified to actually exist, via a new
+  `imageupdate.Client.TagExists` manifest-existence check (GET
+  `/v2/<repo>/manifests/<tag>`, reusing the exact same auth-challenge
+  machinery `ListTags` already implements - the scope needed comes
+  from whatever the registry's own challenge specifies, nothing
+  tags-list-specific was hardcoded there to begin with). This closes
+  a real gap: `.github/workflows/release.yml` publishes the GitHub
+  Release and the GHCR image as two separate jobs with only a
+  one-directional dependency (the image build only runs if the
+  release was published, never the converse) - the image build can
+  take minutes, or fail outright, leaving a release visible via
+  GitHub's API with no matching image yet, or ever. Previously the
+  only signal a missing image gave was the pull itself failing after
+  the click. A registry error while checking one release fails safe
+  (`imageExists: false`, same as a confirmed "not found") rather than
+  failing the whole status response or assuming the image is probably
+  there.
+
 ## Next
 
 Not yet decided - see "Later" below for the candidate list (the

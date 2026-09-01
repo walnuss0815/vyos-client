@@ -183,6 +183,105 @@ func (c *Client) ListTags(ctx context.Context, ref Reference, creds *Credentials
 	return all, nil
 }
 
+// manifestAcceptHeader lists every manifest media type in common
+// use - OCI and legacy Docker v2 schema2, both single-manifest and
+// multi-arch manifest-list/index shapes. A registry can 404 a
+// manifest request for a real, existing tag if the Accept header
+// doesn't include whatever type it actually stored that image as, so
+// this needs to be permissive rather than assuming one specific
+// shape - confirmed necessary against real GHCR images, which are
+// multi-arch manifest lists even for this project's own amd64-only
+// build.
+const manifestAcceptHeader = "application/vnd.oci.image.manifest.v1+json, " +
+	"application/vnd.oci.image.index.v1+json, " +
+	"application/vnd.docker.distribution.manifest.v2+json, " +
+	"application/vnd.docker.distribution.manifest.list.v2+json"
+
+// TagExists reports whether ref.Tag exists as a real, pullable image
+// on ref.APIHost/ref.Repository - a lightweight manifest existence
+// check (GET /v2/<repository>/manifests/<tag>), not a full tag-list
+// fetch, since only a yes/no answer is needed here. Used by self-
+// upgrade to verify a GitHub release's corresponding image was
+// actually published to GHCR before enabling its "Upgrade" button -
+// see docs/architecture.md's "Self-upgrade" section for why a GitHub
+// Release and its GHCR image aren't guaranteed to appear together (or
+// at all, if the image build failed).
+func (c *Client) TagExists(ctx context.Context, ref Reference, creds *Credentials, insecure bool) (bool, error) {
+	httpClient := c.httpClientFor(insecure)
+
+	scheme := "https"
+	firstURL := fmt.Sprintf("%s://%s/v2/%s/manifests/%s", scheme, ref.APIHost, ref.Repository, ref.Tag)
+
+	var authHeader string
+	exists, err := c.fetchManifestExists(ctx, httpClient, firstURL, creds, &authHeader)
+	if err != nil && insecure && isConnectionError(err) {
+		// Same insecure-registry HTTP fallback as ListTags - see its
+		// own doc comment for the full reasoning.
+		scheme = "http"
+		firstURL = fmt.Sprintf("%s://%s/v2/%s/manifests/%s", scheme, ref.APIHost, ref.Repository, ref.Tag)
+		authHeader = ""
+		exists, err = c.fetchManifestExists(ctx, httpClient, firstURL, creds, &authHeader)
+	}
+	return exists, err
+}
+
+// fetchManifestExists issues the manifest existence check, handling a
+// 401 challenge exactly like fetchTagsPage does (same Bearer token
+// exchange/Basic auth machinery, reused as-is - the scope needed for
+// a manifest pull is derived from whatever the registry's own
+// challenge specifies, nothing tags-list-specific is hardcoded in
+// that path).
+func (c *Client) fetchManifestExists(ctx context.Context, httpClient *http.Client, manifestURL string, creds *Credentials, authHeader *string) (bool, error) {
+	resp, err := c.doGet(ctx, httpClient, manifestURL, manifestAcceptHeader, *authHeader)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		challenge := resp.Header.Get("WWW-Authenticate")
+		newAuth, cErr := c.authenticate(ctx, httpClient, challenge, creds)
+		if cErr != nil {
+			return false, cErr
+		}
+		*authHeader = newAuth
+		resp2, err := c.doGet(ctx, httpClient, manifestURL, manifestAcceptHeader, *authHeader)
+		if err != nil {
+			return false, err
+		}
+		defer func() { _ = resp2.Body.Close() }()
+		return decodeManifestExists(resp2)
+	}
+
+	return decodeManifestExists(resp)
+}
+
+// decodeManifestExists interprets a manifest-check response: 200
+// means the tag exists, 404 means it doesn't (a normal, expected
+// outcome, not an error), anything else is a real error. The body
+// itself is never decoded (only its status matters for an existence
+// check) but is still drained, bounded the same way
+// decodeTagsResponse's is, so the connection can be reused and a
+// pathological response can't be read unbounded.
+func decodeManifestExists(resp *http.Response) (bool, error) {
+	limited := io.LimitReader(resp.Body, maxResponseBodyBytes+1)
+	body, err := io.ReadAll(limited)
+	if err != nil {
+		return false, fmt.Errorf("imageupdate: reading registry response: %w", err)
+	}
+	if len(body) > maxResponseBodyBytes {
+		return false, fmt.Errorf("imageupdate: registry response exceeded %d bytes, aborting read", maxResponseBodyBytes)
+	}
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return true, nil
+	case http.StatusNotFound:
+		return false, nil
+	default:
+		return false, fmt.Errorf("imageupdate: registry returned %d: %s", resp.StatusCode, truncate(string(body), 500))
+	}
+}
+
 // isConnectionError reports whether err looks like a transport-level
 // failure (couldn't establish a connection/TLS handshake at all) as
 // opposed to a successfully-received HTTP error response - the only
@@ -207,7 +306,7 @@ type tagsListResponse struct {
 // (see the 401 handling below), so an expired token mid-pagination
 // doesn't hard-fail the whole listing.
 func (c *Client) fetchTagsPage(ctx context.Context, httpClient *http.Client, pageURL string, creds *Credentials, authHeader *string) (tags []string, next string, err error) {
-	resp, err := c.doGet(ctx, httpClient, pageURL, *authHeader)
+	resp, err := c.doGet(ctx, httpClient, pageURL, "application/json", *authHeader)
 	if err != nil {
 		return nil, "", err
 	}
@@ -220,7 +319,7 @@ func (c *Client) fetchTagsPage(ctx context.Context, httpClient *http.Client, pag
 			return nil, "", cErr
 		}
 		*authHeader = newAuth
-		resp2, err := c.doGet(ctx, httpClient, pageURL, *authHeader)
+		resp2, err := c.doGet(ctx, httpClient, pageURL, "application/json", *authHeader)
 		if err != nil {
 			return nil, "", err
 		}
@@ -231,12 +330,17 @@ func (c *Client) fetchTagsPage(ctx context.Context, httpClient *http.Client, pag
 	return decodeTagsResponse(resp)
 }
 
-func (c *Client) doGet(ctx context.Context, httpClient *http.Client, pageURL, authHeader string) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pageURL, nil)
+// doGet issues a GET request against reqURL with the given Accept
+// header (JSON for a tags-list request, manifestAcceptHeader for a
+// manifest existence check - see TagExists) and, if set, an
+// Authorization header carrying a previously-obtained token/Basic
+// value.
+func (c *Client) doGet(ctx context.Context, httpClient *http.Client, reqURL, accept, authHeader string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("imageupdate: building request: %w", err)
 	}
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept", accept)
 	if authHeader != "" {
 		req.Header.Set("Authorization", authHeader)
 	}
