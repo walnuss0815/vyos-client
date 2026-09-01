@@ -324,6 +324,98 @@ func TestLoad_TLSCertFilesIgnoredWhenTLSDisabled(t *testing.T) {
 	}
 }
 
+func TestLoad_CookiesSecureDefaultsToTLSEnabled(t *testing.T) {
+	cases := []struct {
+		tlsEnabled string
+		want       bool
+	}{
+		{"", true}, // TLS_ENABLED itself defaults to true
+		{"true", true},
+		{"false", false},
+	}
+	for _, tc := range cases {
+		t.Run("TLS_ENABLED="+tc.tlsEnabled, func(t *testing.T) {
+			env := map[string]string{
+				"VYOS_API_KEY":           "test-key",
+				"UI_ADMIN_USER":          "admin",
+				"UI_ADMIN_PASSWORD_HASH": "$2a$10$fakehash",
+			}
+			if tc.tlsEnabled != "" {
+				env["TLS_ENABLED"] = tc.tlsEnabled
+			}
+			cfg, err := config.Load(fakeEnv(env))
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if cfg.CookiesSecure != tc.want {
+				t.Errorf("CookiesSecure = %v, want %v (matching TLSEnabled)", cfg.CookiesSecure, tc.want)
+			}
+			if cfg.CookieSecureUnusualCombination {
+				t.Error("expected CookieSecureUnusualCombination to be false when COOKIE_SECURE was never set")
+			}
+		})
+	}
+}
+
+// TestLoad_CookieSecureOverride guards the one case CookiesSecure's
+// TLSEnabled default can't handle on its own: a trusted reverse proxy
+// terminates real TLS in front of this process (TLS_ENABLED=false),
+// but the browser's own connection to that proxy genuinely is HTTPS,
+// so COOKIE_SECURE=true should still be honored despite TLS_ENABLED
+// being false.
+func TestLoad_CookieSecureOverride(t *testing.T) {
+	cfg, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":           "test-key",
+		"UI_ADMIN_USER":          "admin",
+		"UI_ADMIN_PASSWORD_HASH": "$2a$10$fakehash",
+		"TLS_ENABLED":            "false",
+		"COOKIE_SECURE":          "true",
+	}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.CookiesSecure {
+		t.Error("expected CookiesSecure to be true when COOKIE_SECURE=true, even though TLS_ENABLED=false")
+	}
+	if cfg.CookieSecureUnusualCombination {
+		t.Error("expected CookieSecureUnusualCombination to be false for this (intended) combination")
+	}
+}
+
+// TestLoad_CookieSecureUnusualCombination guards the startup-warning
+// signal for the combination that's almost certainly a mistake:
+// explicitly disabling the Secure cookie flag while this process
+// itself is serving real HTTPS.
+func TestLoad_CookieSecureUnusualCombination(t *testing.T) {
+	cfg, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":           "test-key",
+		"UI_ADMIN_USER":          "admin",
+		"UI_ADMIN_PASSWORD_HASH": "$2a$10$fakehash",
+		"COOKIE_SECURE":          "false",
+	}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.CookiesSecure {
+		t.Error("expected CookiesSecure to be false when COOKIE_SECURE=false")
+	}
+	if !cfg.CookieSecureUnusualCombination {
+		t.Error("expected CookieSecureUnusualCombination to be true when COOKIE_SECURE=false while TLS_ENABLED defaults to true")
+	}
+}
+
+func TestLoad_CookieSecureRejectsInvalidBoolean(t *testing.T) {
+	_, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":           "test-key",
+		"UI_ADMIN_USER":          "admin",
+		"UI_ADMIN_PASSWORD_HASH": "$2a$10$fakehash",
+		"COOKIE_SECURE":          "not-a-bool",
+	}))
+	if err == nil {
+		t.Fatal("expected error for an invalid COOKIE_SECURE value")
+	}
+}
+
 func TestLoad_ConfigWarningsEnabledDefaultsToFalse(t *testing.T) {
 	cfg, err := config.Load(fakeEnv(map[string]string{
 		"VYOS_API_KEY":           "test-key",

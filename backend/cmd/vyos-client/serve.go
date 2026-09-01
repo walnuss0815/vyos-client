@@ -52,6 +52,12 @@ func runServer() error {
 			"either unset TLS_ENABLED (or set it to true) to actually use that certificate, or " +
 			"remove the cert/key vars if plain HTTP is intentional.")
 	}
+	if cfg.CookieSecureUnusualCombination {
+		logger.Warn("COOKIE_SECURE=false while TLS_ENABLED=true; session/CSRF cookies will not " +
+			"have the Secure flag despite this listener serving real HTTPS - almost certainly not " +
+			"what you want. Unset COOKIE_SECURE (it already defaults to matching TLS_ENABLED) unless " +
+			"this is intentional.")
+	}
 	if cfg.SelfUpgradeVarsIgnored {
 		logger.Warn("SELF_UPGRADE_CONTAINER_NAME/SELF_UPGRADE_GITHUB_REPO are set but ignored " +
 			"because SELF_UPGRADE_ENABLED is not true; set SELF_UPGRADE_ENABLED=true to actually " +
@@ -113,12 +119,10 @@ func runServer() error {
 		Verifier: verifier,
 		Limiter:  loginLimiter,
 		Logger:   logger,
-		// Cookies marked Secure are silently dropped by browsers over
-		// plain HTTP, so this must track TLSEnabled exactly - not stay
-		// hardcoded true - or login would appear to succeed yet the
-		// session cookie would never actually be stored when TLS is
-		// disabled.
-		CookiesSecure:            cfg.TLSEnabled,
+		// Defaults to matching TLSEnabled (see config.Config.CookiesSecure's
+		// doc comment for why, and for the COOKIE_SECURE override that
+		// lets this diverge for a TLS-terminating reverse proxy in front).
+		CookiesSecure:            cfg.CookiesSecure,
 		SafeApplyDefaultSeconds:  cfg.SafeApplyDefaultSeconds,
 		ConfigWarningsEnabled:    cfg.ConfigWarningsEnabled,
 		Version:                  version,

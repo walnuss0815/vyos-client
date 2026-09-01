@@ -48,13 +48,10 @@ type Config struct {
 	TLSKeyFile  string
 	// TLSEnabled selects whether the backend's own listener (distinct
 	// from VyOS's remote HTTPS API - see VyOSAPIURL below) serves
-	// HTTPS (the default, true) or plain HTTP. Disabling this drops
-	// the session cookie's Secure flag too (see api.Server.CookiesSecure)
-	// - browsers refuse to send a Secure cookie back over plain HTTP,
-	// so the two must move together or login breaks. Only turn this
-	// off when a trusted reverse proxy terminates TLS in front of this
-	// process, or on a fully isolated/trusted network - see
-	// docs/security.md's TLS section.
+	// HTTPS (the default, true) or plain HTTP. Only turn this off when
+	// a trusted reverse proxy terminates TLS in front of this process,
+	// or on a fully isolated/trusted network - see docs/security.md's
+	// TLS section.
 	TLSEnabled bool
 	// TLSCertFilesIgnored reports whether TLS_CERT_FILE/TLS_KEY_FILE
 	// were set despite TLSEnabled == false, in which case they're
@@ -63,6 +60,29 @@ type Config struct {
 	// flag the likely-contradictory configuration instead of an
 	// operator wondering why their mounted certificate has no effect.
 	TLSCertFilesIgnored bool
+	// CookiesSecure controls the Secure flag on issued session/CSRF
+	// cookies. Defaults to TLSEnabled - browsers refuse to send a
+	// Secure cookie back over plain HTTP, so the two move together by
+	// default, or login would appear to succeed while the session
+	// cookie never actually persists. COOKIE_SECURE overrides this
+	// independently of TLS_ENABLED, for the one case where they
+	// legitimately diverge: a trusted reverse proxy terminates real
+	// TLS in front of this process (TLS_ENABLED=false, since this
+	// process itself only ever sees plain HTTP), but the browser's own
+	// connection - to the proxy - genuinely is HTTPS, so the cookie
+	// both can and should still be marked Secure. Without this
+	// override, that topology silently ends up with non-Secure
+	// cookies on what the browser considers an HTTPS origin - see
+	// docs/security.md's TLS section.
+	CookiesSecure bool
+	// CookieSecureUnusualCombination reports whether COOKIE_SECURE was
+	// explicitly set to false while TLS_ENABLED is true - a
+	// combination that's almost certainly a mistake (sending
+	// non-Secure cookies over a connection this process itself is
+	// actually serving as real HTTPS), surfaced so a startup warning
+	// can flag it rather than an operator silently weakening their own
+	// deployment.
+	CookieSecureUnusualCombination bool
 
 	// VyOSAPIURL is the base URL of the VyOS HTTPS API, e.g.
 	// "https://127.0.0.1".
@@ -250,6 +270,16 @@ func Load(getenv func(string) string) (*Config, error) {
 		cfg.TLSEnabled = b
 	}
 	cfg.TLSCertFilesIgnored = !cfg.TLSEnabled && (cfg.TLSCertFile != "" || cfg.TLSKeyFile != "")
+
+	cfg.CookiesSecure = cfg.TLSEnabled
+	if v := getenv("COOKIE_SECURE"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return nil, fmt.Errorf("config: COOKIE_SECURE: %w", err)
+		}
+		cfg.CookiesSecure = b
+		cfg.CookieSecureUnusualCombination = !b && cfg.TLSEnabled
+	}
 
 	if v := getenv("VYOS_API_INSECURE_SKIP_VERIFY"); v != "" {
 		b, err := strconv.ParseBool(v)
