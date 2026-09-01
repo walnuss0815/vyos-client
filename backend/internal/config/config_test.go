@@ -1,6 +1,8 @@
 package config_test
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/walnuss0815/vyos-client/backend/internal/config"
@@ -8,6 +10,10 @@ import (
 
 func fakeEnv(values map[string]string) func(string) string {
 	return func(key string) string { return values[key] }
+}
+
+func writeEmptyFile(path string) error {
+	return os.WriteFile(path, nil, 0o600)
 }
 
 func TestLoad_RequiresMandatoryVars(t *testing.T) {
@@ -753,5 +759,64 @@ func TestSessionSecretIsEphemeral(t *testing.T) {
 	}
 	if withSecret.SessionSecretIsEphemeral {
 		t.Error("expected non-ephemeral when SESSION_SECRET is set")
+	}
+}
+
+func TestLoad_DataDirUnsetByDefault(t *testing.T) {
+	cfg, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":           "test-key",
+		"UI_ADMIN_USER":          "admin",
+		"UI_ADMIN_PASSWORD_HASH": "$2a$10$fakehash",
+	}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.DataDir != "" {
+		t.Errorf("DataDir = %q, want empty when DATA_DIR is unset", cfg.DataDir)
+	}
+}
+
+func TestLoad_DataDirAcceptsAnExistingDirectory(t *testing.T) {
+	dir := t.TempDir()
+	cfg, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":           "test-key",
+		"UI_ADMIN_USER":          "admin",
+		"UI_ADMIN_PASSWORD_HASH": "$2a$10$fakehash",
+		"DATA_DIR":               dir,
+	}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.DataDir != dir {
+		t.Errorf("DataDir = %q, want %q", cfg.DataDir, dir)
+	}
+}
+
+func TestLoad_DataDirRejectsAMissingPath(t *testing.T) {
+	_, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":           "test-key",
+		"UI_ADMIN_USER":          "admin",
+		"UI_ADMIN_PASSWORD_HASH": "$2a$10$fakehash",
+		"DATA_DIR":               "/does/not/exist",
+	}))
+	if err == nil {
+		t.Fatal("expected an error for a DATA_DIR that doesn't exist")
+	}
+}
+
+func TestLoad_DataDirRejectsAPlainFile(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "not-a-directory")
+	if err := writeEmptyFile(file); err != nil {
+		t.Fatalf("writeEmptyFile: %v", err)
+	}
+	_, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":           "test-key",
+		"UI_ADMIN_USER":          "admin",
+		"UI_ADMIN_PASSWORD_HASH": "$2a$10$fakehash",
+		"DATA_DIR":               file,
+	}))
+	if err == nil {
+		t.Fatal("expected an error for a DATA_DIR that is a file, not a directory")
 	}
 }

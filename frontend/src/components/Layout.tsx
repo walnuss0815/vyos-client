@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { useNotifications } from '../hooks/useNotifications'
 import { useSystemInfo } from '../hooks/useSystemInfo'
 import { DEFAULT_DOCUMENT_TITLE } from '../lib/constants'
 import { useSessionStore } from '../store/session'
@@ -31,6 +32,7 @@ const navItems = [
   { to: '/config-tree', label: 'Config Tree' },
   { to: '/logs', label: 'Logs' },
   { to: '/files', label: 'Files' },
+  { to: '/notifications', label: 'Notifications' },
 ]
 
 export { DEFAULT_DOCUMENT_TITLE }
@@ -52,6 +54,8 @@ export default function Layout() {
   const systemInfoQuery = useSystemInfo()
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const { data: notifications } = useNotifications()
+  const unreadNotificationCount = notifications?.filter((n) => !n.read).length ?? 0
 
   // Close the drawer automatically after navigating - without this,
   // picking a nav link on mobile would leave the drawer covering the
@@ -144,7 +148,15 @@ export default function Layout() {
                   }`
                 }
               >
-                {item.label}
+                <span>{item.label}</span>
+                {item.to === '/notifications' && unreadNotificationCount > 0 && (
+                  <span
+                    aria-label={`${unreadNotificationCount} unread notification${unreadNotificationCount === 1 ? '' : 's'}`}
+                    className="rounded-full bg-accent-600 px-1.5 py-0.5 text-[10px] font-semibold text-white"
+                  >
+                    {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
+                  </span>
+                )}
                 {disabled && <span className="ml-1 text-xs text-slate-600">(off)</span>}
               </NavLink>
             )

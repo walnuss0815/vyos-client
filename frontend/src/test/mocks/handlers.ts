@@ -107,4 +107,11 @@ export const handlers = [
   http.get('/api/pki/expiry', () => {
     return HttpResponse.json({ certificates: [], cas: [] })
   }),
+
+  // Layout.tsx's sidebar unread badge fetches this on every
+  // authenticated page - default to "nothing yet" so tests that don't
+  // care about notifications don't need their own handler.
+  http.get('/api/notifications', () => {
+    return HttpResponse.json({ notifications: [] })
+  }),
 ]
