@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1
-#
 # Multi-stage build for VyOS Client. Produces a small, distroless,
 # non-root image suitable for `set container name vyos-client image ...`
 # on a VyOS instance (Podman-based container engine). Build from the
@@ -12,6 +10,15 @@
 #   docker buildx build -f deploy/Dockerfile \
 #     --platform linux/amd64,linux/arm64 \
 #     -t ghcr.io/<org>/vyos-client:latest --push .
+#
+# Deliberately no `# syntax=docker/dockerfile:1` pragma: that directive
+# only matters if this file used a Dockerfile syntax feature newer than
+# what's built into BuildKit itself (heredocs, `RUN --mount=`, `COPY
+# --link`, ...) - it doesn't, so the pragma would only add a pointless
+# network dependency on resolving docker.io/docker/dockerfile:1 before
+# every single build, with no functional benefit. Re-add it (pinned to
+# a digest, not a floating tag) if a future change genuinely needs a
+# newer syntax feature.
 
 # ---- frontend build -------------------------------------------------
 FROM node:22-alpine AS frontend-build
