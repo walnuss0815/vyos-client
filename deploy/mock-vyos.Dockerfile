@@ -1,9 +1,10 @@
-# syntax=docker/dockerfile:1
-#
 # Standalone build for the mock-vyos dev/testing helper (see
 # backend/cmd/mock-vyos). NOT part of the production vyos-client image
 # (deploy/Dockerfile) - this is only used by docker-compose.yml for
 # local testing without a real router.
+#
+# Deliberately no `# syntax=docker/dockerfile:1` pragma - see
+# deploy/Dockerfile's own doc comment for why.
 
 FROM golang:1.25-alpine AS build
 WORKDIR /src/backend
