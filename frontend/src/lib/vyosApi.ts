@@ -489,6 +489,44 @@ export function deleteContainerImage(name: string): Promise<ContainerImageAction
   })
 }
 
+/** POST /api/container/images/check-update's response. When `enabled`
+ * is false (the CONTAINER_UPDATE_CHECKS_ENABLED default), every other
+ * field is left at its zero value and the backend never contacted a
+ * registry at all. */
+export interface ContainerImageUpdateCheck {
+  enabled: boolean
+  /** The submitted image's own tag ("latest" if none was given
+   * explicitly). */
+  currentTag: string
+  /** False when currentTag isn't a version tag this app knows how to
+   * compare (e.g. "latest", a branch name, or a digest-pinned
+   * reference) - no update comparison was possible at all.
+   * Distinguishes "checked, you're up to date" from "can't check this
+   * tag", which otherwise look identical (updateAvailable=false, no
+   * latestTag). */
+  recognized: boolean
+  /** The newest tag found sharing currentTag's exact "flavor"
+   * (leading "v", suffix, patch-presence) - '' if none is newer, or
+   * recognized is false. */
+  latestTag: string
+  /** Only ever true when recognized is also true. */
+  updateAvailable: boolean
+  /** The full image reference to pull/queue if the suggested update
+   * is accepted - '' unless updateAvailable is true. */
+  newImageRef: string
+}
+
+/** Checks whether image has a newer tag published on its registry -
+ * see docs/architecture.md's "Container image update checks" section.
+ * Unlike self-upgrade's own check (cached server-side and safe to
+ * call repeatedly), this contacts whatever registry the image's own
+ * host resolves to on every call - callers should only invoke this on
+ * an explicit user action (a "Check for update" button), never
+ * automatically/on page load. */
+export function checkContainerImageUpdate(image: string): Promise<ContainerImageUpdateCheck> {
+  return apiRequest<ContainerImageUpdateCheck>('/api/container/images/check-update', { body: { image } })
+}
+
 /** One interface's live health-check state from `show wan-load-
  * balance` - distinct from `load-balancing wan interface-health
  * <ifname>` configuration, which the Config Tree/Load-balancing pages
