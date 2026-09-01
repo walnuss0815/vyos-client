@@ -275,6 +275,58 @@ func TestProxy_LeavesCrossOriginRedirectUntouched(t *testing.T) {
 	}
 }
 
+// TestProxy_RewritesAbsolutePathsInHTMLResponse is the end-to-end
+// counterpart to rewrite_test.go's unit tests - confirms the whole
+// request/response round trip through the real Proxy actually applies
+// the rewriting, not just the isolated rewriteResponseBody function.
+func TestProxy_RewritesAbsolutePathsInHTMLResponse(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(`<script src="/dist/login.js"></script><link href="/dist/login.css" rel="stylesheet">`))
+	}))
+	defer upstream.Close()
+
+	store := newTestStore(t, ingress.Entry{Name: "nas", TargetURL: upstream.URL})
+	proxy := ingress.NewProxy(store, testLogger())
+
+	req := httptest.NewRequest(http.MethodGet, "/ingress/nas/login.html", nil)
+	rec := httptest.NewRecorder()
+	proxy.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+	want := `<script src="/ingress/nas/dist/login.js"></script><link href="/ingress/nas/dist/login.css" rel="stylesheet">`
+	if rec.Body.String() != want {
+		t.Errorf("body = %q, want %q", rec.Body.String(), want)
+	}
+}
+
+// TestProxy_DoesNotRewriteNonHTMLResponses guards against corrupting
+// binary/JS/JSON responses that happen to contain HTML-attribute-
+// shaped or CSS-url()-shaped text (e.g. a JS bundle embedding a
+// string literal like `"/api"`) - only text/html and text/css
+// responses are ever touched.
+func TestProxy_DoesNotRewriteNonHTMLResponses(t *testing.T) {
+	body := `console.log("href=\"/not-actually-html\"")`
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/javascript")
+		_, _ = w.Write([]byte(body))
+	}))
+	defer upstream.Close()
+
+	store := newTestStore(t, ingress.Entry{Name: "nas", TargetURL: upstream.URL})
+	proxy := ingress.NewProxy(store, testLogger())
+
+	req := httptest.NewRequest(http.MethodGet, "/ingress/nas/app.js", nil)
+	rec := httptest.NewRecorder()
+	proxy.ServeHTTP(rec, req)
+
+	if rec.Body.String() != body {
+		t.Errorf("body = %q, want the original JS left completely untouched", rec.Body.String())
+	}
+}
+
 func TestProxy_UnknownIngressReturns404(t *testing.T) {
 	store := newTestStore(t)
 	proxy := ingress.NewProxy(store, testLogger())

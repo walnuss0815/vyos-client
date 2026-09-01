@@ -30,12 +30,16 @@ const PathPrefix = "/ingress/"
 // comment for why auth.RequireCSRF is deliberately NOT also applied
 // here (upstream apps have no way to send our CSRF token back).
 //
-// Known limitation (see docs/architecture.md's "Ingress" section):
-// this only rewrites what it can see - an upstream app's own HTML/JS
-// that hardcodes absolute paths (e.g. loading "/assets/app.js"
-// instead of a relative path) will still break, since there's no HTML
-// rewriting here. Many self-hosted UIs work fine under a path prefix;
-// some don't.
+// text/html and text/css responses also have their root-relative
+// absolute paths (e.g. "/assets/app.js") rewritten to stay under the
+// proxy's own path prefix - see rewriteAbsolutePaths. Known
+// limitation (see docs/architecture.md's "Ingress" section): this is
+// a plain text substitution, not a real parser, and can never fix an
+// absolute path an upstream app's own JavaScript constructs at
+// runtime rather than one present verbatim in markup - check whether
+// the target has its own reverse-proxy/base-path setting first (many
+// do; ntopng's -Z/--http-prefix flag is one concrete example), which
+// is more correct and complete than this best-effort rewrite.
 type Proxy struct {
 	store  *Store
 	logger *slog.Logger
@@ -136,7 +140,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ModifyResponse: func(resp *http.Response) error {
 			rewriteLocation(resp, prefix, target)
 			rewriteSetCookiePaths(resp, prefix)
-			return nil
+			return rewriteResponseBody(resp, prefix, p.logger)
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			p.logger.Warn("ingress proxy error", "ingress", name, "error", err)
