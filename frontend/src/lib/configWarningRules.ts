@@ -1,19 +1,33 @@
-import Ajv from 'ajv'
 import { search } from 'jmespath'
 import rulesData from './configWarningRules.json'
-import schema from './configWarningRules.schema.json'
 
 /**
  * Data-driven rules for the config-warnings banner - see
  * configWarningRules.schema.json for the full shape/rationale and
- * configWarningRules.json for the actual rules. This module loads and
- * validates that data against its own JSON Schema (via ajv - a real
- * JSON Schema validator, not ad-hoc field checks, so a malformed rule
- * fails loudly and specifically at module load rather than silently
- * producing no warnings or a confusing error deep inside a JMESPath
- * evaluation), and evaluates each rule's JMESPath query
- * (evaluateConfigWarningRules) against the facts object
- * lib/configWarnings.ts builds from already-typed config.
+ * configWarningRules.json for the actual rules. This module loads that
+ * data (already schema-validated - see below) and evaluates each
+ * rule's JMESPath query (evaluateConfigWarningRules) against the facts
+ * object lib/configWarnings.ts builds from already-typed config.
+ *
+ * Schema validation against configWarningRules.schema.json happens in
+ * configWarningRules.test.ts, not here at runtime. It used to run here
+ * too (via ajv), but ajv's default compile() calls `new Function()` to
+ * turn a schema into an executable validator - which a strict
+ * Content-Security-Policy's `script-src` (no `'unsafe-eval'`) blocks
+ * outright in every real browser (see
+ * backend/internal/api/security_headers.go). Since this module sits on
+ * every page's import graph (there's no route-level code splitting -
+ * App.tsx statically imports every page, including Layout, which
+ * always renders ConfigWarningsBanner regardless of whether that
+ * banner is enabled), that thrown error crashed the whole app before
+ * React ever mounted - not caught by ErrorBoundary, since the crash
+ * happened during module evaluation, before any component rendered.
+ * configWarningRules.json is a static, developer-authored file with no
+ * runtime-varying input, so re-validating it inside every user's
+ * browser on every page load was never actually necessary - the
+ * existing test already provides the same "fail loud at build/test
+ * time" safety net the doc comment below originally described, just
+ * confined to Node/Vitest execution where no CSP applies.
  *
  * Every rule's query MUST evaluate to an array - one warning is
  * produced per array element, with that element's own fields
@@ -36,24 +50,9 @@ export interface ConfigWarning {
   message: string
 }
 
-const ajv = new Ajv({ allErrors: true })
-const validateRules = ajv.compile(schema)
-
-/** Validates configWarningRules.json against configWarningRules
- * .schema.json once, at module load. Throwing here (rather than
- * logging and continuing with possibly-malformed data) is deliberate:
- * a broken rules file should fail the build/tests immediately, the
- * same "fail loud, fail early" treatment this app gives every other
- * structurally-invalid startup configuration. */
-function loadRules(): ConfigWarningRule[] {
-  if (!validateRules(rulesData)) {
-    const details = ajv.errorsText(validateRules.errors, { separator: '; ' })
-    throw new Error(`configWarningRules.json failed schema validation: ${details}`)
-  }
-  return rulesData as ConfigWarningRule[]
-}
-
-export const configWarningRules: ConfigWarningRule[] = loadRules()
+// Schema-validated by configWarningRules.test.ts, not at runtime - see
+// this module's own doc comment above for why.
+export const configWarningRules: ConfigWarningRule[] = rulesData as ConfigWarningRule[]
 
 /** Replaces every `{fieldName}` placeholder in template with
  * String(context[fieldName]) - a placeholder whose field is missing
