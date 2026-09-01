@@ -101,6 +101,13 @@ func runServer() error {
 	// recorded inside Verify never affect the Allow check handleLogin
 	// actually makes, silently disabling rate limiting.
 	loginLimiter := auth.NewLoginLimiter()
+	// 30 commits/confirms/imports per 5 minutes per authenticated
+	// user - generous enough for normal interactive use (including
+	// rapid iteration while testing a change), while still bounding a
+	// runaway script or compromised session's ability to hammer
+	// VyOS's own commit process, which has no rate limit of its own.
+	// Not yet configurable - see docs/configuration-reference.md.
+	commitLimiter := auth.NewRequestLimiter(30, 5*time.Minute)
 	var verifier auth.CredentialVerifier
 	switch cfg.AuthMode {
 	case config.AuthModeStatic:
@@ -129,6 +136,7 @@ func runServer() error {
 		SelfUpgradeEnabled:       cfg.SelfUpgradeEnabled,
 		SelfUpgradeContainerName: cfg.SelfUpgradeContainerName,
 		SelfUpgradeGitHub:        selfUpgradeGitHub,
+		CommitLimiter:            commitLimiter,
 	}
 
 	mux := http.NewServeMux()

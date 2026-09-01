@@ -42,6 +42,11 @@ no config file. This is the complete list, matching
 - Login rate limiting: 5 attempts before exponential backoff kicks in
   (1s, doubling up to a 5 minute cap), reset after 15 minutes of
   inactivity. See `backend/internal/auth/ratelimit.go`.
+- Config commit/import rate limiting: 30 requests per 5 minutes per
+  authenticated user, applied to `POST /api/config/commit`,
+  `POST /api/config/commit/confirm`, and `POST /api/config/import` -
+  the routes that trigger a real VyOS commit, which VyOS itself has no
+  rate limit of its own on. See `backend/internal/auth/requestlimiter.go`.
 - Session TTL: 30 minutes, sliding (renewed on every authenticated
   request), capped at 12 hours from login regardless of activity
   (`backend/internal/auth/session.go`).

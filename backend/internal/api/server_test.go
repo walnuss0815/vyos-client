@@ -352,6 +352,131 @@ func TestCommitAndReadBack(t *testing.T) {
 	}
 }
 
+// TestCommit_RateLimited guards the config-commit rate limit
+// (Server.CommitLimiter, wired up in Routes via commitRateLimited) -
+// a comparatively expensive operation (a real VyOS commit) that VyOS
+// itself has no rate limit of its own on.
+func TestCommit_RateLimited(t *testing.T) {
+	e := newTestEnv(t)
+	e.apiServer.CommitLimiter = auth.NewRequestLimiter(2, time.Minute)
+	e.login(t)
+
+	commitBody := map[string]any{
+		"ops": []map[string]any{
+			{"op": "set", "path": []string{"system", "host-name"}, "value": "test-router"},
+		},
+	}
+	for i := range 2 {
+		resp := e.doJSON(t, http.MethodPost, "/api/config/commit", commitBody)
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != http.StatusOK {
+			b, _ := io.ReadAll(resp.Body)
+			t.Fatalf("commit %d: status=%d body=%s", i+1, resp.StatusCode, b)
+		}
+	}
+
+	resp := e.doJSON(t, http.MethodPost, "/api/config/commit", commitBody)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusTooManyRequests {
+		t.Errorf("3rd commit: status = %d, want 429", resp.StatusCode)
+	}
+}
+
+// TestCommit_RateLimitIsPerUser guards against one user's quota
+// affecting another's - the limiter is keyed by the authenticated
+// username (auth.UserFromContext), not e.g. a shared/global counter.
+func TestCommit_RateLimitIsPerUser(t *testing.T) {
+	e := newVyOSUserTestEnv(t, "alice", vyosUserRealSHA512CryptHash)
+	e.apiServer.CommitLimiter = auth.NewRequestLimiter(1, time.Minute)
+
+	e.fakeVyOS.Config["system"] = map[string]any{
+		"login": map[string]any{
+			"user": map[string]any{
+				"alice": map[string]any{"authentication": map[string]any{"encrypted-password": vyosUserRealSHA512CryptHash}},
+				"bob":   map[string]any{"authentication": map[string]any{"encrypted-password": vyosUserRealSHA512CryptHash}},
+			},
+		},
+	}
+
+	commitBody := map[string]any{
+		"ops": []map[string]any{
+			{"op": "set", "path": []string{"system", "host-name"}, "value": "test-router"},
+		},
+	}
+
+	loginAs := func(username string) {
+		body, _ := json.Marshal(map[string]string{"username": username, "password": "s3cret-password"})
+		resp, err := e.client.Post(e.server.URL+"/api/auth/login", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatalf("login as %s: %v", username, err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("login as %s: status=%d", username, resp.StatusCode)
+		}
+	}
+
+	loginAs("alice")
+	resp := e.doJSON(t, http.MethodPost, "/api/config/commit", commitBody)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("alice's 1st commit: status = %d, want 200", resp.StatusCode)
+	}
+
+	// alice's quota (1) is now exhausted, but bob has his own.
+	loginAs("bob")
+	resp2 := e.doJSON(t, http.MethodPost, "/api/config/commit", commitBody)
+	defer func() { _ = resp2.Body.Close() }()
+	if resp2.StatusCode != http.StatusOK {
+		t.Errorf("bob's 1st commit: status = %d, want 200 (independent quota from alice)", resp2.StatusCode)
+	}
+}
+
+// TestCommit_RateLimiterDisabledWhenNil confirms a Server constructed
+// without a CommitLimiter (nil) never rate-limits at all, rather than
+// panicking - most tests in this file rely on exactly this behavior
+// implicitly, but it's worth asserting directly.
+func TestCommit_RateLimiterDisabledWhenNil(t *testing.T) {
+	e := newTestEnv(t) // CommitLimiter left nil
+	e.login(t)
+
+	commitBody := map[string]any{
+		"ops": []map[string]any{
+			{"op": "set", "path": []string{"system", "host-name"}, "value": "test-router"},
+		},
+	}
+	for i := range 5 {
+		resp := e.doJSON(t, http.MethodPost, "/api/config/commit", commitBody)
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("commit %d: status = %d, want 200 (no rate limiting without a CommitLimiter)", i+1, resp.StatusCode)
+		}
+	}
+}
+
+// TestImportConfig_RateLimited confirms the same rate limiter also
+// covers /api/config/import, not just /api/config/commit.
+func TestImportConfig_RateLimited(t *testing.T) {
+	e := newTestEnv(t)
+	e.apiServer.CommitLimiter = auth.NewRequestLimiter(1, time.Minute)
+	e.login(t)
+
+	importBody := map[string]any{"content": "set system host-name 'test-router'\n", "mode": "merge"}
+
+	resp := e.doJSON(t, http.MethodPost, "/api/config/import", importBody)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("1st import: status=%d body=%s", resp.StatusCode, b)
+	}
+
+	resp2 := e.doJSON(t, http.MethodPost, "/api/config/import", importBody)
+	defer func() { _ = resp2.Body.Close() }()
+	if resp2.StatusCode != http.StatusTooManyRequests {
+		t.Errorf("2nd import: status = %d, want 429", resp2.StatusCode)
+	}
+}
+
 // TestCommit_RejectsOversizedBody guards against an authenticated
 // client making the server buffer an arbitrarily large request body
 // before any size-based rejection - VyOS's own request-body-size-limit

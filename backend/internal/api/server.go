@@ -61,6 +61,14 @@ type Server struct {
 	// selfupgrade.Client.ListReleases) is actually shared across
 	// requests.
 	SelfUpgradeGitHub *selfupgrade.Client
+
+	// CommitLimiter throttles the handful of routes that trigger a
+	// real, comparatively expensive VyOS commit (see Routes' own
+	// commitRateLimited wiring) - nil disables rate limiting on those
+	// routes entirely (mainly for tests that don't care about it and
+	// would otherwise need to construct one just to avoid a nil
+	// dereference).
+	CommitLimiter *auth.RequestLimiter
 }
 
 // Routes returns the fully-wired HTTP handler for the backend, with all
@@ -81,6 +89,17 @@ func (s *Server) Routes() http.Handler {
 	authed := func(h http.HandlerFunc) http.Handler {
 		return auth.RequireSession(s.Sessions, s.CookiesSecure)(auth.RequireCSRF(h))
 	}
+	// Same as authed, plus a per-user rate limit (s.CommitLimiter) -
+	// used only for the routes that trigger a real VyOS commit
+	// (commit, commit-confirm, import), which is a comparatively
+	// expensive operation VyOS itself has no rate limit of its own on.
+	// Deliberately NOT applied to every authenticated route - e.g.
+	// handleSave and handleFiles are already bounded by request/
+	// response size caps (see decodeJSON/maxFileViewContentBytes)
+	// rather than being "expensive per call" the way a commit is.
+	rateLimited := func(h http.HandlerFunc) http.Handler {
+		return authed(s.commitRateLimited(h))
+	}
 
 	mux.Handle("POST /api/auth/logout", authed(s.handleLogout))
 	mux.Handle("GET /api/auth/session", authed(s.handleSessionInfo))
@@ -88,10 +107,10 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /api/config/tree", authed(s.handleGetConfigTree))
 	mux.Handle("GET /api/config/set-commands", authed(s.handleGetSetCommands))
 	mux.Handle("POST /api/config/reveal", authed(s.handleReveal))
-	mux.Handle("POST /api/config/commit", authed(s.handleCommit))
-	mux.Handle("POST /api/config/commit/confirm", authed(s.handleCommitConfirm))
+	mux.Handle("POST /api/config/commit", rateLimited(s.handleCommit))
+	mux.Handle("POST /api/config/commit/confirm", rateLimited(s.handleCommitConfirm))
 	mux.Handle("POST /api/config/save", authed(s.handleSave))
-	mux.Handle("POST /api/config/import", authed(s.handleImportConfig))
+	mux.Handle("POST /api/config/import", rateLimited(s.handleImportConfig))
 
 	mux.Handle("GET /api/system/resources", authed(s.handleSystemResources))
 	mux.Handle("POST /api/system/reboot", authed(s.handleReboot))
@@ -124,6 +143,26 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /api/pki/expiry", authed(s.handlePKIExpiry))
 
 	return requestLogger(s.Logger)(mux)
+}
+
+// commitRateLimited wraps h with s.CommitLimiter, keyed by the
+// authenticated username - available because this only ever runs
+// behind auth.RequireSession (see Routes' rateLimited wiring, which
+// always composes this inside that). A nil CommitLimiter disables
+// rate limiting entirely rather than panicking, so tests/callers that
+// construct a Server without one aren't forced to.
+func (s *Server) commitRateLimited(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.CommitLimiter != nil {
+			user, _ := auth.UserFromContext(r.Context())
+			if !s.CommitLimiter.Allow(user) {
+				writeError(w, http.StatusTooManyRequests,
+					"too many configuration changes in a short time; wait a moment and try again")
+				return
+			}
+		}
+		h(w, r)
+	}
 }
 
 func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
