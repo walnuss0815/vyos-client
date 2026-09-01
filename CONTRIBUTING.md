@@ -40,7 +40,7 @@ write release notes, or push a tag: every push to `main` computes the
 next version from Conventional Commits since the last release, and if
 one or more commits warrant a release, semantic-release creates the git
 tag and GitHub Release (with a changelog grouped by category), and the
-multi-arch container image is built and pushed to GHCR with that
+amd64 container image is built and pushed to GHCR with that
 version.
 
 ## Dependency updates

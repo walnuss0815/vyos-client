@@ -51,14 +51,18 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-and-push:
-    name: Build and push multi-arch image
+    # amd64 only - VyOS itself only supports amd64, so an arm64 image
+    # would never actually be deployable on the one platform this app
+    # targets. Re-adding it later (e.g. `platforms: linux/amd64,
+    # linux/arm64` below, plus a docker/setup-qemu-action@v4 step
+    # ahead of setup-buildx-action for cross-arch emulation) is a
+    # small, self-contained change if VyOS ever gains arm64 support.
+    name: Build and push image
     needs: release
     if: needs.release.outputs.new_release_published == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-
-      - uses: docker/setup-qemu-action@v4
 
       - uses: docker/setup-buildx-action@v4
 
@@ -104,7 +108,7 @@ jobs:
         with:
           context: .
           file: deploy/Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

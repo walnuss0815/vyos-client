@@ -45,8 +45,10 @@ definition.
     `POST /api/config/commit/confirm` endpoint as an ordinary commit,
     since VyOS treats commit-confirm as one global timer regardless of
     which endpoint started it.
-- **Container image**: distroless, non-root, ~17MB, multi-arch build,
-  self-contained healthcheck subcommand.
+- **Container image**: distroless, non-root, ~17MB, amd64-only build
+  (VyOS itself only supports amd64 - see the "amd64-only builds" entry
+  further down for why and how this is structured to re-add arm64
+  easily if that ever changes), self-contained healthcheck subcommand.
 - **CI**: backend + frontend lint/test/build on every push/PR, Docker
   build validation.
 - **Automated releases**: on every push to `main`, semantic-release
@@ -56,8 +58,8 @@ definition.
   category (Features/Bug Fixes/Performance Improvements/Security/...),
   creates the git tag, and publishes the GitHub Release - no manual
   version bumping or hand-written release notes. When a release is
-  cut, `.github/workflows/release.yml` also builds the multi-arch
-  image and pushes it to GHCR tagged with that version, and embeds it
+  cut, `.github/workflows/release.yml` also builds the amd64 image
+  and pushes it to GHCR tagged with that version, and embeds it
   into the binary itself (`-X main.version=...`, surfaced via
   `/healthz` and `vyos-client version`) - see `deploy/Dockerfile`'s
   `VERSION` build-arg.
@@ -1875,6 +1877,24 @@ not a silently-missing gap.
   triggered automatically) since, unlike self-upgrade's single
   server-cached check, this can contact an arbitrary number of
   different registries with no caching on this app's side.
+
+- **amd64-only builds**: `.github/workflows/release.yml`'s image build
+  now targets `linux/amd64` only, dropping `linux/arm64` and the
+  `docker/setup-qemu-action` step that existed solely to cross-build
+  it (Buildx needs no emulation to build for the runner's own native
+  arch). VyOS itself only supports amd64, so an arm64 image was never
+  actually deployable on the one platform this app targets - shipping
+  it doubled build time/registry storage for an image nobody could
+  use. The whole "multi-arch capability" was already just a single
+  `platforms:` string (no build matrix to dismantle), so re-adding
+  arm64 later - if VyOS ever supports it - is the literal one-line
+  inverse of this change (plus re-adding the QEMU step ahead of
+  `setup-buildx-action`). `deploy/Dockerfile` needed no functional
+  changes at all (its `ARG TARGETOS`/`TARGETARCH` are Buildx's
+  automatic per-platform build args, not multi-arch-specific logic) -
+  only its own descriptive usage-example comment was updated for
+  accuracy, alongside the "multi-arch" prose in this file and
+  `CONTRIBUTING.md`.
 
 ## Next
 
