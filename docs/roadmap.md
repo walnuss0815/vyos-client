@@ -1971,6 +1971,31 @@ not a silently-missing gap.
   design (including the identifier-*is*-the-secret gap this still
   doesn't cover, e.g. SNMP community strings).
 
+- **Notifications + session-secret persistence**: a small, capped
+  (200 entries) in-app notification feed
+  (`backend/internal/notifications`) - `{id, createdAt, severity,
+  category, title, message, read}` entries other backend features can
+  raise, surfaced via `GET`/`POST`/`DELETE /api/notifications...`, a
+  new Notifications page, and a sidebar unread-count badge
+  (Layout.tsx). The first genuine exception to this project's "no
+  separate server-side state management" principle - kept as narrow
+  as possible: the store works purely in-memory with zero
+  configuration, and only persists to `<DATA_DIR>/notifications.json`
+  when the new `DATA_DIR` env var is set (unset by default). Nothing
+  raises a notification yet - this is the plumbing a first real
+  producer (a background container-image-update checker, see below)
+  needs to already exist. The same `DATA_DIR` also backs a new
+  three-tier `SESSION_SECRET` resolution
+  (`cmd/vyos-client/sessionsecret.go`): an explicit `SESSION_SECRET`
+  still always wins, but if it's left unset and `DATA_DIR` is
+  configured, a secret is now generated once and persisted to
+  `<DATA_DIR>/session-secret` instead of regenerating (and
+  invalidating every session) on every restart - written atomically
+  via a new small shared `internal/atomicfile` helper, reused by both
+  features rather than duplicating write-to-temp-then-rename logic
+  twice. See [architecture.md](architecture.md#notifications-the-one-thing-this-backend-persists-beyond-vyos-itself)
+  and [security.md](security.md#threat-model-notes).
+
 ## Next
 
 Not yet decided - see "Later" below for the candidate list (the

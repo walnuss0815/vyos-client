@@ -11,6 +11,7 @@ import (
 
 	"github.com/walnuss0815/vyos-client/backend/internal/auth"
 	"github.com/walnuss0815/vyos-client/backend/internal/imageupdate"
+	"github.com/walnuss0815/vyos-client/backend/internal/notifications"
 	"github.com/walnuss0815/vyos-client/backend/internal/selfupgrade"
 	"github.com/walnuss0815/vyos-client/backend/internal/vyos"
 )
@@ -100,6 +101,14 @@ type Server struct {
 	// nav item is off before the operator even clicks into it, the
 	// same way SystemLayout.tsx already does for the Upgrades tab).
 	FileBrowserEnabled bool
+
+	// Notifications is the in-app notification feed's backing store -
+	// see internal/notifications.Store. Constructed unconditionally in
+	// cmd/vyos-client/serve.go (it works with no persistence
+	// configured at all, same as SessionSecret's own always-works
+	// ephemeral fallback), so every handler that reads/writes it can
+	// assume it's never nil.
+	Notifications *notifications.Store
 }
 
 // Routes returns the fully-wired HTTP handler for the backend, with all
@@ -173,6 +182,11 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /api/qos/shaper-status", authed(s.handleQosShaperStatus))
 
 	mux.Handle("GET /api/pki/expiry", authed(s.handlePKIExpiry))
+
+	mux.Handle("GET /api/notifications", authed(s.handleListNotifications))
+	mux.Handle("POST /api/notifications/read", authed(s.handleMarkNotificationRead))
+	mux.Handle("POST /api/notifications/read-all", authed(s.handleMarkAllNotificationsRead))
+	mux.Handle("DELETE /api/notifications", authed(s.handleDeleteNotification))
 
 	return requestLogger(s.Logger)(mux)
 }

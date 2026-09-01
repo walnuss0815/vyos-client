@@ -27,6 +27,7 @@ import VrfPage from './pages/interfaces/VrfPage'
 import LoginPage from './pages/LoginPage'
 import LogsPage from './pages/LogsPage'
 import FilesPage from './pages/FilesPage'
+import NotificationsPage from './pages/NotificationsPage'
 import DestinationRulesPage from './pages/nat/DestinationRulesPage'
 import NATLayout from './pages/nat/NATLayout'
 import SourceRulesPage from './pages/nat/SourceRulesPage'
@@ -229,6 +230,7 @@ export default function App() {
           <Route path="/config-tree" element={<ConfigTreePage />} />
           <Route path="/logs" element={<LogsPage />} />
           <Route path="/files" element={<FilesPage />} />
+          <Route path="/notifications" element={<NotificationsPage />} />
         </Route>
       </Route>
     </Routes>

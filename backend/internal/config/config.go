@@ -182,6 +182,21 @@ type Config struct {
 	// pattern as UIAdminVarsIgnored/TLSCertFilesIgnored above.
 	SelfUpgradeVarsIgnored bool
 
+	// DataDir, if set, is a directory this backend may persist local
+	// state to across restarts - currently the session-secret file
+	// (see cmd/vyos-client/sessionsecret.go) and the notification feed
+	// (see internal/notifications.Store), both otherwise purely
+	// in-memory/ephemeral. Unset by default, matching this project's
+	// "no separate server-side state management" principle - both
+	// features degrade gracefully without it (an ephemeral session
+	// secret each restart, an empty notification feed each restart),
+	// so this is opt-in for the operator who wants either to survive a
+	// restart without having to manage SESSION_SECRET by hand. Must
+	// already exist and be a directory; the backend never creates it
+	// (a missing DATA_DIR is far more likely a misconfigured volume
+	// mount than an intentional "please create this for me").
+	DataDir string
+
 	// ContainerUpdateChecksEnabled turns on the Containers page's
 	// "Check for update" button (see docs/architecture.md's
 	// "Container image update checks" section) - disabled by default.
@@ -317,18 +332,18 @@ func Load(getenv func(string) string) (*Config, error) {
 	}
 
 	if v := getenv("SESSION_SECRET"); v != "" {
-		if len(v) < minSessionSecretLength {
+		if len(v) < MinSessionSecretLength {
 			return nil, fmt.Errorf(
 				"config: SESSION_SECRET must be at least %d bytes (got %d); "+
 					"this signs every session and CSRF token, so a short value is "+
 					"weaker than the randomly-generated default used when it's left unset",
-				minSessionSecretLength, len(v),
+				MinSessionSecretLength, len(v),
 			)
 		}
 		cfg.SessionSecret = []byte(v)
 	} else {
 		cfg.SessionSecretIsEphemeral = true
-		secret, err := randomSecret(minSessionSecretLength)
+		secret, err := randomSecret(MinSessionSecretLength)
 		if err != nil {
 			return nil, fmt.Errorf("config: generating random SESSION_SECRET: %w", err)
 		}
@@ -408,13 +423,26 @@ func Load(getenv func(string) string) (*Config, error) {
 		cfg.FileBrowserEnabled = b
 	}
 
+	if v := getenv("DATA_DIR"); v != "" {
+		info, err := os.Stat(v)
+		if err != nil {
+			return nil, fmt.Errorf("config: DATA_DIR %q: %w", v, err)
+		}
+		if !info.IsDir() {
+			return nil, fmt.Errorf("config: DATA_DIR %q is not a directory", v)
+		}
+		cfg.DataDir = v
+	}
+
 	return cfg, nil
 }
 
-// minSessionSecretLength matches the entropy of the auto-generated
+// MinSessionSecretLength matches the entropy of the auto-generated
 // default (32 random bytes), so an explicitly-configured SESSION_SECRET
-// can never be weaker than doing nothing at all.
-const minSessionSecretLength = 32
+// can never be weaker than doing nothing at all. Exported so
+// cmd/vyos-client's session-secret persistence (see sessionsecret.go)
+// can hold a persisted secret to the same minimum bar.
+const MinSessionSecretLength = 32
 
 // validateVyOSAPIURL checks that raw is a structurally valid absolute
 // URL with an http or https scheme and a non-empty host, returning the

@@ -122,6 +122,45 @@ describe('Layout', () => {
     expect(link).toHaveAttribute('rel', 'noreferrer')
   })
 
+  describe('notifications unread badge', () => {
+    it('shows no badge when there are no unread notifications', async () => {
+      server.use(http.get('/api/notifications', () => HttpResponse.json({ notifications: [] })))
+      renderWithProviders(<Layout />)
+      await screen.findByRole('link', { name: 'Notifications' })
+      expect(screen.queryByLabelText(/unread notification/i)).not.toBeInTheDocument()
+    })
+
+    it('shows the unread count next to the Notifications nav item', async () => {
+      server.use(
+        http.get('/api/notifications', () =>
+          HttpResponse.json({
+            notifications: [
+              { id: '1', createdAt: '2024-01-01T00:00:00Z', severity: 'info', category: 'x', title: 'a', message: '', read: false },
+              { id: '2', createdAt: '2024-01-01T00:00:00Z', severity: 'info', category: 'x', title: 'b', message: '', read: true },
+            ],
+          }),
+        ),
+      )
+      renderWithProviders(<Layout />)
+      expect(await screen.findByLabelText('1 unread notification')).toBeInTheDocument()
+    })
+
+    it('caps the displayed badge count at "99+"', async () => {
+      const many = Array.from({ length: 150 }, (_, i) => ({
+        id: String(i),
+        createdAt: '2024-01-01T00:00:00Z',
+        severity: 'info' as const,
+        category: 'x',
+        title: `n${i}`,
+        message: '',
+        read: false,
+      }))
+      server.use(http.get('/api/notifications', () => HttpResponse.json({ notifications: many })))
+      renderWithProviders(<Layout />)
+      expect(await screen.findByLabelText('150 unread notifications')).toHaveTextContent('99+')
+    })
+  })
+
   describe('off-canvas sidebar (below the lg: breakpoint)', () => {
     it('has no backdrop until the hamburger button is clicked', () => {
       renderWithProviders(<Layout />)
