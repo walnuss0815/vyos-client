@@ -1,14 +1,37 @@
+import Ajv from 'ajv'
 import { describe, expect, it } from 'vitest'
 import { configWarningRules, evaluateConfigWarningRules, type ConfigWarningRule } from './configWarningRules'
+import rulesData from './configWarningRules.json'
+import schema from './configWarningRules.schema.json'
 
 describe('configWarningRules', () => {
-  it('loads and validates configWarningRules.json without throwing', () => {
+  it('loads configWarningRules.json', () => {
     expect(configWarningRules.length).toBeGreaterThan(0)
     for (const rule of configWarningRules) {
       expect(typeof rule.id).toBe('string')
       expect(typeof rule.query).toBe('string')
       expect(typeof rule.message).toBe('string')
     }
+  })
+
+  // Real JSON Schema validation (not just the ad-hoc field checks
+  // above) against configWarningRules.schema.json - deliberately kept
+  // here, in the test suite, rather than in configWarningRules.ts
+  // itself: ajv's compile() calls `new Function()` to build an
+  // executable validator, which a strict Content-Security-Policy
+  // blocks in a real browser (see that module's own doc comment for
+  // the full incident this caused). Node/Vitest enforces no such
+  // policy, so ajv works fine here - this test still fails loudly if
+  // a future edit to configWarningRules.json doesn't match the schema,
+  // it just does so at test time instead of in every user's browser.
+  it('validates configWarningRules.json against configWarningRules.schema.json', () => {
+    const ajv = new Ajv({ allErrors: true })
+    const validate = ajv.compile(schema)
+    const valid = validate(rulesData)
+    if (!valid) {
+      throw new Error(`configWarningRules.json failed schema validation: ${ajv.errorsText(validate.errors, { separator: '; ' })}`)
+    }
+    expect(valid).toBe(true)
   })
 })
 
