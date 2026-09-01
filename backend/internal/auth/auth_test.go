@@ -52,10 +52,48 @@ func TestSessionManager_RejectsTamperedToken(t *testing.T) {
 		t.Fatalf("Issue: %v", err)
 	}
 
-	tampered := token[:len(token)-1] + "x"
+	tampered := tamperToken(token)
 	if _, err := sm.Verify(tampered); err == nil {
 		t.Fatal("expected tampered token to be rejected")
 	}
+}
+
+// tamperToken flips a valid token's second-to-last character to a
+// value guaranteed to decode differently. Two things make this less
+// trivial than it looks - both confirmed empirically (not just
+// theorized) after this exact flakiness caused an intermittent CI
+// failure:
+//
+//  1. The token's tail is a base64 (RawURLEncoding) encoding of a
+//     32-byte HMAC-SHA256 signature. 32 bytes = 256 bits, which isn't
+//     a multiple of 6 (each base64 character encodes 6 bits) - the
+//     encoding's *last* character only carries 4 of its 6 bits of
+//     real signature data, with the remaining 2 bits zero-padded to
+//     fill it out. Go's base64 decoder is lenient about those unused
+//     padding bits (no error, no matter what they are), so several
+//     different last characters all decode to the exact same 32-byte
+//     signature - tampering ONLY the token's true last character
+//     therefore has a real (measured: 3 of 63 possible replacements,
+//     ~5%) chance of producing a "tampered" token that's still
+//     byte-for-byte valid once decoded, silently passing verification
+//     instead of being rejected.
+//  2. Every OTHER character in the signature (and everywhere else in
+//     the token) fully participates in 6 real bits with no such
+//     padding ambiguity, confirmed to have zero such collisions - so
+//     tampering the second-to-last character instead (still deep
+//     inside the signature; a HMAC-SHA256 signature is always exactly
+//     32 bytes/43 characters regardless of the payload) reliably
+//     changes the decoded bytes on every run.
+func tamperToken(token string) string {
+	if len(token) < 2 {
+		return token + "x"
+	}
+	idx := len(token) - 2
+	replacement := byte('x')
+	if token[idx] == replacement {
+		replacement = 'y'
+	}
+	return token[:idx] + string(replacement) + token[idx+1:]
 }
 
 // TestSessionManager_RejectsOversizedToken guards against a low-severity
@@ -152,7 +190,7 @@ func TestSessionManager_RenewRejectsTamperedToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Issue: %v", err)
 	}
-	tampered := token[:len(token)-1] + "x"
+	tampered := tamperToken(token)
 	if _, _, err := sm.Renew(tampered); err == nil {
 		t.Fatal("expected Renew to reject a tampered token")
 	}
