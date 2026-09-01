@@ -688,6 +688,47 @@ func TestLoad_ContainerUpdateChecksEnabledRejectsInvalidBoolean(t *testing.T) {
 	}
 }
 
+func TestLoad_FileBrowserDisabledByDefault(t *testing.T) {
+	cfg, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":           "test-key",
+		"UI_ADMIN_USER":          "admin",
+		"UI_ADMIN_PASSWORD_HASH": "$2a$10$fakehash",
+	}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.FileBrowserEnabled {
+		t.Error("expected FileBrowserEnabled to default to false when FILE_BROWSER_ENABLED is unset")
+	}
+}
+
+func TestLoad_FileBrowserEnabled(t *testing.T) {
+	cfg, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":           "test-key",
+		"UI_ADMIN_USER":          "admin",
+		"UI_ADMIN_PASSWORD_HASH": "$2a$10$fakehash",
+		"FILE_BROWSER_ENABLED":   "true",
+	}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.FileBrowserEnabled {
+		t.Error("expected FileBrowserEnabled to be true when FILE_BROWSER_ENABLED=true")
+	}
+}
+
+func TestLoad_FileBrowserEnabledRejectsInvalidBoolean(t *testing.T) {
+	_, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":           "test-key",
+		"UI_ADMIN_USER":          "admin",
+		"UI_ADMIN_PASSWORD_HASH": "$2a$10$fakehash",
+		"FILE_BROWSER_ENABLED":   "not-a-bool",
+	}))
+	if err == nil {
+		t.Fatal("expected error for an invalid FILE_BROWSER_ENABLED value")
+	}
+}
+
 func TestSessionSecretIsEphemeral(t *testing.T) {
 	withoutSecret, err := config.Load(fakeEnv(map[string]string{
 		"VYOS_API_KEY":           "test-key",

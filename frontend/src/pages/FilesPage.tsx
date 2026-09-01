@@ -23,6 +23,8 @@ function breadcrumbsFor(path: string): { label: string; path: string }[] {
   })
 }
 
+const codeClass = 'rounded bg-surface-800 px-1 py-0.5 font-mono'
+
 /** Read-only directory/file browser under a curated set of roots (see
  * useFileBrowserRoots) - `show file <path>`, VyOS's one general-
  * purpose op-mode command for this (no JSON form, no size limit, and
@@ -32,21 +34,54 @@ function breadcrumbsFor(path: string): { label: string; path: string }[] {
  * hex dump for anything file(1) doesn't consider text) with a
  * Download button. There is no editor here and never will be one via
  * this endpoint - VyOS's REST API has no supported way to write
- * arbitrary file content back to an arbitrary path. */
+ * arbitrary file content back to an arbitrary path.
+ *
+ * Entirely disabled by default (FILE_BROWSER_ENABLED) - this page
+ * always renders (the sidebar always links here, per Layout.tsx),
+ * showing an explanatory disabled state rather than being hidden
+ * outright, the same as UpgradesPage.tsx does for self-upgrade. */
 export default function FilesPage() {
   const rootsQuery = useFileBrowserRoots()
-  const roots = rootsQuery.data ?? []
 
   const [selectedPath, setSelectedPath] = useState<string | undefined>(undefined)
-  const currentPath = selectedPath ?? roots[0]
-
-  const entryQuery = useFileBrowserEntry(currentPath)
-  const entry = entryQuery.data
 
   if (rootsQuery.isLoading) return <p className="text-sm text-slate-400">Loading…</p>
-  if (rootsQuery.isError || roots.length === 0) {
+  if (rootsQuery.isError || !rootsQuery.data) {
     return <p className="text-sm text-danger-500">Failed to load the list of browsable directories.</p>
   }
+
+  if (!rootsQuery.data.enabled) {
+    return (
+      <div className="mx-auto max-w-5xl px-6 py-8">
+        <div className="rounded-xl border border-surface-border bg-surface-900 p-4">
+          <p className="mb-2 text-sm font-medium text-white">The file browser is disabled</p>
+          <p className="text-sm text-slate-400">
+            Set <code className={codeClass}>FILE_BROWSER_ENABLED=true</code> to turn this page on - see the
+            configuration reference docs for details. Disabled by default since, even restricted to a curated set of
+            directories, this is real filesystem read access on the router.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  const roots = rootsQuery.data.roots
+  const currentPath = selectedPath ?? roots[0]
+
+  return <FilesBrowser roots={roots} currentPath={currentPath} setSelectedPath={setSelectedPath} />
+}
+
+function FilesBrowser({
+  roots,
+  currentPath,
+  setSelectedPath,
+}: {
+  roots: string[]
+  currentPath: string | undefined
+  setSelectedPath: (path: string) => void
+}) {
+  const entryQuery = useFileBrowserEntry(currentPath)
+  const entry = entryQuery.data
 
   function handleDownload() {
     if (!entry || entry.isDirectory || !currentPath) return

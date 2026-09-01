@@ -1896,6 +1896,25 @@ not a silently-missing gap.
   accuracy, alongside the "multi-arch" prose in this file and
   `CONTRIBUTING.md`.
 
+- **Files page: opt-in, disabled by default (breaking change)**: the
+  Files page previously had no gate at all - it's now behind a new
+  `FILE_BROWSER_ENABLED` flag, defaulting to `false`. Wired exactly
+  like `SELF_UPGRADE_ENABLED`/`CONTAINER_UPDATE_CHECKS_ENABLED`
+  (handler-level `{"enabled": false}` gating on both
+  `handleFileBrowserRoots`/`handleFiles`, `FilesPage.tsx` shows an
+  explanatory disabled state rather than being hidden outright, the
+  flag is also surfaced via `GET /api/system/info` so `Layout.tsx` can
+  hint the nav item is off - the same `(off)` suffix
+  `SystemLayout.tsx` already uses for its own Upgrades tab), but the
+  rationale for gating it is different from those two: Files makes no
+  outbound-to-the-internet call at all. The risk this flag actually
+  addresses is that, even restricted to a curated allowlist
+  (`/config`, `/var/log`), this is still real filesystem read access
+  on a router - VyOS's own `show file <path>` op-mode command imposes
+  no path restriction of its own. **Deployments relying on the Files
+  page being always-available need to set `FILE_BROWSER_ENABLED=true`
+  after upgrading.**
+
 ## Next
 
 Not yet decided - see "Later" below for the candidate list (the

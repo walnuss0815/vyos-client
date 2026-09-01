@@ -144,7 +144,8 @@ func runServer() error {
 		// never actually contacts a registry unless
 		// ContainerUpdateChecksEnabled is true (see
 		// handleCheckContainerImageUpdate).
-		ImageRegistry: imageupdate.NewClient(imageupdate.Config{}),
+		ImageRegistry:      imageupdate.NewClient(imageupdate.Config{}),
+		FileBrowserEnabled: cfg.FileBrowserEnabled,
 	}
 
 	mux := http.NewServeMux()

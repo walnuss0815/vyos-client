@@ -84,6 +84,14 @@ type Server struct {
 	// per-deployment configuration to build), but never actually
 	// contacts a registry unless ContainerUpdateChecksEnabled is true.
 	ImageRegistry *imageupdate.Client
+
+	// FileBrowserEnabled mirrors config.Config.FileBrowserEnabled -
+	// surfaced both here (handleFileBrowserRoots/handleFiles check it
+	// directly, each returning their own {"enabled": false} shape when
+	// off) and via handleSystemInfo (so Layout.tsx can hint the Files
+	// nav item is off before the operator even clicks into it, the
+	// same way SystemLayout.tsx already does for the Upgrades tab).
+	FileBrowserEnabled bool
 }
 
 // Routes returns the fully-wired HTTP handler for the backend, with all

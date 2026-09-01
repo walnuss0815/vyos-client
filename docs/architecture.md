@@ -518,6 +518,18 @@ command: VyOS itself decides server-side (`os.path.isdir`/
 `os.path.isfile`) whether to return a directory listing or a file's
 contents, and there is no separate "list a directory" command at all.
 
+Deliberately disabled by default (`FILE_BROWSER_ENABLED`) - both
+handlers check it and return `{"enabled": false}` when off, the same
+convention `handleSelfUpgradeStatus`/`handleCheckContainerImageUpdate`
+already use, and `FilesPage.tsx` shows an explanatory disabled state
+rather than being hidden outright (same as `UpgradesPage.tsx`). This
+is opt-in for a different reason than self-upgrade/container-update-
+checks, though: Files makes no outbound-to-the-internet call at all
+(it only ever talks to VyOS's own API, same as almost everything else
+in this app) - the risk this flag actually gates is the filesystem
+read access described below, real even when restricted to the
+curated allowlist.
+
 Three things about `show file` shaped this feature:
 
 - **No path restriction of any kind on VyOS's side.** `<path>` is a

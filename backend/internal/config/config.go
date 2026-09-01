@@ -194,6 +194,20 @@ type Config struct {
 	// registry and repository are derived entirely from whatever
 	// image string the operator is already looking at on that page.
 	ContainerUpdateChecksEnabled bool
+
+	// FileBrowserEnabled turns on the Files page (`GET
+	// /api/files`/`GET /api/files/roots`) - disabled by default.
+	// Unlike SelfUpgradeEnabled/ContainerUpdateChecksEnabled, this
+	// feature makes no outbound-to-the-internet call at all (it only
+	// ever talks to VyOS's own API, same as almost everything else in
+	// this app) - it's opt-in for a different reason: VyOS's own
+	// `show file <path>` op-mode command imposes no path restriction
+	// of its own (see backend/internal/api/file_handlers.go's
+	// fileBrowserRoots doc comment), so even this app's own curated
+	// allowlist (/config, /var/log) is still real filesystem read
+	// access an operator may want to opt out of entirely rather than
+	// rely on that allowlist alone.
+	FileBrowserEnabled bool
 }
 
 // defaultSelfUpgradeGitHubRepo is this project's own GitHub repo -
@@ -384,6 +398,14 @@ func Load(getenv func(string) string) (*Config, error) {
 			return nil, fmt.Errorf("config: CONTAINER_UPDATE_CHECKS_ENABLED: %w", err)
 		}
 		cfg.ContainerUpdateChecksEnabled = b
+	}
+
+	if v := getenv("FILE_BROWSER_ENABLED"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return nil, fmt.Errorf("config: FILE_BROWSER_ENABLED: %w", err)
+		}
+		cfg.FileBrowserEnabled = b
 	}
 
 	return cfg, nil

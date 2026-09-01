@@ -4,12 +4,13 @@ import { getFile, getFileBrowserRoots } from '../lib/vyosApi'
 /** The closed set of directories the Files page may browse (see
  * backend/internal/api/file_handlers.go's fileBrowserRoots) - fetched
  * rather than hardcoded so the frontend can't drift from whatever the
- * backend actually enforces. */
+ * backend actually enforces. Returns the full response (not just
+ * `.roots`) so FilesPage.tsx can also check `enabled` and show a
+ * disabled-state explanation, the same way UpgradesPage.tsx does. */
 export function useFileBrowserRoots() {
   return useQuery({
     queryKey: ['file-browser-roots'],
     queryFn: getFileBrowserRoots,
-    select: (res) => res.roots,
   })
 }
 

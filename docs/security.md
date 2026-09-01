@@ -313,13 +313,13 @@ stay `'self'` with no exception at all.
 - **Rate limiting exists on login (always) and on config commit/import
   (per authenticated user)**, but not on every authenticated route.
   `POST /api/config/save` and the file browser
-  (`GET /api/files`) are bounded by request/response size caps instead
-  (`maxRequestBodyBytes`, `maxFileViewContentBytes`) rather than a
-  request-frequency limit — reasonable given every affected route
-  already requires authentication first, so this is a modest
-  self-DoS/compromised-session concern, not an external attack
-  surface, in keeping with this app's single-operator, LAN-only threat
-  model.
+  (`GET /api/files`, when `FILE_BROWSER_ENABLED=true`) are bounded by
+  request/response size caps instead (`maxRequestBodyBytes`,
+  `maxFileViewContentBytes`) rather than a request-frequency limit —
+  reasonable given every affected route already requires
+  authentication first, so this is a modest self-DoS/compromised-
+  session concern, not an external attack surface, in keeping with
+  this app's single-operator, LAN-only threat model.
 - **`SELF_UPGRADE_ENABLED` is the one deliberate exception** to this
   app never talking to anything but VyOS's own API — when set, the
   backend makes unauthenticated HTTPS calls to `api.github.com` to
@@ -348,6 +348,16 @@ stay `'self'` with no exception at all.
   (`vyos.Client.ReturnValue`, not the browser-facing reveal endpoint)
   to authenticate the request — logged server-side (`"registry
   credentials read for a container image update check"`) each time.
+- **`FILE_BROWSER_ENABLED` gates the Files page for a different
+  reason than the two flags above**: it makes no outbound-to-the-
+  internet call at all (it only ever talks to VyOS's own API, same as
+  almost everything else in this app). Disabled by default because
+  it's still real filesystem read access on the router — VyOS's own
+  `show file <path>` op-mode command imposes no path restriction of
+  its own (see [architecture.md](architecture.md#files-a-curated-read-only-viewer-over-show-file-path)),
+  so even this app's own curated allowlist (`/config`, `/var/log`) is
+  something an operator may reasonably want to opt out of entirely
+  rather than rely on that allowlist alone.
 
 ### Restricting access to LAN clients only
 

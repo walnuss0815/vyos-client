@@ -11,7 +11,7 @@ beforeEach(() => {
   URL.revokeObjectURL = vi.fn()
   HTMLAnchorElement.prototype.click = vi.fn()
 
-  server.use(http.get('/api/files/roots', () => HttpResponse.json({ roots: ['/config', '/var/log'] })))
+  server.use(http.get('/api/files/roots', () => HttpResponse.json({ enabled: true, roots: ['/config', '/var/log'] })))
 })
 
 describe('FilesPage', () => {
@@ -19,6 +19,13 @@ describe('FilesPage', () => {
     server.use(http.get('/api/files/roots', () => HttpResponse.json({ error: 'unreachable' }, { status: 502 })))
     renderWithProviders(<FilesPage />)
     expect(await screen.findByText(/failed to load the list of browsable directories/i)).toBeInTheDocument()
+  })
+
+  it('shows a disabled explanation when the file browser is not enabled', async () => {
+    server.use(http.get('/api/files/roots', () => HttpResponse.json({ enabled: false, roots: [] })))
+    renderWithProviders(<FilesPage />)
+    expect(await screen.findByText(/file browser is disabled/i)).toBeInTheDocument()
+    expect(screen.getByText('FILE_BROWSER_ENABLED=true')).toBeInTheDocument()
   })
 
   it('lists the first root directory by default', async () => {

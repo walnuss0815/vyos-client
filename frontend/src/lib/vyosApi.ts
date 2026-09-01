@@ -71,6 +71,13 @@ export interface SystemInfo {
    * decide whether to render the Upgrades tab as enabled or
    * disabled-with-instructions. */
   selfUpgradeEnabled: boolean
+  /** Mirrors the backend's FILE_BROWSER_ENABLED env var - same
+   * piggy-backing reasoning as selfUpgradeEnabled above, so
+   * Layout.tsx can hint the Files nav item is off before the operator
+   * even clicks into it. The actual gating still happens at the
+   * /api/files* endpoints themselves (see FileBrowserRootsResponse/
+   * FileBrowserResult) - this is purely a UI hint. */
+  fileBrowserEnabled: boolean
 }
 
 /** Live system identity (hostname + VyOS version), sourced from VyOS's
@@ -622,14 +629,23 @@ export function getQosShaperStatus(ifname: string): Promise<QosShaperStatus> {
   return apiRequest<QosShaperStatus>('/api/qos/shaper-status', { query: { interface: ifname } })
 }
 
+/** GET /api/files/roots's response. When `enabled` is false (the
+ * FILE_BROWSER_ENABLED default), `roots` is empty and FilesPage.tsx
+ * shows an explanatory disabled state instead of "no browsable
+ * directories". */
+export interface FileBrowserRootsResponse {
+  enabled: boolean
+  roots: string[]
+}
+
 /** The closed set of directories the Files page will browse under -
  * matches the backend's own fileBrowserRoots exactly (served by
  * getFileBrowserRoots() below, not hardcoded here, unlike
  * LOG_FACILITIES/LOG_PRIORITIES - those are fixed, VyOS-version-
  * independent enums worth duplicating; the browsable roots are this
  * app's own choice, so fetching them keeps a single source of truth). */
-export function getFileBrowserRoots(): Promise<{ roots: string[] }> {
-  return apiRequest<{ roots: string[] }>('/api/files/roots')
+export function getFileBrowserRoots(): Promise<FileBrowserRootsResponse> {
+  return apiRequest<FileBrowserRootsResponse>('/api/files/roots')
 }
 
 export interface FileBrowserEntry {
@@ -654,8 +670,11 @@ export interface FileBrowserEntry {
 /** Discriminated union (on isDirectory) of a directory listing
  * (entries populated) or a file view (every other optional field
  * populated) - GET /api/files returns whichever `show file <path>`
- * decided the path was. */
+ * decided the path was. `enabled` is false (with every other field
+ * left at its zero value) when FILE_BROWSER_ENABLED is off - the same
+ * convention as FileBrowserRootsResponse above. */
 export interface FileBrowserResult {
+  enabled: boolean
   path: string
   isDirectory: boolean
   entries?: FileBrowserEntry[]

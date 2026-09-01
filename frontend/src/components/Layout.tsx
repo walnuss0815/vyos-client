@@ -123,22 +123,32 @@ export default function Layout() {
         </div>
 
         <nav className="flex-1 space-y-1 px-2 py-4">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              className={({ isActive }) =>
-                `block rounded-lg px-3 py-2 text-sm font-medium transition ${
-                  isActive
-                    ? 'bg-accent-600/15 text-accent-500'
-                    : 'text-slate-400 hover:bg-surface-800 hover:text-slate-200'
-                }`
-              }
-            >
-              {item.label}
-            </NavLink>
-          ))}
+          {navItems.map((item) => {
+            // Files is a normal nav item (always shown, never hidden -
+            // see FilesPage.tsx's own doc comment on why), but hints
+            // it's off before the operator even clicks into it, since
+            // FILE_BROWSER_ENABLED defaults to false - the same
+            // pattern SystemLayout.tsx already uses for its own
+            // Upgrades tab.
+            const disabled = item.to === '/files' && systemInfoQuery.data && !systemInfoQuery.data.fileBrowserEnabled
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.end}
+                className={({ isActive }) =>
+                  `block rounded-lg px-3 py-2 text-sm font-medium transition ${
+                    isActive
+                      ? 'bg-accent-600/15 text-accent-500'
+                      : 'text-slate-400 hover:bg-surface-800 hover:text-slate-200'
+                  }`
+                }
+              >
+                {item.label}
+                {disabled && <span className="ml-1 text-xs text-slate-600">(off)</span>}
+              </NavLink>
+            )
+          })}
         </nav>
 
         <div className="border-t border-surface-border px-4 py-3">

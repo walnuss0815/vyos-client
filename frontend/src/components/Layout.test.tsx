@@ -51,6 +51,28 @@ describe('Layout', () => {
     expect(screen.queryByRole('link', { name: 'Routes' })).not.toBeInTheDocument()
   })
 
+  it('hints the Files nav item is off when the file browser is disabled', async () => {
+    server.use(
+      http.get('/api/system/info', () =>
+        HttpResponse.json({ hostname: 'test-router', version: '1.5', fileBrowserEnabled: false }),
+      ),
+    )
+    renderWithProviders(<Layout />)
+    await screen.findAllByText('test-router')
+    expect(screen.getByRole('link', { name: /files/i })).toHaveTextContent('(off)')
+  })
+
+  it('does not hint the Files nav item is off when the file browser is enabled', async () => {
+    server.use(
+      http.get('/api/system/info', () =>
+        HttpResponse.json({ hostname: 'test-router', version: '1.5', fileBrowserEnabled: true }),
+      ),
+    )
+    renderWithProviders(<Layout />)
+    await screen.findAllByText('test-router')
+    expect(screen.getByRole('link', { name: /files/i })).not.toHaveTextContent('(off)')
+  })
+
   it("shows the router's hostname in the sidebar header once loaded", async () => {
     server.use(
       http.get('/api/system/info', () => HttpResponse.json({ hostname: 'my-router', version: '1.5' })),
