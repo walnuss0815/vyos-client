@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { inputClass } from '../lib/formStyles'
 import { noExtensionInputProps } from '../lib/inputProtection'
-import { isSensitivePath, maskValue } from '../lib/masking'
+import { isMaskedPath, maskValue } from '../lib/masking'
 import { ApiError } from '../lib/api'
 import { revealValue } from '../lib/vyosApi'
 import { usePendingChangesStore } from '../store/pendingChanges'
@@ -100,7 +100,7 @@ export default function TreeNode({ segment, path, value, depth }: TreeNodeProps)
   }
 
   if (Array.isArray(value)) {
-    const sensitive = isSensitivePath(path)
+    const sensitive = isMaskedPath(path)
     return (
       <div>
         <Row segment={segment} />
@@ -195,7 +195,7 @@ function LeafRow({
   const [revealing, setRevealing] = useState(false)
   const [revealError, setRevealError] = useState<string | null>(null)
   const add = usePendingChangesStore((s) => s.add)
-  const sensitive = isSensitivePath(path)
+  const sensitive = isMaskedPath(path)
   const displayValue = revealed ?? maskValue(path, value)
   // Reveal is only offered for a genuine scalar leaf (editable=true),
   // never for one item of a sensitive multi-value array: the backend

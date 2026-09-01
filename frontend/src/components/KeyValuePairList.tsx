@@ -1,7 +1,10 @@
 import { useState } from 'react'
 import { buttonClass, inputClass } from '../lib/formStyles'
 import { noExtensionInputProps } from '../lib/inputProtection'
+import { ApiError } from '../lib/api'
+import { MASK_PLACEHOLDER, isMaskedPath } from '../lib/masking'
 import type { ConfigOp } from '../lib/vyosApi'
+import { revealValue } from '../lib/vyosApi'
 import { usePendingChangesStore } from '../store/pendingChanges'
 
 /**
@@ -69,22 +72,27 @@ export default function KeyValuePairList({
     add({ op, label: `delete ${pathLabel} ${id}` })
   }
 
+  // Masking/Reveal only ever applies to already-committed entries
+  // fetched from the backend (the default "queue immediately" mode) -
+  // never to onAdd/onRemove's local draft state, which is whatever
+  // the user is actively typing right now for a container that
+  // doesn't exist on the router yet (see ContainerCreateNestedSections.tsx).
+  // There's nothing there to reveal: it was never fetched, so it was
+  // never server-masked in the first place, and hiding the user's own
+  // just-typed value from them would be actively unhelpful.
+  const committed = !onAdd
+
   return (
     <div>
       <ul className="space-y-1">
         {items.map((item) => (
-          <li key={item.id} className="flex items-center justify-between text-xs">
-            <span className="font-mono text-slate-300">
-              {item.id} <span className="text-slate-500">= {item.value}</span>
-            </span>
-            <button
-              onClick={() => queueRemove(item.id)}
-              className="text-slate-500 hover:text-danger-500"
-              aria-label={`Remove ${item.id}`}
-            >
-              Remove
-            </button>
-          </li>
+          <Entry
+            key={item.id}
+            item={item}
+            path={[...basePath, item.id, 'value']}
+            masked={committed && isMaskedPath([...basePath, item.id, 'value'])}
+            onRemove={() => queueRemove(item.id)}
+          />
         ))}
         {items.length === 0 && <li className="text-xs text-slate-500">None configured.</li>}
       </ul>
@@ -109,5 +117,89 @@ export default function KeyValuePairList({
       </div>
       {taken && <p className="mt-1 text-xs text-danger-500">This name is already used.</p>}
     </div>
+  )
+}
+
+/**
+ * A single id/value row. Mirrors TreeNode.tsx's LeafRow Reveal
+ * pattern for a masked entry (same POST /api/config/reveal
+ * mechanism, same Reveal/Hide toggle), scaled down to this
+ * component's flatter, single-line-per-entry layout.
+ */
+function Entry({
+  item,
+  path,
+  masked,
+  onRemove,
+}: {
+  item: { id: string; value: string }
+  path: string[]
+  masked: boolean
+  onRemove: () => void
+}) {
+  const [revealed, setRevealed] = useState<string | null>(null)
+  const [revealing, setRevealing] = useState(false)
+  const [revealError, setRevealError] = useState<string | null>(null)
+
+  // Deliberately gated on the `masked` prop rather than recomputing
+  // isMaskedPath(path) here - the parent already folded in the
+  // committed-vs-draft distinction (see its own comment), and
+  // duplicating the check here without that gate would re-mask a
+  // container-create-time draft value the user just typed themselves.
+  const displayValue = revealed ?? (masked ? MASK_PLACEHOLDER : item.value)
+
+  async function reveal() {
+    setRevealing(true)
+    setRevealError(null)
+    try {
+      const { value: real } = await revealValue(path)
+      setRevealed(real)
+    } catch (err) {
+      setRevealError(err instanceof ApiError ? err.message : 'Failed to reveal value.')
+    } finally {
+      setRevealing(false)
+    }
+  }
+
+  function hide() {
+    setRevealed(null)
+    setRevealError(null)
+  }
+
+  return (
+    <li className="flex flex-col gap-1 text-xs">
+      <div className="flex items-center justify-between">
+        <span className="font-mono text-slate-300">
+          {item.id}{' '}
+          <span className={masked && !revealed ? 'italic text-slate-500' : 'text-slate-500'}>
+            = {displayValue}
+          </span>
+        </span>
+        <div className="flex items-center gap-2">
+          {masked &&
+            (revealed ? (
+              <button onClick={hide} className="text-accent-500 hover:text-accent-400">
+                Hide
+              </button>
+            ) : (
+              <button
+                onClick={() => void reveal()}
+                disabled={revealing}
+                className="text-accent-500 hover:text-accent-400 disabled:opacity-50"
+              >
+                {revealing ? 'Revealing…' : 'Reveal'}
+              </button>
+            ))}
+          <button
+            onClick={onRemove}
+            className="text-slate-500 hover:text-danger-500"
+            aria-label={`Remove ${item.id}`}
+          >
+            Remove
+          </button>
+        </div>
+      </div>
+      {revealError && <p className="text-danger-500">{revealError}</p>}
+    </li>
   )
 }

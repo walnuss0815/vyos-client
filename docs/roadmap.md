@@ -1949,6 +1949,28 @@ not a silently-missing gap.
   three pieces that stay visible (name, subnet addresses, usage) are
   exactly what's needed for an at-a-glance check.
 
+- **Sensitive environment-variable redaction**: closes a masking gap
+  container and event-handler `environment` variables fell into -
+  every variable's value sits under the exact same generic `value`
+  leaf regardless of its own key, so the existing exact-leaf-name
+  matching (`sensitiveLeafNames`) could never distinguish
+  `DB_PASSWORD` from `TZ`. `shared/sensitive-fields.json` gained a new
+  `sensitiveKeyPatterns` list - a case-insensitive **substring** match
+  against a tag-node's own identifier, applied only to that one
+  generic `value` leaf (never to arbitrary structural field names, to
+  avoid e.g. `authentication` matching the `auth` pattern). Generalizes
+  to any `KEY -> {value}` tag-node shape, not just containers - also
+  covers `service event-handler ... script environment`. The frontend
+  `KeyValuePairList.tsx` component (shared by container/event-handler
+  environment variables, labels, and sysctl parameters) now masks
+  matched entries and offers the same on-demand Reveal control as the
+  Config Tree view, for already-committed entries only - a
+  not-yet-created container's local draft entries are shown in the
+  clear, since nothing was fetched from the router to mask in the
+  first place. See [security.md](security.md#masking) for the full
+  design (including the identifier-*is*-the-secret gap this still
+  doesn't cover, e.g. SNMP community strings).
+
 ## Next
 
 Not yet decided - see "Later" below for the candidate list (the

@@ -146,12 +146,40 @@ many other secret-shaped leaves — API keys, RADIUS/TACACS+ shared
 secrets, IPsec pre-shared secrets, WireGuard private keys — **are**
 returned verbatim by `/retrieve`.
 
-**Known gap:** matching is against leaf *values*, not path *segments*. A
-secret that's structurally a tag-node *identifier* rather than a leaf
-value (the canonical example: an SNMP community string used as
-`community <the-secret-itself> { authorization ro }`) isn't caught, since
-neither the tree view nor the flat-text redaction inspect path segments
-for sensitivity. This is documented and tested explicitly (see
+**Tag-node identifiers, not just fixed leaf names:** the exact-match
+rule above only ever catches a fixed, known-in-advance schema leaf name
+— it can't help with a container's or event-handler's `environment`
+variables, where every value sits under the exact same generic `value`
+leaf regardless of its own key (`environment DB_PASSWORD value
+'hunter2'` and `environment TZ value 'UTC'` are structurally identical
+except for that one identifier). For this shape specifically —
+`<KEY> value <VALUE>` — the same `sensitive-fields.json` file also lists
+`sensitiveKeyPatterns`: a case-insensitive **substring** match
+(`pass`, `secret`, `token`, `key`, `credential`, `pwd`, `private`,
+`auth`) against the identifier itself. `DB_PASSWORD`, `STRIPE_API_KEY`
+and `SESSION_SECRET` are all masked this way; `TZ` and `NODE_ENV` are
+not. This generalizes to any `KEY -> {value}` tag-node collection, not
+just containers — it also covers `service event-handler ... script
+environment`. Deliberately scoped to that one generic `value` leaf, not
+applied as a blanket rule against arbitrary structural field names —
+otherwise a leaf named `authentication` would incorrectly match the
+`auth` substring pattern. The frontend's `KeyValuePairList.tsx` (the
+shared UI for container/event-handler environment variables, labels,
+and sysctl parameters) offers the same masked-display and on-demand
+Reveal treatment as the Config Tree view for entries matched this way —
+but only for already-fetched, already-committed entries: a not-yet-
+created container's local draft entries (typed by the user, never
+fetched from the router) are shown in the clear, since there's nothing
+server-masked to reveal.
+
+**Known gap:** the identifier-substring matching above only fires when
+there's a separate generic `value` leaf to mask. A secret that's
+structurally the tag-node identifier *itself*, with no separate value
+leaf beside it (the canonical example: an SNMP community string used as
+`community <the-secret-itself> { authorization ro }`) still isn't
+caught — the identifier is the whole secret, and neither the tree view
+nor the flat-text redaction has a generic leaf to redact in its place.
+This is documented and tested explicitly (see
 `backend/internal/mask/setcommands_test.go`) rather than silently
 missing.
 
@@ -170,11 +198,12 @@ Design choices worth being explicit about:
   keeping it out of a URL avoids browser history, the visible address
   bar, and some proxy/access logs capturing it more readily than a
   request body.
-- **Scoped to sensitive leaves only** — the endpoint rejects a path
-  that doesn't match `mask.IsSensitivePath`, both to keep its audit
-  log meaningful (every entry really is a secret being revealed) and
-  to avoid becoming a redundant, wider bypass of the ordinary masked
-  read path.
+- **Scoped to masked leaves only** — the endpoint rejects a path that
+  doesn't match `mask.IsMaskedPath` (an exact sensitive leaf name, or a
+  generic `value` leaf whose tag-node identifier looks sensitive — see
+  above), both to keep its audit log meaningful (every entry really is
+  a secret being revealed) and to avoid becoming a redundant, wider
+  bypass of the ordinary masked read path.
 - **Every successful reveal is logged** at `Warn` level (path +
   authenticated username), independent of the generic per-request
   logger, so it's easy to grep/alert on separately from ordinary

@@ -283,7 +283,7 @@ func (s *Server) handleReveal(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "path must not be empty")
 		return
 	}
-	if !mask.IsSensitivePath(req.Path) {
+	if !mask.IsMaskedPath(req.Path) {
 		writeError(w, http.StatusBadRequest, "this endpoint only reveals sensitive config leaves")
 		return
 	}
