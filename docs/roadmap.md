@@ -1935,6 +1935,20 @@ not a silently-missing gap.
   failing the whole status response or assuming the image is probably
   there.
 
+- **DHCP Networks page: collapsed by default**: each shared network's
+  card now shows only its name/badges, a plain-text summary of its own
+  subnets' CIDRs, and the existing pool-utilization bar by default -
+  everything else (DNS/NTP/domain-search options, the edit form's
+  trigger aside, and every subnet's own full detail: ranges, excluded
+  addresses, static mappings) moves behind a new "Details"/"Hide
+  details" toggle on `NetworkCard.tsx`, the same collapse idiom
+  `ContainerList.tsx` already uses for per-container detail. A shared
+  network can have many subnets, each with several ranges/static
+  mappings of its own - showing all of that unconditionally made this
+  page overwhelming for even a moderate number of networks, while the
+  three pieces that stay visible (name, subnet addresses, usage) are
+  exactly what's needed for an at-a-glance check.
+
 ## Next
 
 Not yet decided - see "Later" below for the candidate list (the

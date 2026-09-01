@@ -50,11 +50,26 @@ const emptyNetwork: DHCPSharedNetwork = {
 }
 
 describe('NetworkCard', () => {
-  it('renders the network name, authoritative badge, and nested subnets', () => {
+  it('renders the network name, authoritative badge, and each subnet CIDR - collapsed by default', () => {
     render(<NetworkCard network={networkWithSubnet} leases={[]} />)
     expect(screen.getByText('LAN')).toBeInTheDocument()
     expect(screen.getByText('Authoritative')).toBeInTheDocument()
     expect(screen.getByText('192.168.1.0/24')).toBeInTheDocument()
+    // The nested SubnetCard's own detail (ranges, static mappings, its
+    // own Edit button) is behind "Details" - not rendered yet.
+    expect(screen.queryByRole('button', { name: '+ Add subnet' })).not.toBeInTheDocument()
+  })
+
+  it('reveals subnets and options after clicking Details', async () => {
+    const user = userEvent.setup()
+    render(<NetworkCard network={networkWithSubnet} leases={[]} />)
+
+    await user.click(screen.getByRole('button', { name: 'Details' }))
+    expect(screen.getByRole('button', { name: '+ Add subnet' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Hide details' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Hide details' }))
+    expect(screen.queryByRole('button', { name: '+ Add subnet' })).not.toBeInTheDocument()
   })
 
   it('shows a pool-utilization bar sized from the subnet ranges and live leases', () => {
@@ -86,10 +101,9 @@ describe('NetworkCard', () => {
     const user = userEvent.setup()
     render(<NetworkCard network={networkWithSubnet} leases={[]} />)
 
-    // Two "Edit" buttons exist (the network's own, and the nested
-    // subnet's) - the network's is first in the DOM.
-    const [networkEditButton] = screen.getAllByRole('button', { name: 'Edit' })
-    await user.click(networkEditButton)
+    // The nested subnet's own "Edit" button is behind "Details" (not
+    // expanded here), so only the network's own "Edit" button exists.
+    await user.click(screen.getByRole('button', { name: 'Edit' }))
     const routerInput = screen.getByDisplayValue('192.168.1.1')
     await user.clear(routerInput)
     await user.type(routerInput, '192.168.1.254')
@@ -113,6 +127,7 @@ describe('NetworkCard', () => {
     const user = userEvent.setup()
     render(<NetworkCard network={emptyNetwork} leases={[]} />)
 
+    await user.click(screen.getByRole('button', { name: 'Details' }))
     await user.click(screen.getByRole('button', { name: '+ Add subnet' }))
     await user.type(screen.getByPlaceholderText('192.168.1.0/24'), '10.0.0.0/24')
     await user.type(screen.getByPlaceholderText(/must be unique/i), '2')
@@ -131,6 +146,7 @@ describe('NetworkCard', () => {
     const user = userEvent.setup()
     render(<NetworkCard network={emptyNetwork} leases={[]} />)
 
+    await user.click(screen.getByRole('button', { name: 'Details' }))
     await user.click(screen.getByRole('button', { name: '+ Add subnet' }))
     await user.type(screen.getByPlaceholderText('192.168.1.0/24'), 'not-a-cidr')
     await user.type(screen.getByPlaceholderText(/must be unique/i), '2')
@@ -143,6 +159,7 @@ describe('NetworkCard', () => {
     const user = userEvent.setup()
     render(<NetworkCard network={networkWithSubnet} leases={[]} />)
 
+    await user.click(screen.getByRole('button', { name: 'Details' }))
     await user.click(screen.getByRole('button', { name: '+ Add subnet' }))
     await user.type(screen.getByPlaceholderText('192.168.1.0/24'), '192.168.1.0/24')
     await user.type(screen.getByPlaceholderText(/must be unique/i), '2')
