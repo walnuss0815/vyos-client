@@ -15,6 +15,7 @@ import (
 	"github.com/walnuss0815/vyos-client/backend/internal/api"
 	"github.com/walnuss0815/vyos-client/backend/internal/auth"
 	"github.com/walnuss0815/vyos-client/backend/internal/config"
+	"github.com/walnuss0815/vyos-client/backend/internal/imageupdate"
 	"github.com/walnuss0815/vyos-client/backend/internal/selfupgrade"
 	"github.com/walnuss0815/vyos-client/backend/internal/vyos"
 	"github.com/walnuss0815/vyos-client/backend/internal/webapp"
@@ -129,14 +130,21 @@ func runServer() error {
 		// Defaults to matching TLSEnabled (see config.Config.CookiesSecure's
 		// doc comment for why, and for the COOKIE_SECURE override that
 		// lets this diverge for a TLS-terminating reverse proxy in front).
-		CookiesSecure:            cfg.CookiesSecure,
-		SafeApplyDefaultSeconds:  cfg.SafeApplyDefaultSeconds,
-		ConfigWarningsEnabled:    cfg.ConfigWarningsEnabled,
-		Version:                  version,
-		SelfUpgradeEnabled:       cfg.SelfUpgradeEnabled,
-		SelfUpgradeContainerName: cfg.SelfUpgradeContainerName,
-		SelfUpgradeGitHub:        selfUpgradeGitHub,
-		CommitLimiter:            commitLimiter,
+		CookiesSecure:                cfg.CookiesSecure,
+		SafeApplyDefaultSeconds:      cfg.SafeApplyDefaultSeconds,
+		ConfigWarningsEnabled:        cfg.ConfigWarningsEnabled,
+		Version:                      version,
+		SelfUpgradeEnabled:           cfg.SelfUpgradeEnabled,
+		SelfUpgradeContainerName:     cfg.SelfUpgradeContainerName,
+		SelfUpgradeGitHub:            selfUpgradeGitHub,
+		CommitLimiter:                commitLimiter,
+		ContainerUpdateChecksEnabled: cfg.ContainerUpdateChecksEnabled,
+		// Unlike selfUpgradeGitHub above, this takes no per-deployment
+		// configuration to build - constructed unconditionally, but
+		// never actually contacts a registry unless
+		// ContainerUpdateChecksEnabled is true (see
+		// handleCheckContainerImageUpdate).
+		ImageRegistry: imageupdate.NewClient(imageupdate.Config{}),
 	}
 
 	mux := http.NewServeMux()
