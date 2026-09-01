@@ -139,6 +139,14 @@ func runServer() error {
 	mux.Handle("/healthz", apiHandler)
 	mux.Handle("/", webappHandler)
 
+	// Wraps EVERYTHING this process serves - the API's own JSON
+	// responses and the embedded SPA's HTML/asset responses alike -
+	// unlike requestLogger (applied only inside api.Server.Routes,
+	// covering /api/ and /healthz), since these headers matter most
+	// on the actual HTML document response, which webappHandler
+	// serves directly on this outer mux.
+	handler := api.SecurityHeaders(cfg.TLSEnabled)(mux)
+
 	var tlsConfig *tls.Config
 	if cfg.TLSEnabled {
 		tlsConfig, err = buildTLSConfig(cfg, logger)
@@ -149,7 +157,7 @@ func runServer() error {
 
 	srv := &http.Server{
 		Addr:      cfg.ListenAddr,
-		Handler:   mux,
+		Handler:   handler,
 		TLSConfig: tlsConfig,
 		// Bounds every phase of a connection's lifecycle: a slow or
 		// malicious client can't hold a connection open indefinitely

@@ -5,8 +5,8 @@ export const THEME_MODES = ['light', 'dark', 'auto'] as const
 export type ThemeMode = (typeof THEME_MODES)[number]
 
 /** The localStorage key zustand's `persist` middleware writes to. Also
- * hardcoded (it can't import this constant) in the no-FOUC inline
- * script in index.html - keep the two in sync if this ever changes. */
+ * hardcoded (it can't import this constant) in the no-FOUC script in
+ * public/theme-init.js - keep the two in sync if this ever changes. */
 export const THEME_STORAGE_KEY = 'vyos-client-theme'
 
 interface ThemeState {
@@ -20,9 +20,10 @@ interface ThemeState {
  * following it live if that changes while the app is open). See
  * hooks/useApplyTheme.ts for where this is turned into the `dark`
  * class on <html> that index.css's palette overrides key off of, and
- * index.html for the inline script that applies it before first paint
- * so switching themes (or an OS-level scheme change) never flashes the
- * wrong palette on load.
+ * public/theme-init.js for the script (referenced from index.html,
+ * not inline - see security_headers.go's Content-Security-Policy)
+ * that applies it before first paint so switching themes (or an
+ * OS-level scheme change) never flashes the wrong palette on load.
  */
 export const useThemeStore = create<ThemeState>()(
   persist(
