@@ -2,26 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <!-- Applies the dark/light class before first paint, so there's no
-         flash of the wrong theme. Mirrors store/theme.ts's resolveTheme()
-         and reads the same localStorage key zustand's `persist`
-         middleware writes to (THEME_STORAGE_KEY there) - keep both in
-         sync if either changes. Can't import the TS module here since
-         this has to run synchronously, before any script bundle loads. -->
-    <script>
-      (function () {
-        try {
-          var stored = localStorage.getItem('vyos-client-theme')
-          var mode = stored ? JSON.parse(stored).state.mode : 'auto'
-          var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-          var dark = mode === 'dark' || (mode === 'auto' && prefersDark)
-          if (dark) document.documentElement.classList.add('dark')
-        } catch (e) {
-          // Storage disabled/corrupt/etc. - fall through to the light
-          // default rather than block rendering.
-        }
-      })()
-    </script>
+    <!-- Runs synchronously before first paint, so there's no flash of
+         the wrong theme - see public/theme-init.js for the full
+         rationale (including why it's a separate static file rather
+         than inline: a strict Content-Security-Policy script-src with
+         no 'unsafe-inline' exception). Can't import the TS theme
+         module here since this has to run before any module script
+         loads. -->
+    <script src="/theme-init.js"></script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- Overridden at runtime to the router's hostname once known,

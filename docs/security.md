@@ -242,6 +242,40 @@ production. If VyOS's HTTPS API has a real certificate bound (`service
 https certificates certificate <name>`), leave this at its default
 (`false`).
 
+## Security headers
+
+Every response (the API's own JSON responses and the embedded SPA's
+HTML/asset responses alike) carries a baseline set of security headers,
+set by `api.SecurityHeaders` and wired up around the entire outer mux
+in `cmd/vyos-client/serve.go` (`backend/internal/api/security_headers.go`):
+
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: DENY`
+- `Referrer-Policy: no-referrer`
+- `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`
+- `Strict-Transport-Security: max-age=31536000; includeSubDomains` — only
+  when `TLS_ENABLED=true` (advertising HSTS while actually serving
+  plain HTTP would tell browsers to *require* HTTPS for this host going
+  forward, breaking the next plain-HTTP visit).
+
+This is deliberate defense-in-depth independent of the LAN-only threat
+model described below: nothing about being LAN-only prevents
+clickjacking or MIME-sniffing against a browser on a phished or
+otherwise compromised LAN client, and these headers cost nothing
+functionally for a single-origin app with no legitimate reason to be
+framed or to load third-party content.
+
+`style-src` keeps `'unsafe-inline'` for a handful of genuinely dynamic
+inline styles (live-computed progress-bar widths, chart positioning)
+that can't be expressed as static classes — CSS injection is
+lower-severity than script injection, and `script-src` itself has no
+such exception: the one script that used to be inline in `index.html`
+(early theme detection, so there's no flash of the wrong theme before
+first paint) was deliberately extracted into a separate static file,
+`frontend/public/theme-init.js`, referenced with a plain `<script
+src="/theme-init.js">` tag instead, specifically so `script-src` could
+stay `'self'` with no exception at all.
+
 ## Threat model notes
 
 - The container is designed to run with **host networking** by default,
