@@ -1833,6 +1833,37 @@ not a silently-missing gap.
   broken under the `/ingress/<name>/` prefix - many self-hosted UIs
   work fine as-is, some don't.
 
+- **Ingress: outer-mux wiring fix + HTML/CSS absolute-path rewriting**:
+  two real-world-testing follow-ups to the entry above.
+  - Live testing against a real router surfaced a genuine wiring bug:
+    the Ingress proxy route was registered inside
+    `api.Server.Routes()`'s own inner mux (so it inherits
+    `requestLogger` and auth), but `cmd/vyos-client/serve.go`'s outer
+    mux - the one actually driving the real binary - only ever
+    forwarded `/api/` and `/healthz` to that inner handler, never
+    `/ingress/`. Every ingress request silently fell through to the
+    SPA fallback instead, which looked exactly like a blank/dark page
+    (this app's own dark-themed shell with nothing in it) rather than
+    ever reaching the proxy or the target at all. Every prior test
+    only ever exercised `api.Server.Routes()` in isolation via
+    `httptest.NewServer`, never this outer assembly, so nothing caught
+    it. Fixed by extracting the mux into a testable `buildMux(...)`
+    function and adding the missing route registration; new
+    `serve_test.go` confirmed against the pre-fix mux before verifying
+    the fix.
+  - A second round of live testing (ntopng this time, which hardcodes
+    absolute paths like `/dist/login.js`) confirmed the documented
+    "known limitation" in practice, and prompted implementing a
+    mitigation: `internal/ingress/rewrite.go` now rewrites
+    root-relative absolute paths in `text/html`/`text/css` response
+    bodies (HTML attributes and CSS `url()`) to stay under the
+    `/ingress/<name>` prefix - see
+    [architecture.md](architecture.md#ingress) for exactly what is and
+    isn't covered (still can't fix an absolute path an app's own
+    JavaScript constructs at runtime, only ones present in markup) and
+    for ntopng's own `-Z`/`--http-prefix` flag as the more complete
+    fix when a target happens to support one.
+
 ## Next
 
 Not yet decided - see "Later" below for the candidate list (the

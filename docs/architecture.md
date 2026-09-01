@@ -535,15 +535,39 @@ request" implementation would get wrong:
   `WriteTimeout`, since a legitimately long-lived proxied connection
   (streaming, or exactly this kind of upgrade) shouldn't be cut off on
   a timer meant for this app's own fast, well-bounded API handlers.
+- **Root-relative absolute paths in HTML/CSS responses are rewritten**
+  (`internal/ingress/rewrite.go`'s `rewriteAbsolutePaths`, wired into
+  `ModifyResponse`) - an upstream app that hardcodes `href="/..."`,
+  `src="/..."`, `action="/..."`/`formaction="/..."`, or CSS `url(/...)`
+  instead of a relative path would otherwise have the browser resolve
+  it against this app's own origin, missing the proxy prefix entirely
+  and breaking the load. `//protocol-relative` and `scheme://absolute`
+  URLs are correctly left alone. This is a plain text substitution
+  over `text/html`/`text/css` response bodies only (gzip-decoded
+  first if needed; every other content type, and an oversized body,
+  pass through completely untouched) - not a real HTML/CSS parser, and
+  it can never fix an absolute path an app's own JavaScript constructs
+  at runtime (e.g. a hardcoded `fetch("/api/...")` call) rather than
+  one present verbatim in markup. **Check whether the target has its
+  own reverse-proxy/base-path setting first** - that's more correct
+  and complete than this best-effort rewrite when available; ntopng's
+  own `-Z`/`--http-prefix` flag (`ntopng -Z /ingress/<name>`) is a
+  confirmed real-world example of exactly this kind of setting,
+  documented by ntopng itself for running behind a reverse proxy at a
+  path prefix - including, unlike this rewriting, the runtime-JS case.
 
-**Known limitation**: this only rewrites what it can see at the HTTP
-layer (paths, redirects, cookies) - there's no HTML/JS rewriting, so
-an upstream app whose own frontend hardcodes absolute paths (e.g.
-loading `/assets/app.js` instead of something relative, or with no
-configurable base-path setting of its own) will still render broken
-under the `/ingress/<name>/` prefix. Many self-hosted web UIs work
-fine as-is; some don't. Subdomain-based proxying would avoid this
-class of problem entirely, but needs wildcard DNS/certificates on the
+**Known limitation**: even with the HTML/CSS rewriting above, an
+upstream app whose own JavaScript constructs an absolute path at
+runtime (rather than one already present in the markup this proxy can
+see and rewrite) will still break under the `/ingress/<name>/` prefix.
+Confirmed against two real targets during development: AdGuard Home
+works correctly as-is (its markup already uses relative paths
+throughout - the login page's own JS/CSS `<script>`/`<link>` tags have
+no leading `/` at all); ntopng hardcodes absolute paths (confirmed:
+`/dist/login.js`) and needed its own `-Z`/`--http-prefix` flag (above)
+rather than markup rewriting alone to work correctly. Subdomain-based
+proxying would avoid this whole class of
+problem entirely, but needs wildcard DNS/certificates on the
 operator's own LAN and isn't implemented.
 
 ## Files: a curated, read-only viewer over `show file <path>`
