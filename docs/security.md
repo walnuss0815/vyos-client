@@ -227,9 +227,20 @@ disabled:
   session cookie - travels unencrypted between the client and this
   process.
 - The session cookie's `Secure` attribute is also dropped automatically
-  (it has to be - browsers silently refuse to send a `Secure` cookie
-  back over a plain HTTP connection, so leaving it set would make login
-  appear to succeed while the session never actually persists).
+  by default (it has to be, in the general case - browsers silently
+  refuse to send a `Secure` cookie back over a plain HTTP connection,
+  so leaving it set would make login appear to succeed while the
+  session never actually persists). **If the reverse proxy in front of
+  this process terminates real TLS** (the intended use of this mode -
+  see above), the browser's own connection genuinely is HTTPS even
+  though this process itself only ever sees plain HTTP from the proxy,
+  so the cookie both can and should still be marked `Secure` in that
+  case. Set `COOKIE_SECURE=true` to opt back into that, independently
+  of `TLS_ENABLED` - without it, that topology silently ends up with
+  non-`Secure` cookies on what the browser considers an HTTPS origin.
+  (The reverse combination - `COOKIE_SECURE=false` while
+  `TLS_ENABLED=true` - is flagged with a startup warning, since it's
+  almost always a mistake rather than an intentional choice.)
 
 This is the same trade-off as the "reverse proxy in front" option
 above, made explicit and first-class instead of requiring the backend
