@@ -50,6 +50,15 @@ type Notification struct {
 	Title    string `json:"title"`
 	Message  string `json:"message"`
 	Read     bool   `json:"read"`
+	// DedupeKey, if set, identifies the specific still-unresolved
+	// condition this notification is about (e.g. "container image
+	// update available for web: nginx:1.24 -> nginx:1.25") - see
+	// AddIfNotPresent. Not meaningful to the frontend (it has no use
+	// for it), but persisted like every other field so a producer
+	// that runs repeatedly across restarts (e.g. a scheduled
+	// background check) can still recognize its own past entries
+	// after one.
+	DedupeKey string `json:"dedupeKey,omitempty"`
 }
 
 // fileName is the persisted notifications file's name within
@@ -136,6 +145,46 @@ func (s *Store) path() string {
 // over unbounded growth for a feature nothing else in this codebase
 // has ever needed to cap.
 func (s *Store) Add(n Notification) (Notification, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.addLocked(n)
+}
+
+// AddIfNotPresent behaves like Add, except it first checks whether a
+// notification with the same dedupeKey already exists anywhere in the
+// current feed - if one does, that existing notification is returned
+// unchanged and added reports false, rather than piling up another
+// entry for the same still-unresolved condition. Intended for a
+// producer that runs repeatedly (e.g. a scheduled background check):
+// calling this every time it finds the same issue still present is
+// safe and idempotent, rather than needing its own separate
+// "have I already reported this" bookkeeping.
+//
+// Dismissing (Delete) a notification removes its DedupeKey from
+// consideration too - deliberately: dismiss means "I saw this," not
+// "never tell me about this again," so if the same condition is still
+// true the next time this runs, a fresh notification is added. A
+// dedupeKey of "" never matches anything (every call with one adds a
+// new notification, same as Add) - producers that don't need
+// deduplication can simply not use this method at all.
+func (s *Store) AddIfNotPresent(dedupeKey string, n Notification) (added bool, result Notification, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if dedupeKey != "" {
+		for _, existing := range s.items {
+			if existing.DedupeKey == dedupeKey {
+				return false, existing, nil
+			}
+		}
+	}
+	n.DedupeKey = dedupeKey
+	result, err = s.addLocked(n)
+	return err == nil, result, err
+}
+
+// addLocked is Add/AddIfNotPresent's shared implementation. s.mu must
+// already be held by the caller.
+func (s *Store) addLocked(n Notification) (Notification, error) {
 	id, err := newID()
 	if err != nil {
 		return Notification{}, fmt.Errorf("notifications: generating id: %w", err)
@@ -143,8 +192,6 @@ func (s *Store) Add(n Notification) (Notification, error) {
 	n.ID = id
 	n.CreatedAt = time.Now()
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.items = append([]Notification{n}, s.items...)
 	if len(s.items) > s.maxItems {
 		s.items = s.items[:s.maxItems]

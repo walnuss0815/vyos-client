@@ -378,6 +378,14 @@ stay `'self'` with no exception at all.
   (`vyos.Client.ReturnValue`, not the browser-facing reveal endpoint)
   to authenticate the request — logged server-side (`"registry
   credentials read for a container image update check"`) each time.
+  **`CONTAINER_UPDATE_BACKGROUND_CHECK_ENABLED` automates this same
+  outbound-request behavior on a schedule**, for every configured
+  container, with no per-check operator action at all — it can't be
+  turned on unless `CONTAINER_UPDATE_CHECKS_ENABLED` is also true
+  (enforced at startup), specifically so this broader, unattended
+  version of the same trust model requires its manual counterpart to
+  already be explicitly accepted first, rather than being reachable as
+  its own independent opt-in.
 - **`FILE_BROWSER_ENABLED` gates the Files page for a different
   reason than the two flags above**: it makes no outbound-to-the-
   internet call at all (it only ever talks to VyOS's own API, same as

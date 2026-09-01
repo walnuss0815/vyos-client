@@ -1,11 +1,10 @@
 package api
 
 import (
-	"context"
 	"net/http"
 
+	"github.com/walnuss0815/vyos-client/backend/internal/containerupdatecheck"
 	"github.com/walnuss0815/vyos-client/backend/internal/imageupdate"
-	"github.com/walnuss0815/vyos-client/backend/internal/vyos"
 )
 
 type checkContainerImageUpdateRequest struct {
@@ -87,7 +86,7 @@ func (s *Server) handleCheckContainerImageUpdate(w http.ResponseWriter, r *http.
 		return
 	}
 
-	creds, insecure, err := s.lookupRegistryCredentials(r.Context(), ref.RegistryName)
+	creds, insecure, err := containerupdatecheck.LookupRegistryCredentials(r.Context(), s.VyOS, s.Logger, ref.RegistryName)
 	if err != nil {
 		s.handleVyOSError(w, "looking up registry credentials", err)
 		return
@@ -115,53 +114,4 @@ func (s *Server) handleCheckContainerImageUpdate(w http.ResponseWriter, r *http.
 	}
 
 	writeJSON(w, http.StatusOK, resp)
-}
-
-// lookupRegistryCredentials looks up a VyOS `container registry
-// <registryName>` entry's credentials and `insecure` flag, for
-// authenticating a tag-listing request against that registry - the
-// same hostname-based matching convention VyOS/Podman themselves use
-// (see the Containers > Registries page's own help text: "VyOS uses
-// docker.io and quay.io by default even without an entry here").
-// Returns (nil, false, nil) if no matching registry entry exists at
-// all, which is the normal case for a public image with no configured
-// credentials.
-//
-// Unlike the browser-facing POST /api/config/reveal endpoint, this
-// reads the registry password directly via s.VyOS.ReturnValue rather
-// than going through that endpoint - the same pattern
-// auth.VyOSUserVerifier already uses for reading a login user's own
-// password hash (see that type's doc comment): both are backend-
-// internal uses of a secret that's never sent to the browser, as
-// opposed to handleReveal's job of deliberately exposing one to an
-// operator on request.
-func (s *Server) lookupRegistryCredentials(ctx context.Context, registryName string) (*imageupdate.Credentials, bool, error) {
-	registryPath := []string{"container", "registry", registryName}
-	exists, err := s.VyOS.Exists(ctx, registryPath)
-	if err != nil {
-		return nil, false, err
-	}
-	if !exists {
-		return nil, false, nil
-	}
-
-	insecure, err := s.VyOS.Exists(ctx, []string{"container", "registry", registryName, "insecure"})
-	if err != nil {
-		return nil, false, err
-	}
-
-	username, err := s.VyOS.ReturnValue(ctx, []string{"container", "registry", registryName, "authentication", "username"})
-	if err != nil && !vyos.IsEmptyPath(err) {
-		return nil, false, err
-	}
-	password, err := s.VyOS.ReturnValue(ctx, []string{"container", "registry", registryName, "authentication", "password"})
-	if err != nil && !vyos.IsEmptyPath(err) {
-		return nil, false, err
-	}
-
-	if username == "" && password == "" {
-		return nil, insecure, nil
-	}
-	s.Logger.Warn("registry credentials read for a container image update check", "registry", registryName)
-	return &imageupdate.Credentials{Username: username, Password: password}, insecure, nil
 }

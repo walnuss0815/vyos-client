@@ -1996,6 +1996,40 @@ not a silently-missing gap.
   twice. See [architecture.md](architecture.md#notifications-the-one-thing-this-backend-persists-beyond-vyos-itself)
   and [security.md](security.md#threat-model-notes).
 
+- **Background container image update checks**
+  (`CONTAINER_UPDATE_BACKGROUND_CHECK_ENABLED`,
+  `CONTAINER_UPDATE_CHECK_CRON`, default daily at 03:00): runs the
+  Containers page's "Check for update" logic automatically, for every
+  configured container, on a schedule (`robfig/cron` - the one
+  intentional exception to this backend's otherwise near-zero-
+  dependency footprint, accepted specifically for its scheduling
+  correctness rather than hand-rolling one), raising an in-app
+  Notification for anything it finds - the first real producer for
+  the notification feed above. Disabled by default, and can't be
+  enabled unless `CONTAINER_UPDATE_CHECKS_ENABLED` is also true
+  (startup error otherwise): this is the same registry-contacting
+  capability as that feature, just unattended, so it shouldn't run
+  without the manual version already being explicitly opted into.
+  New `internal/containerupdatecheck` package holds the shared
+  VyOS-specific orchestration (`ListContainerImages`,
+  `LookupRegistryCredentials` - the latter moved out of
+  `internal/api/container_update_handlers.go` so the manual handler
+  and the background `Checker` both call the same implementation
+  rather than duplicating it) on top of the existing
+  `internal/imageupdate` registry client, which also gained a
+  short-TTL cache (`Config.CacheTTL`, defaults to 10 minutes, same
+  "zero means use the default" convention `internal/selfupgrade
+  .Client`'s own `CacheTTL` already uses) so a background sweep and a
+  manual click overlapping - or two containers sharing the same image
+  - don't double-hit the same registry. Notifications are raised via
+  `Store.AddIfNotPresent`, keyed on container + old-tag/new-tag pair,
+  so a still-outstanding update found again on the next scheduled run
+  doesn't pile up duplicates - but dismissing that notification while
+  the same update remains available raises a fresh one on the run
+  after that (dismiss means "I saw this," not "never tell me about
+  this again"). See [architecture.md](architecture.md#background-checks-container_update_background_check_enabled)
+  and [security.md](security.md#threat-model-notes).
+
 ## Next
 
 Not yet decided - see "Later" below for the candidate list (the

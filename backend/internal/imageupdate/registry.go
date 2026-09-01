@@ -57,6 +57,15 @@ const (
 	// triggering (see docs/architecture.md) makes a modestly higher
 	// bound than selfupgrade's 5 reasonable here.
 	maxTagPages = 10
+	// defaultCacheTTL is Config.CacheTTL's default when left at its
+	// zero value - see that field's own doc comment. Shorter than
+	// selfupgrade.Client's own 30-minute default: this exists mainly
+	// to collapse near-simultaneous duplicate lookups (a background
+	// check and a manual "Check for update" click overlapping, or
+	// several containers sharing the same image), not to meaningfully
+	// reduce steady-state registry load the way GitHub's release
+	// polling cache does.
+	defaultCacheTTL = 10 * time.Minute
 )
 
 // Credentials authenticates against a registry - looked up from a
@@ -88,6 +97,19 @@ type Config struct {
 	// Timeout bounds each individual HTTP request. Defaults to
 	// defaultTimeout.
 	Timeout time.Duration
+	// CacheTTL bounds how long a successful ListTags result is reused
+	// for the same (APIHost, Repository) pair before a fresh registry
+	// request is made again - avoids hitting the same registry twice
+	// in quick succession, e.g. when a background check
+	// (internal/containerupdatecheck) and a manual "Check for update"
+	// click happen to overlap, or two containers share the same image
+	// reference. Zero means defaultCacheTTL, the same "zero means use
+	// the default, not disabled" convention
+	// internal/selfupgrade.Client's own CacheTTL already uses. Only
+	// successful results are cached - a failed lookup is always
+	// retried on the very next call, same as before this field
+	// existed.
+	CacheTTL time.Duration
 }
 
 // Client lists tags from a Docker Distribution v2-compatible registry
@@ -99,9 +121,18 @@ type Config struct {
 type Client struct {
 	timeout    time.Duration
 	httpClient *http.Client
+	cacheTTL   time.Duration
 
 	mu                 sync.Mutex
 	insecureHTTPClient *http.Client
+
+	cacheMu sync.Mutex
+	cache   map[string]tagsCacheEntry
+}
+
+type tagsCacheEntry struct {
+	tags     []string
+	cachedAt time.Time
 }
 
 // NewClient constructs a Client from cfg.
@@ -114,7 +145,16 @@ func NewClient(cfg Config) *Client {
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: timeout}
 	}
-	return &Client{timeout: timeout, httpClient: httpClient}
+	cacheTTL := cfg.CacheTTL
+	if cacheTTL == 0 {
+		cacheTTL = defaultCacheTTL
+	}
+	return &Client{
+		timeout:    timeout,
+		httpClient: httpClient,
+		cacheTTL:   cacheTTL,
+		cache:      map[string]tagsCacheEntry{},
+	}
 }
 
 func (c *Client) httpClientFor(insecure bool) *http.Client {
@@ -140,7 +180,46 @@ func (c *Client) httpClientFor(insecure bool) *http.Client {
 // "insecure registry" meaning: tolerate self-signed certificates or a
 // registry with no TLS at all), and TLS certificate verification is
 // skipped for any HTTPS attempt.
+//
+// A successful result is cached for Config.CacheTTL, keyed on
+// ref.APIHost+ref.Repository (not on creds/insecure - in practice
+// both are constant for a given host+repository within one process's
+// lifetime, since they're derived from the same VyOS `container
+// registry <name>` entry every time). See Config.CacheTTL's own doc
+// comment for why this exists.
 func (c *Client) ListTags(ctx context.Context, ref Reference, creds *Credentials, insecure bool) ([]string, error) {
+	key := ref.APIHost + "/" + ref.Repository
+	if tags, ok := c.cachedTags(key); ok {
+		return tags, nil
+	}
+	tags, err := c.listTagsUncached(ctx, ref, creds, insecure)
+	if err != nil {
+		return nil, err
+	}
+	c.storeTags(key, tags)
+	return tags, nil
+}
+
+func (c *Client) cachedTags(key string) ([]string, bool) {
+	c.cacheMu.Lock()
+	defer c.cacheMu.Unlock()
+	entry, ok := c.cache[key]
+	if !ok || time.Since(entry.cachedAt) >= c.cacheTTL {
+		return nil, false
+	}
+	return entry.tags, true
+}
+
+func (c *Client) storeTags(key string, tags []string) {
+	c.cacheMu.Lock()
+	defer c.cacheMu.Unlock()
+	c.cache[key] = tagsCacheEntry{tags: tags, cachedAt: time.Now()}
+}
+
+// listTagsUncached is ListTags' original body, unconditionally
+// hitting the registry - see ListTags for the caching wrapper around
+// this.
+func (c *Client) listTagsUncached(ctx context.Context, ref Reference, creds *Credentials, insecure bool) ([]string, error) {
 	httpClient := c.httpClientFor(insecure)
 
 	scheme := "https"
