@@ -5,10 +5,12 @@
 #
 #   docker buildx build -f deploy/Dockerfile -t vyos-client:local .
 #
-# Multi-arch (as used by .github/workflows/release.yml):
+# As used by .github/workflows/release.yml (amd64 only - VyOS itself
+# only supports amd64; re-add `,linux/arm64` to --platform below if
+# that ever changes):
 #
 #   docker buildx build -f deploy/Dockerfile \
-#     --platform linux/amd64,linux/arm64 \
+#     --platform linux/amd64 \
 #     -t ghcr.io/<org>/vyos-client:latest --push .
 #
 # Deliberately no `# syntax=docker/dockerfile:1` pragma: that directive
