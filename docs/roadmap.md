@@ -1841,6 +1841,41 @@ not a silently-missing gap.
     "Explicitly out of scope for now" below), and digest-pinning
     Docker base images (already being addressed on a separate branch).
 
+- **Container image update checks**: a "Check for update" button on
+  the Containers page for *any* configured container's image, not
+  just this app's own (`CONTAINER_UPDATE_CHECKS_ENABLED`, disabled by
+  default - see docs/architecture.md's "Container image update
+  checks" section). Generalizes self-upgrade's own pull-and-queue
+  mechanism, but unlike self-upgrade (a single fixed GitHub repo),
+  there's no one API to check against - a container's image can live
+  on Docker Hub, GHCR, Quay, or a self-hosted registry. New
+  `backend/internal/imageupdate` package implements just enough of
+  the standard Docker Distribution v2 HTTP API (image reference
+  parsing, the `WWW-Authenticate` challenge/token-exchange flow,
+  paginated tag listing) to support this - hand-rolled rather than a
+  new dependency (`google/go-containerregistry` was considered and
+  declined - this project's backend has stayed at 2 real Go
+  dependencies throughout, and the registry protocol surface actually
+  needed here, tag listing plus auth, is a small, bounded slice of
+  what that library covers). A matching `container registry <name>`
+  entry's credentials are read directly via `vyos.Client.ReturnValue`
+  (the same backend-internal pattern `auth.VyOSUserVerifier` already
+  uses for a login user's own password hash) to authenticate the
+  request when one exists, rather than through the browser-facing
+  `POST /api/config/reveal` endpoint. Tag comparison uses a new,
+  deliberately more permissive version parser than self-upgrade's own
+  strict `vX.Y.Z` comparator (`internal/selfupgrade/semver.go`) -
+  optional leading "v", optional patch component, optional suffix
+  (e.g. "-alpine") - since real-world container tags vary far more
+  than this project's own clean release tags; a candidate is only
+  ever suggested as an update if it shares the current tag's exact
+  "flavor" (leading-"v" style, suffix, and patch-presence all
+  identical), so a `-alpine` tag is never suggested as an update for
+  a plain tag. Manual/on-demand only (a button per container, never
+  triggered automatically) since, unlike self-upgrade's single
+  server-cached check, this can contact an arbitrary number of
+  different registries with no caching on this app's side.
+
 ## Next
 
 Not yet decided - see "Later" below for the candidate list (the
