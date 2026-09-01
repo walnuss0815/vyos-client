@@ -62,6 +62,14 @@ type Server struct {
 	// selfupgrade.Client.ListReleases) is actually shared across
 	// requests.
 	SelfUpgradeGitHub *selfupgrade.Client
+	// SelfUpgradeGHCRHost overrides the registry host
+	// selfUpgradeImageExists checks for a release's image (normally
+	// always the real "ghcr.io") - empty (the always-true production
+	// value) means "ghcr.io". Exists purely for tests, which point
+	// this at an httptest server's own address instead - mirroring
+	// how internal/selfupgrade.Config.BaseURL overrides GitHub's own
+	// API base URL for the exact same reason.
+	SelfUpgradeGHCRHost string
 
 	// CommitLimiter throttles the handful of routes that trigger a
 	// real, comparatively expensive VyOS commit (see Routes' own

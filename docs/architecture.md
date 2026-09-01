@@ -391,7 +391,21 @@ had, rather than any new privileged access:
 2. `GET /api/system/self-upgrade` surfaces that comparison plus the
    notes for every release newer than current. When disabled, it
    returns `{"enabled": false}` immediately without ever calling
-   GitHub.
+   GitHub. It also verifies, per newer release, that
+   `ghcr.io/<repo>:<version>` actually exists - via
+   `imageupdate.Client.TagExists` (the same registry client the
+   Containers page's own "Check for update" button uses, a manifest
+   existence check rather than a full tag-list fetch), always
+   anonymous since the repo is fixed by `SELF_UPGRADE_GITHUB_REPO`,
+   not operator-supplied. This exists because `.github/workflows/
+   release.yml` publishes the GitHub Release and the GHCR image as
+   two separate jobs (`build-and-push` has `needs: release`, but
+   nothing enforces the reverse) - the image build can take minutes,
+   or fail outright, leaving a release visible via GitHub's API with
+   no matching image yet, or ever. A registry error checking one
+   release's image is treated as "doesn't exist" (fail-safe, not
+   left ambiguous) and doesn't fail the whole response - it only
+   affects that one release's own `imageExists` field.
 3. Clicking "Upgrade to X" in the frontend does two things, reusing
    existing endpoints rather than adding new ones: pulls
    `ghcr.io/<repo>:<X>` via the existing `POST /api/container/images`

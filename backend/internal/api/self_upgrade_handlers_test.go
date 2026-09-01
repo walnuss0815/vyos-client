@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/walnuss0815/vyos-client/backend/internal/imageupdate"
 	"github.com/walnuss0815/vyos-client/backend/internal/selfupgrade"
 )
 
@@ -21,10 +23,11 @@ type selfUpgradeStatusOut struct {
 	CurrentVersionRecognized bool   `json:"currentVersionRecognized"`
 	UpdateAvailable          bool   `json:"updateAvailable"`
 	Releases                 []struct {
-		Version string `json:"version"`
-		Name    string `json:"name"`
-		Body    string `json:"body"`
-		HTMLURL string `json:"htmlUrl"`
+		Version     string `json:"version"`
+		Name        string `json:"name"`
+		Body        string `json:"body"`
+		HTMLURL     string `json:"htmlUrl"`
+		ImageExists bool   `json:"imageExists"`
 	} `json:"releases"`
 }
 
@@ -232,6 +235,130 @@ func TestSelfUpgradeStatus_UnparseableCurrentVersion(t *testing.T) {
 	// against "dev" isn't possible - it's useful context regardless.
 	if out.LatestVersion != "1.0.0" {
 		t.Errorf("latestVersion = %q, want 1.0.0", out.LatestVersion)
+	}
+}
+
+// newTestGHCRServer starts a fake registry serving manifest existence
+// checks for "example/repo" - existingVersions get a 200 (exists),
+// everything else a 404 (doesn't exist) - and wires
+// e.apiServer.ImageRegistry to trust its certificate (the same
+// pattern container_update_handlers_test.go's newTestRegistryServer
+// uses) plus e.apiServer.SelfUpgradeGHCRHost so
+// selfUpgradeImageExists actually targets this fake server instead of
+// the real ghcr.io.
+func newTestGHCRServer(t *testing.T, e *testEnv, existingVersions ...string) *httptest.Server {
+	t.Helper()
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tag := strings.TrimPrefix(r.URL.Path, "/v2/example/repo/manifests/")
+		for _, v := range existingVersions {
+			if tag == v {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(server.Close)
+	e.apiServer.ImageRegistry = imageupdate.NewClient(imageupdate.Config{HTTPClient: server.Client()})
+	e.apiServer.SelfUpgradeGHCRHost = strings.TrimPrefix(server.URL, "https://")
+	return server
+}
+
+// TestSelfUpgradeStatus_ImageExists verifies each newer release's
+// ImageExists independently, guarding the real gap this check exists
+// for: .github/workflows/release.yml publishes the GitHub Release and
+// the GHCR image as two separate jobs, so a release can legitimately
+// exist without (yet, or ever) having a matching image.
+func TestSelfUpgradeStatus_ImageExists(t *testing.T) {
+	github := newTestGitHubReleasesServer(t, `[
+		{"tag_name": "v2.0.0", "name": "2.0.0", "body": "", "draft": false, "prerelease": false, "published_at": "2026-02-01T00:00:00Z", "html_url": "https://example.com/2.0.0"},
+		{"tag_name": "v1.5.0", "name": "1.5.0", "body": "", "draft": false, "prerelease": false, "published_at": "2026-01-15T00:00:00Z", "html_url": "https://example.com/1.5.0"}
+	]`)
+	ghClient, err := selfupgrade.New(selfupgrade.Config{Repo: "example/repo", BaseURL: github.URL, HTTPClient: github.Client()})
+	if err != nil {
+		t.Fatalf("selfupgrade.New: %v", err)
+	}
+
+	e := newTestEnv(t)
+	e.apiServer.SelfUpgradeEnabled = true
+	e.apiServer.SelfUpgradeContainerName = "vyos-client"
+	e.apiServer.SelfUpgradeGitHub = ghClient
+	e.apiServer.Version = "1.0.0"
+	// Only 1.5.0's image actually exists - 2.0.0's release was
+	// published but its image build hasn't finished (or failed).
+	newTestGHCRServer(t, e, "1.5.0")
+	e.login(t)
+
+	resp := e.doJSON(t, http.MethodGet, "/api/system/self-upgrade", nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	var out selfUpgradeStatusOut
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(out.Releases) != 2 {
+		t.Fatalf("expected 2 releases, got %d: %+v", len(out.Releases), out.Releases)
+	}
+	for _, rel := range out.Releases {
+		switch rel.Version {
+		case "2.0.0":
+			if rel.ImageExists {
+				t.Error("expected imageExists=false for 2.0.0 (no matching image on the fake registry)")
+			}
+		case "1.5.0":
+			if !rel.ImageExists {
+				t.Error("expected imageExists=true for 1.5.0 (matching image exists on the fake registry)")
+			}
+		}
+	}
+}
+
+// TestSelfUpgradeStatus_ImageExistsFailsSafeOnRegistryError guards the
+// fail-safe choice: a registry error while checking one release's
+// image existence should not fail the whole status response, and
+// should report ImageExists=false (not true, and not left out) rather
+// than assume the image is probably there.
+func TestSelfUpgradeStatus_ImageExistsFailsSafeOnRegistryError(t *testing.T) {
+	github := newTestGitHubReleasesServer(t, `[
+		{"tag_name": "v2.0.0", "name": "2.0.0", "body": "", "draft": false, "prerelease": false, "published_at": "2026-02-01T00:00:00Z", "html_url": "https://example.com/2.0.0"}
+	]`)
+	ghClient, err := selfupgrade.New(selfupgrade.Config{Repo: "example/repo", BaseURL: github.URL, HTTPClient: github.Client()})
+	if err != nil {
+		t.Fatalf("selfupgrade.New: %v", err)
+	}
+
+	registry := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(registry.Close)
+
+	e := newTestEnv(t)
+	e.apiServer.SelfUpgradeEnabled = true
+	e.apiServer.SelfUpgradeContainerName = "vyos-client"
+	e.apiServer.SelfUpgradeGitHub = ghClient
+	e.apiServer.Version = "1.0.0"
+	e.apiServer.ImageRegistry = imageupdate.NewClient(imageupdate.Config{HTTPClient: registry.Client()})
+	e.apiServer.SelfUpgradeGHCRHost = strings.TrimPrefix(registry.URL, "https://")
+	e.login(t)
+
+	resp := e.doJSON(t, http.MethodGet, "/api/system/self-upgrade", nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (a registry error checking image existence should not fail the whole response)", resp.StatusCode)
+	}
+
+	var out selfUpgradeStatusOut
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(out.Releases) != 1 {
+		t.Fatalf("expected 1 release, got %d: %+v", len(out.Releases), out.Releases)
+	}
+	if out.Releases[0].ImageExists {
+		t.Error("expected imageExists=false when the registry check itself failed (fail-safe)")
 	}
 }
 

@@ -323,13 +323,14 @@ stay `'self'` with no exception at all.
 - **`SELF_UPGRADE_ENABLED` is the one deliberate exception** to this
   app never talking to anything but VyOS's own API — when set, the
   backend makes unauthenticated HTTPS calls to `api.github.com` to
-  check for new releases (see
-  [architecture.md](architecture.md#self-upgrade)). Disabled by
-  default. If you enable it, be aware that a compromised/typo'd
-  `SELF_UPGRADE_GITHUB_REPO` could point this at an image reference you
-  don't control — the value is trusted as-is, the same "trust the
-  authenticated deployment configuration" posture the rest of
-  `internal/config` already takes for every other env var.
+  check for new releases, and to `ghcr.io` to verify each newer
+  release's image actually exists before enabling its "Upgrade"
+  button (see [architecture.md](architecture.md#self-upgrade)).
+  Disabled by default. If you enable it, be aware that a
+  compromised/typo'd `SELF_UPGRADE_GITHUB_REPO` could point this at an
+  image reference you don't control — the value is trusted as-is, the
+  same "trust the authenticated deployment configuration" posture the
+  rest of `internal/config` already takes for every other env var.
 - **`CONTAINER_UPDATE_CHECKS_ENABLED` is the other exception**, and a
   broader one: when set, an authenticated operator's "Check for
   update" click on the Containers page makes the backend contact
