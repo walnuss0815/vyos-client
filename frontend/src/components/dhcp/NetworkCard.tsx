@@ -14,11 +14,19 @@ import type { DHCPLease } from '../../lib/vyosApi'
 import { usePendingChangesStore } from '../../store/pendingChanges'
 import SubnetCard from './SubnetCard'
 
-/** One shared network (DHCP pool): authoritative/options edit form,
- * a pool-utilization bar (combining its configured range sizes with
- * live lease counts - see lib/dhcpPoolUtilization.ts), and every
- * subnet nested underneath. */
+/** One shared network (DHCP pool), collapsed by default: name/badges,
+ * each subnet's CIDR, and the pool-utilization bar (combining
+ * configured range sizes with live lease counts - see
+ * lib/dhcpPoolUtilization.ts) stay visible at all times; everything
+ * else (DNS/NTP/domain-search options, the edit form, and every
+ * subnet's own full detail - ranges, excludes, static mappings) is
+ * behind a "Details"/"Hide details" toggle, the same collapse idiom
+ * ContainerList.tsx already uses for per-container detail. A shared
+ * network can list many subnets, each with several ranges/static
+ * mappings of their own - showing all of that unconditionally made
+ * this page overwhelming for even a moderate number of networks. */
 export default function NetworkCard({ network, leases }: { network: DHCPSharedNetwork; leases: DHCPLease[] }) {
+  const [expanded, setExpanded] = useState(false)
   const [editing, setEditing] = useState(false)
   const [showAddSubnet, setShowAddSubnet] = useState(false)
   const add = usePendingChangesStore((s) => s.add)
@@ -42,6 +50,9 @@ export default function NetworkCard({ network, leases }: { network: DHCPSharedNe
           )}
         </div>
         <div className="flex shrink-0 items-center gap-3 text-xs">
+          <button onClick={() => setExpanded((v) => !v)} className="text-accent-500 hover:text-accent-400">
+            {expanded ? 'Hide details' : 'Details'}
+          </button>
           <button onClick={() => setEditing((v) => !v)} className="text-accent-500 hover:text-accent-400">
             {editing ? 'Cancel' : 'Edit'}
           </button>
@@ -50,6 +61,10 @@ export default function NetworkCard({ network, leases }: { network: DHCPSharedNe
           </button>
         </div>
       </div>
+
+      <p className="mt-2 font-mono text-xs text-slate-400">
+        {network.subnets.length > 0 ? network.subnets.map((s) => s.cidr).join(', ') : 'No subnets yet.'}
+      </p>
 
       {utilization.size > 0 ? (
         <div className="mt-3">
@@ -61,65 +76,69 @@ export default function NetworkCard({ network, leases }: { network: DHCPSharedNe
 
       {editing && <NetworkEditForm network={network} onDone={() => setEditing(false)} />}
 
-      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <div>
-          <p className="mb-1 text-xs text-slate-500">DNS servers</p>
-          <ChipList
-            values={network.options.nameServers}
-            basePath={[...basePath, 'option']}
-            leaf="name-server"
-            pathLabel={`${pathLabel} option name-server`}
-            placeholder="192.168.1.1"
-          />
-        </div>
-        <div>
-          <p className="mb-1 text-xs text-slate-500">NTP servers</p>
-          <ChipList
-            values={network.options.ntpServers}
-            basePath={[...basePath, 'option']}
-            leaf="ntp-server"
-            pathLabel={`${pathLabel} option ntp-server`}
-            placeholder="192.168.1.1"
-          />
-        </div>
-        <div>
-          <p className="mb-1 text-xs text-slate-500">Domain search</p>
-          <ChipList
-            values={network.options.domainSearch}
-            basePath={[...basePath, 'option']}
-            leaf="domain-search"
-            pathLabel={`${pathLabel} option domain-search`}
-            placeholder="example.com"
-          />
-        </div>
-      </div>
+      {expanded && (
+        <>
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div>
+              <p className="mb-1 text-xs text-slate-500">DNS servers</p>
+              <ChipList
+                values={network.options.nameServers}
+                basePath={[...basePath, 'option']}
+                leaf="name-server"
+                pathLabel={`${pathLabel} option name-server`}
+                placeholder="192.168.1.1"
+              />
+            </div>
+            <div>
+              <p className="mb-1 text-xs text-slate-500">NTP servers</p>
+              <ChipList
+                values={network.options.ntpServers}
+                basePath={[...basePath, 'option']}
+                leaf="ntp-server"
+                pathLabel={`${pathLabel} option ntp-server`}
+                placeholder="192.168.1.1"
+              />
+            </div>
+            <div>
+              <p className="mb-1 text-xs text-slate-500">Domain search</p>
+              <ChipList
+                values={network.options.domainSearch}
+                basePath={[...basePath, 'option']}
+                leaf="domain-search"
+                pathLabel={`${pathLabel} option domain-search`}
+                placeholder="example.com"
+              />
+            </div>
+          </div>
 
-      <div className="mt-4 border-t border-surface-border pt-3">
-        <div className="mb-2 flex items-center justify-between">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Subnets</p>
-          <button
-            onClick={() => setShowAddSubnet((v) => !v)}
-            className={`bg-accent-600 ${buttonClass}`}
-          >
-            {showAddSubnet ? 'Cancel' : '+ Add subnet'}
-          </button>
-        </div>
+          <div className="mt-4 border-t border-surface-border pt-3">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Subnets</p>
+              <button
+                onClick={() => setShowAddSubnet((v) => !v)}
+                className={`bg-accent-600 ${buttonClass}`}
+              >
+                {showAddSubnet ? 'Cancel' : '+ Add subnet'}
+              </button>
+            </div>
 
-        {showAddSubnet && (
-          <CreateSubnetForm
-            networkName={network.name}
-            existingCidrs={network.subnets.map((s) => s.cidr)}
-            onDone={() => setShowAddSubnet(false)}
-          />
-        )}
+            {showAddSubnet && (
+              <CreateSubnetForm
+                networkName={network.name}
+                existingCidrs={network.subnets.map((s) => s.cidr)}
+                onDone={() => setShowAddSubnet(false)}
+              />
+            )}
 
-        <div className="space-y-3">
-          {network.subnets.map((subnet) => (
-            <SubnetCard key={subnet.cidr} networkName={network.name} subnet={subnet} />
-          ))}
-          {network.subnets.length === 0 && <p className="text-xs text-slate-500">No subnets yet.</p>}
-        </div>
-      </div>
+            <div className="space-y-3">
+              {network.subnets.map((subnet) => (
+                <SubnetCard key={subnet.cidr} networkName={network.name} subnet={subnet} />
+              ))}
+              {network.subnets.length === 0 && <p className="text-xs text-slate-500">No subnets yet.</p>}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }
