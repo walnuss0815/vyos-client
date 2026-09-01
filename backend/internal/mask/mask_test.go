@@ -43,6 +43,60 @@ func TestIsSensitivePath(t *testing.T) {
 	}
 }
 
+func TestIsSensitiveIdentifier(t *testing.T) {
+	cases := map[string]bool{
+		"DB_PASSWORD":     true,
+		"db-password":     true, // underscore/hyphen both normalize
+		"STRIPE_API_KEY":  true, // "key" substring
+		"SESSION_SECRET":  true, // "secret" substring
+		"AUTH_TOKEN":      true, // "auth" and "token" both match
+		"MYSQL_PWD":       true, // "pwd" substring
+		"TLS_PRIVATE_KEY": true, // "private" and "key" both match
+		"TZ":              false,
+		"NODE_ENV":        false,
+		"LOG_LEVEL":       false,
+		"PORT":            false,
+	}
+	for name, want := range cases {
+		if got := mask.IsSensitiveIdentifier(name); got != want {
+			t.Errorf("IsSensitiveIdentifier(%q) = %v, want %v", name, got, want)
+		}
+	}
+}
+
+func TestIsMaskedPath(t *testing.T) {
+	tests := []struct {
+		name string
+		path []string
+		want bool
+	}{
+		{"exact leaf-name match still works", []string{"system", "login", "user", "x", "authentication", "plaintext-password"}, true},
+		{"non-sensitive leaf", []string{"system", "host-name"}, false},
+		{"empty path", nil, false},
+		{"sensitive identifier + generic value leaf", []string{"container", "name", "web", "environment", "DB_PASSWORD", "value"}, true},
+		{"non-sensitive identifier + generic value leaf", []string{"container", "name", "web", "environment", "TZ", "value"}, false},
+		{"event-handler environment variable, same shape", []string{"service", "event-handler", "x", "script", "environment", "API_TOKEN", "value"}, true},
+		{"a bare 'value' leaf with nothing before it", []string{"value"}, false},
+		{
+			// A leaf literally named "value" whose *parent* isn't a
+			// sensitive-looking identifier must not be masked just
+			// because some other unrelated ancestor further up the
+			// path happens to look sensitive - only the immediate
+			// second-to-last segment is checked.
+			"value leaf with a non-matching immediate parent, even under an unrelated sensitive-looking ancestor",
+			[]string{"container", "name", "my-secret-app", "environment", "TZ", "value"},
+			false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := mask.IsMaskedPath(tt.path); got != tt.want {
+				t.Errorf("IsMaskedPath(%v) = %v, want %v", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestValue(t *testing.T) {
 	if got := mask.Value([]string{"system", "login", "user", "x", "authentication", "plaintext-password"}, "hunter2"); got != mask.MaskPlaceholder {
 		t.Errorf("Value(sensitive) = %q, want mask placeholder", got)
@@ -110,6 +164,42 @@ func TestTree_SiblingBranchesDoNotCrossContaminatePaths(t *testing.T) {
 	}
 	if masked["host-name"] != "should-stay-visible" {
 		t.Errorf("host-name = %v, want unchanged", masked["host-name"])
+	}
+}
+
+// TestTree_MasksSensitiveEnvironmentVariable guards the actual
+// end-to-end scenario this whole identifier-aware mechanism exists
+// for: `container name <name> environment <KEY> value <VALUE>` -
+// where every environment variable's value sits under the exact same
+// generic "value" leaf regardless of its own key, so the leaf name
+// alone could never distinguish DB_PASSWORD from TZ.
+func TestTree_MasksSensitiveEnvironmentVariable(t *testing.T) {
+	config := map[string]any{
+		"container": map[string]any{
+			"name": map[string]any{
+				"web": map[string]any{
+					"environment": map[string]any{
+						"DB_PASSWORD": map[string]any{"value": "hunter2"},
+						"TZ":          map[string]any{"value": "UTC"},
+					},
+				},
+			},
+		},
+	}
+	masked := mask.Tree(config, nil).(map[string]any)
+	env := masked["container"].(map[string]any)["name"].(map[string]any)["web"].(map[string]any)["environment"].(map[string]any)
+
+	if got := env["DB_PASSWORD"].(map[string]any)["value"]; got != mask.MaskPlaceholder {
+		t.Errorf("DB_PASSWORD value = %v, want masked", got)
+	}
+	if got := env["TZ"].(map[string]any)["value"]; got != "UTC" {
+		t.Errorf("TZ value = %v, want unchanged", got)
+	}
+
+	// Original must be untouched (deep copy, not mutation).
+	origEnv := config["container"].(map[string]any)["name"].(map[string]any)["web"].(map[string]any)["environment"].(map[string]any)
+	if got := origEnv["DB_PASSWORD"].(map[string]any)["value"]; got != "hunter2" {
+		t.Errorf("expected original tree to be unmodified, got %v", got)
 	}
 }
 

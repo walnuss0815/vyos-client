@@ -20,5 +20,16 @@
     "key",
     "md5-key",
     "psk"
+  ],
+  "sensitiveKeyPatternsComment": "A second, deliberately different kind of match: a *substring* (not exact) match against a tag-node's own free-form identifier, not a fixed VyOS schema leaf name - e.g. a container environment variable's own key, 'DB_PASSWORD' in `environment DB_PASSWORD value ...`. Only ever applied to the generic 'value' leaf of a tag-node collection (container/event-handler environment variables, labels, sysctl parameters, ...) - see mask.IsMaskedPath/masking.ts's isMaskedPath - never to arbitrary VyOS schema field names, since a blanket substring match there would also catch unrelated structural nodes (e.g. 'authentication' containing 'auth'), incorrectly hiding non-secret sibling fields like an authentication mode selector. sensitiveLeafNames above uses exact matching precisely to avoid that problem for fixed schema names; this list exists because operator-chosen identifiers are compound/free-form and an exact match would miss almost everything real (e.g. 'STRIPE_API_KEY').",
+  "sensitiveKeyPatterns": [
+    "pass",
+    "secret",
+    "token",
+    "key",
+    "credential",
+    "pwd",
+    "private",
+    "auth"
   ]
 }

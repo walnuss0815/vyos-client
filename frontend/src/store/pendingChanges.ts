@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
-import { isSensitivePath } from '../lib/masking'
+import { isMaskedPath } from '../lib/masking'
 import type { ConfigOp } from '../lib/vyosApi'
 
 export interface PendingChange {
@@ -136,7 +136,7 @@ export const usePendingChangesStore = create<PendingChangesState>()(
       // (e.g. deleting a password leaf) has nothing to leak, so it's
       // kept.
       partialize: (state) => ({
-        changes: state.changes.filter((c) => !c.op.value || !isSensitivePath(c.op.path)),
+        changes: state.changes.filter((c) => !c.op.value || !isMaskedPath(c.op.path)),
       }),
     },
   ),

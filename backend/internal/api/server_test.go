@@ -647,6 +647,67 @@ func TestReveal_ReturnsRealValueForSensitivePath(t *testing.T) {
 	}
 }
 
+// TestReveal_ReturnsRealValueForSensitiveIdentifierValueLeaf guards
+// the newer IsMaskedPath case: a container environment variable's
+// own key can make its generic "value" leaf revealable even though
+// "value" itself is never in the exact-match sensitiveLeafNames list.
+func TestReveal_ReturnsRealValueForSensitiveIdentifierValueLeaf(t *testing.T) {
+	e := newTestEnv(t)
+	e.login(t)
+
+	commitBody := map[string]any{
+		"ops": []map[string]any{
+			{"op": "set", "path": []string{"container", "name", "web", "environment", "DB_PASSWORD", "value"}, "value": "hunter2"},
+		},
+	}
+	commitResp := e.doJSON(t, http.MethodPost, "/api/config/commit", commitBody)
+	_ = commitResp.Body.Close()
+	if commitResp.StatusCode != http.StatusOK {
+		t.Fatalf("commit: status=%d", commitResp.StatusCode)
+	}
+
+	revealBody := map[string]any{"path": []string{"container", "name", "web", "environment", "DB_PASSWORD", "value"}}
+	resp := e.doJSON(t, http.MethodPost, "/api/config/reveal", revealBody)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("reveal: status=%d body=%s", resp.StatusCode, b)
+	}
+	var out struct {
+		Value string `json:"value"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if out.Value != "hunter2" {
+		t.Errorf("value = %q, want the real plaintext value", out.Value)
+	}
+}
+
+// TestReveal_RejectsNonSensitiveIdentifierValueLeaf guards the flip
+// side: an environment variable whose key doesn't look sensitive
+// (e.g. TZ) must still be rejected by this endpoint, same as any
+// other non-sensitive path.
+func TestReveal_RejectsNonSensitiveIdentifierValueLeaf(t *testing.T) {
+	e := newTestEnv(t)
+	e.login(t)
+
+	commitBody := map[string]any{
+		"ops": []map[string]any{
+			{"op": "set", "path": []string{"container", "name", "web", "environment", "TZ", "value"}, "value": "UTC"},
+		},
+	}
+	commitResp := e.doJSON(t, http.MethodPost, "/api/config/commit", commitBody)
+	_ = commitResp.Body.Close()
+
+	resp := e.doJSON(t, http.MethodPost, "/api/config/reveal",
+		map[string]any{"path": []string{"container", "name", "web", "environment", "TZ", "value"}})
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", resp.StatusCode)
+	}
+}
+
 // TestReveal_RejectsNonSensitivePath is the endpoint's core scope
 // guard: it must refuse to become a generic "fetch one leaf value"
 // endpoint for anything the ordinary (masked) GET /api/config/tree

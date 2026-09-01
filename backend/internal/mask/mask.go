@@ -24,10 +24,12 @@ var sensitiveFieldsJSON []byte
 // the frontend. mask_test.go asserts this.
 
 type fieldList struct {
-	SensitiveLeafNames []string `json:"sensitiveLeafNames"`
+	SensitiveLeafNames   []string `json:"sensitiveLeafNames"`
+	SensitiveKeyPatterns []string `json:"sensitiveKeyPatterns"`
 }
 
 var sensitiveLeafNames map[string]struct{}
+var sensitiveKeyPatterns []string
 
 func init() {
 	var fl fieldList
@@ -37,6 +39,10 @@ func init() {
 	sensitiveLeafNames = make(map[string]struct{}, len(fl.SensitiveLeafNames))
 	for _, name := range fl.SensitiveLeafNames {
 		sensitiveLeafNames[normalize(name)] = struct{}{}
+	}
+	sensitiveKeyPatterns = make([]string, len(fl.SensitiveKeyPatterns))
+	for i, pattern := range fl.SensitiveKeyPatterns {
+		sensitiveKeyPatterns[i] = normalize(pattern)
 	}
 }
 
@@ -66,10 +72,58 @@ func IsSensitivePath(path []string) bool {
 	return IsSensitiveLeaf(path[len(path)-1])
 }
 
-// Value returns value unchanged if path is not sensitive, or
-// MaskPlaceholder if it is.
-func Value(path []string, value string) string {
+// IsSensitiveIdentifier reports whether name - a tag-node's own
+// free-form identifier, e.g. a container environment variable's key
+// ("DB_PASSWORD" in `environment DB_PASSWORD value ...`), not a fixed
+// VyOS schema leaf name - looks like a secret, via a case-insensitive
+// substring match against sensitiveKeyPatterns (see
+// shared/sensitive-fields.json's own comment on that list). This is a
+// deliberately different, broader kind of match than IsSensitiveLeaf's
+// exact match: an identifier is something an operator chose
+// (e.g. "STRIPE_API_KEY"), not one of a small fixed set of schema leaf
+// names, so substring matching is needed to catch compound names -
+// see IsMaskedPath for why this is only ever combined with the
+// generic "value" leaf shape, never applied to arbitrary map keys
+// throughout a config tree.
+func IsSensitiveIdentifier(name string) bool {
+	normalized := normalize(name)
+	for _, pattern := range sensitiveKeyPatterns {
+		if strings.Contains(normalized, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsMaskedPath reports whether the leaf at path should be masked -
+// either because its own leaf name is an exact sensitive match (see
+// IsSensitivePath), or because it's the generic "value" leaf of a
+// tag-node collection (container/event-handler environment variables,
+// labels, sysctl parameters, and any future config shaped the same
+// way: `<tag> <identifier> value <value>`) whose own identifier - the
+// second-to-last path segment - looks sensitive, e.g.
+// [...,"environment","DB_PASSWORD","value"]. The literal "value" leaf
+// name is deliberately never added to sensitiveLeafNames itself (it's
+// far too generic to blanket-mask everywhere it appears in VyOS's
+// schema - most "value" leaves hold nothing secret at all), so this
+// identifier-aware check is the only path that catches this specific
+// shape. Checking only the last two segments (not the leaf's own
+// ancestry beyond that) is deliberate: it keeps this correct
+// regardless of how deep the tag-node collection itself is nested.
+func IsMaskedPath(path []string) bool {
 	if IsSensitivePath(path) {
+		return true
+	}
+	if len(path) < 2 || path[len(path)-1] != "value" {
+		return false
+	}
+	return IsSensitiveIdentifier(path[len(path)-2])
+}
+
+// Value returns value unchanged if path is not masked, or
+// MaskPlaceholder if it is (see IsMaskedPath).
+func Value(path []string, value string) string {
+	if IsMaskedPath(path) {
 		return MaskPlaceholder
 	}
 	return value
@@ -101,7 +155,7 @@ func Tree(node any, path []string) any {
 		}
 		return out
 	case []any:
-		if IsSensitivePath(path) {
+		if IsMaskedPath(path) {
 			return maskSlice(len(v))
 		}
 		out := make([]any, len(v))
@@ -110,7 +164,7 @@ func Tree(node any, path []string) any {
 		}
 		return out
 	case string:
-		if IsSensitivePath(path) {
+		if IsMaskedPath(path) {
 			return MaskPlaceholder
 		}
 		return v

@@ -57,13 +57,18 @@ func TestRedactSetCommands_MultipleQuotedPathSegments(t *testing.T) {
 			want: `set pki certificate 'my-cert' private key '` + mask.MaskPlaceholder + `'`,
 		},
 		{
-			name: "tag node identifier then non-sensitive leaf",
+			name: "tag node identifier that looks sensitive, generic value leaf",
 			line: `set container name 'vyos-ui' environment 'SESSION_SECRET' value 'abc123'`,
-			// "value" itself is not a sensitive leaf name - only the
-			// literal env var name SESSION_SECRET happens to look
-			// secret-shaped, but that's a tag-node identifier (see the
-			// known-limitation test below), not a leaf name.
-			want: `set container name 'vyos-ui' environment 'SESSION_SECRET' value 'abc123'`,
+			// "value" itself is not a sensitive leaf name, but
+			// IsMaskedPath also checks the identifier one level up
+			// (SESSION_SECRET) against IsSensitiveIdentifier - see
+			// that function's own doc comment.
+			want: `set container name 'vyos-ui' environment 'SESSION_SECRET' value '` + mask.MaskPlaceholder + `'`,
+		},
+		{
+			name: "tag node identifier that does not look sensitive, generic value leaf",
+			line: `set container name 'vyos-ui' environment 'TZ' value 'UTC'`,
+			want: `set container name 'vyos-ui' environment 'TZ' value 'UTC'`,
 		},
 		{
 			name: "two quoted segments, sensitive final leaf",
@@ -122,14 +127,21 @@ func TestRedactSetCommands_KnownLimitation_EmbeddedQuoteInValue(t *testing.T) {
 }
 
 // TestRedactSetCommands_KnownLimitation_TagNodeIdentifiers documents a
-// deliberate gap: when a secret-shaped string is itself a tag-node
-// *identifier* rather than a leaf *value* (e.g. an SNMP community name
-// used as `community <name> { ... }`), neither RedactSetCommands nor
-// Tree can detect it, since both only inspect values under a matching
-// leaf name, not path segments. This is safe to leave undetected only
-// insofar as such cases are rare in practice; flagged here so it isn't
-// "fixed" accidentally in a way that breaks the (correct) leaf-value
-// masking, and so it's visible as a follow-up.
+// deliberate, narrower gap than before: IsMaskedPath now catches a
+// sensitive-looking tag-node identifier when it's paired with the
+// generic "value" leaf (container/event-handler environment
+// variables, labels, sysctl parameters - see that function's own doc
+// comment), but a case where the identifier itself *is* the whole
+// secret, with no separate value leaf at all (e.g. an SNMP community
+// name used as `community <name> { ... }`), still isn't caught - that
+// shape has no "value" leaf to key the check off of, and blanket-
+// checking every tag-node identifier regardless of shape would also
+// mis-mask unrelated structural nodes (see IsMaskedPath's own doc
+// comment for why that's deliberately not done). Safe to leave
+// undetected only insofar as such cases are rare in practice; flagged
+// here so it isn't "fixed" accidentally in a way that breaks the
+// (correct, narrower) masking this now does, and so it's visible as a
+// follow-up.
 func TestRedactSetCommands_KnownLimitation_TagNodeIdentifiers(t *testing.T) {
 	line := `set snmp community 'public-ish-community-name' authorization 'ro'`
 	got := mask.RedactSetCommands(line)

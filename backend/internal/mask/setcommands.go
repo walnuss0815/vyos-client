@@ -56,7 +56,21 @@ func redactSetLine(line string) string {
 		return line
 	}
 	leaf := tokens[len(tokens)-2]
-	if !IsSensitiveLeaf(leaf.text) {
+	// Reconstructs just the last two semantic path segments for
+	// IsMaskedPath - the leaf name, and (when present and itself
+	// quoted, i.e. a genuine tag-node identifier rather than a bare
+	// schema keyword like "authentication") the identifier
+	// immediately before it. This is enough for IsMaskedPath to catch
+	// both the ordinary exact-leaf-name case (e.g. ... 'x' key
+	// '<value>') and the generic "<identifier> value '<value>'" shape
+	// (e.g. container/event-handler environment variables) - see that
+	// function's own doc comment. tokens has at least 3 entries here
+	// (checked above), so tokens[len(tokens)-3] never panics.
+	path := []string{leaf.text}
+	if identifier := tokens[len(tokens)-3]; identifier.quoted {
+		path = []string{identifier.text, leaf.text}
+	}
+	if !IsMaskedPath(path) {
 		return line
 	}
 	return line[:last.start] + "'" + MaskPlaceholder + "'"

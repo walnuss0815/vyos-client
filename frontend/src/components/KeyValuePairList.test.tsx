@@ -1,6 +1,8 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { http, HttpResponse } from 'msw'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { server } from '../test/mocks/server'
 import { usePendingChangesStore } from '../store/pendingChanges'
 import KeyValuePairList from './KeyValuePairList'
 
@@ -85,6 +87,78 @@ describe('KeyValuePairList', () => {
     expect(screen.getByRole('button', { name: 'Add' })).toBeDisabled()
     expect(screen.getByText(/already used/i)).toBeInTheDocument()
     expect(usePendingChangesStore.getState().changes).toHaveLength(0)
+  })
+
+  describe('revealing a sensitive entry', () => {
+    it('masks a value whose id looks sensitive, and reveals it on demand', async () => {
+      server.use(http.post('/api/config/reveal', () => HttpResponse.json({ value: 'hunter2' })))
+      const user = userEvent.setup()
+      render(
+        <KeyValuePairList
+          items={[{ id: 'DB_PASSWORD', value: 'hunter2' }]}
+          basePath={basePath}
+          pathLabel={pathLabel}
+        />,
+      )
+
+      expect(screen.getByText('= ••••••••')).toBeInTheDocument()
+      expect(screen.queryByText('= hunter2')).not.toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: /^reveal$/i }))
+      expect(await screen.findByText('= hunter2')).toBeInTheDocument()
+      expect(screen.queryByText('= ••••••••')).not.toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: /^hide$/i }))
+      expect(screen.getByText('= ••••••••')).toBeInTheDocument()
+    })
+
+    it('sends the item value path in the reveal request body', async () => {
+      let requestBody: unknown
+      server.use(
+        http.post('/api/config/reveal', async ({ request }) => {
+          requestBody = await request.json()
+          return HttpResponse.json({ value: 'hunter2' })
+        }),
+      )
+      const user = userEvent.setup()
+      render(
+        <KeyValuePairList
+          items={[{ id: 'DB_PASSWORD', value: 'hunter2' }]}
+          basePath={basePath}
+          pathLabel={pathLabel}
+        />,
+      )
+      await user.click(screen.getByRole('button', { name: /^reveal$/i }))
+
+      expect(requestBody).toEqual({ path: [...basePath, 'DB_PASSWORD', 'value'] })
+    })
+
+    it('does not offer Reveal for an id that does not look sensitive', () => {
+      render(
+        <KeyValuePairList items={[{ id: 'TZ', value: 'UTC' }]} basePath={basePath} pathLabel={pathLabel} />,
+      )
+      expect(screen.queryByRole('button', { name: /^reveal$/i })).not.toBeInTheDocument()
+      expect(screen.getByText('= UTC')).toBeInTheDocument()
+    })
+
+    // A container being created doesn't exist on the router yet, so
+    // its onAdd/onRemove-managed local draft entries were never
+    // fetched and never server-masked - showing the placeholder here
+    // would just hide the value the user themselves just typed, for
+    // no benefit. See ContainerCreateNestedSections.tsx.
+    it('does not mask a sensitive-looking id in onAdd/onRemove draft mode', () => {
+      render(
+        <KeyValuePairList
+          items={[{ id: 'DB_PASSWORD', value: 'hunter2' }]}
+          basePath={basePath}
+          pathLabel={pathLabel}
+          onAdd={vi.fn()}
+          onRemove={vi.fn()}
+        />,
+      )
+      expect(screen.getByText('= hunter2')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /^reveal$/i })).not.toBeInTheDocument()
+    })
   })
 
   // Regression coverage for the container-create-time feature: onAdd/
