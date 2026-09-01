@@ -74,6 +74,28 @@ jobs:
       - name: Test
         run: npm run test
 
+  trivy-fs:
+    name: Vulnerability scan (Trivy, filesystem)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Scans go.sum and package-lock.json for known-vulnerable
+      # dependencies (Go has no equivalent of `npm audit` wired into
+      # CI otherwise - this covers that gap in one tool alongside
+      # npm's), plus a lightweight secret scan over the working tree.
+      # ignore-unfixed: only fails on CVEs that actually have a fix
+      # available - failing CI for something nobody can currently fix
+      # would just be noise, not something worth blocking a merge for.
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'
+
   docker:
     name: Docker image build
     needs: [backend, frontend]
@@ -91,6 +113,20 @@ jobs:
           push: false
           platforms: linux/amd64
           tags: vyos-client:ci
+          load: true
+
+      # Scans the actual production image's OS/library layers
+      # (distroless base + the statically-built Go binary) - separate
+      # from trivy-fs above, which only sees source-level dependency
+      # manifests, not what actually ends up in the shipped image.
+      - name: Run Trivy image scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: vyos-client:ci
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'
 
       - name: Validate docker-compose stack builds and starts
         run: |

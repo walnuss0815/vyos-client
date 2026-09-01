@@ -1800,6 +1800,47 @@ not a silently-missing gap.
   semver-versioned dependency automerge logic can reason about the
   same way as the others.
 
+- **Security review follow-ups**: fixes for four findings from a
+  focused security review (secrets, auth/session, injection/RCE/XSS,
+  dependencies, CORS/headers/rate-limiting/test-vs-production - the
+  review found the codebase already solid across most of that surface,
+  with no critical/high findings).
+  - Security response headers (`X-Content-Type-Options`,
+    `X-Frame-Options`, `Referrer-Policy`, a strict single-origin CSP,
+    and conditional HSTS) - previously entirely absent, not fully
+    excused by the LAN-only threat model since clickjacking/MIME-
+    sniffing risks are network-topology-independent. Required
+    extracting `index.html`'s one inline `<script>` (early theme
+    detection) into a separate static file so CSP's `script-src` could
+    be `'self'` with no `'unsafe-inline'` exception. See
+    [security.md](security.md#security-headers).
+  - `COOKIE_SECURE`, decoupling the session/CSRF cookies' `Secure` flag
+    from `TLS_ENABLED` - the only way to correctly set `Secure` cookies
+    when a trusted reverse proxy terminates real TLS in front of this
+    process (`TLS_ENABLED=false` from this process's own point of
+    view, but the browser's connection to the proxy genuinely is
+    HTTPS). Previously that topology silently ended up with non-Secure
+    cookies with no way to fix it short of defeating the point of the
+    reverse-proxy setup.
+  - A per-user rate limit on `POST /api/config/commit`,
+    `.../commit/confirm`, and `.../import` - the only rate limiting
+    previously was on login. These trigger a real VyOS commit, which
+    VyOS itself has no rate limit of its own on.
+  - CI now runs a Trivy vulnerability scan on every push/PR - both a
+    filesystem scan (Go modules + npm packages, closing the gap that
+    neither `govulncheck` nor `npm audit` were wired into CI at all)
+    and an image scan of the actual built production image. Verified
+    clean (0 findings either way) against this repo before merging, so
+    the new CI job doesn't start failing immediately from pre-existing
+    findings.
+  - Explicitly deferred/out of scope for this pass (see the review's
+    own findings): SSRF hardening on the system-image-install URL
+    field (accepted risk - every authenticated user already has full
+    VyOS config access regardless), role/privilege differentiation for
+    `AUTH_MODE=vyos-users` logins (already tracked separately - see
+    "Explicitly out of scope for now" below), and digest-pinning
+    Docker base images (already being addressed on a separate branch).
+
 ## Next
 
 Not yet decided - see "Later" below for the candidate list (the

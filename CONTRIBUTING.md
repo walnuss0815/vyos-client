@@ -17,7 +17,9 @@ make build
 ```
 
 CI runs the same checks (`.github/workflows/ci.yml`) plus a Docker build
-validation; a green CI run is required to merge.
+validation and a Trivy vulnerability scan (both the source tree's
+dependencies and the built production image); a green CI run is
+required to merge.
 
 ## Commit messages
 
