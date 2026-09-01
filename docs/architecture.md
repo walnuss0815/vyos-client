@@ -505,15 +505,18 @@ repository's published tags:
    container-recreation-on-commit assumption noted above for
    self-upgrade applies here too, for the same underlying mechanism).
 
-Unlike self-upgrade (which only ever calls GitHub's API for one fixed
-repo, and caches results server-side for 30 minutes), this feature is
-**manual and on-demand only** - a "Check for update" button per
-container, never triggered automatically on page load - since it can
-contact an arbitrary number of different registries (one per
-configured container) with no server-side caching, and repeatedly
-checking every configured container's image on every page visit could
-plausibly exhaust a registry's own rate limits (Docker Hub's in
-particular) for no operator-requested benefit.
+This button-triggered check is **manual and on-demand only** - never
+triggered automatically just from loading the Containers page - since
+it can contact an arbitrary number of different registries (one per
+configured container), and repeatedly checking every configured
+container's image on every page visit could plausibly exhaust a
+registry's own rate limits (Docker Hub's in particular) for no
+operator-requested benefit. `imageupdate.Client.ListTags` does cache a
+successful result for a short TTL (10 minutes by default -
+`Config.CacheTTL`), but that exists to collapse near-simultaneous
+duplicate lookups (this button and the background sweep below
+overlapping, or two containers sharing the same image), not to justify
+unattended polling on its own.
 
 This also means an authenticated operator's own image-string input
 determines which external host gets an outbound request, from
@@ -521,6 +524,45 @@ whatever network this backend itself can reach - the same trust
 model already accepted for the system image install URL feature (see
 docs/security.md): both assume an authenticated session is already a
 trusted, privileged actor, not a boundary this app defends against.
+
+### Background checks (`CONTAINER_UPDATE_BACKGROUND_CHECK_ENABLED`)
+
+`internal/containerupdatecheck` runs the exact same check as the
+manual button above, but for *every* configured container, on a
+schedule, raising an in-app Notification (see "Notifications" below)
+for anything it finds instead of requiring an operator to click
+through each container by hand. Disabled by default, and - unlike
+every other on/off flag in this app - it can't be enabled on its own:
+`config.Load` rejects `CONTAINER_UPDATE_BACKGROUND_CHECK_ENABLED=true`
+unless `CONTAINER_UPDATE_CHECKS_ENABLED` is also true, since this is
+the same underlying capability (contacting arbitrary registries) as
+that feature, just automated - an operator who hasn't opted into the
+manual version almost certainly doesn't want it happening unattended.
+
+`CONTAINER_UPDATE_CHECK_CRON` (standard 5-field cron syntax, default
+`0 3 * * *` - once daily at 03:00 in the container's own local time)
+controls the schedule, validated at startup with the same parser
+`cmd/vyos-client/serve.go`'s real `robfig/cron` scheduler uses, so a
+typo is caught immediately rather than only discovered when the job
+silently never registers. `containerupdatecheck.Checker.Run` reads
+every configured container's image (`vyos.Client.ShowConfig(ctx,
+[]string{"container","name"})`), and for each one:
+`imageupdate.ParseReference` -> skip if digest-pinned ->
+`containerupdatecheck.LookupRegistryCredentials` (the same VyOS
+`container registry <name>` credential lookup the manual handler
+uses, moved here so both share one implementation) ->
+`imageupdate.Client.ListTags` (the same shared, cached client instance
+the manual button uses) -> `imageupdate.NewestMatching`. One
+container's failure (a malformed image reference, an unreachable
+registry, ...) is logged and skipped, not fatal to the whole sweep.
+
+A found update is raised via `notifications.Store.AddIfNotPresent`,
+keyed on the container name plus the specific old-tag/new-tag pair -
+re-running this check daily for a still-outstanding update doesn't
+pile up duplicate notifications, but dismissing that notification and
+having the same update still be available the next day *does* raise a
+fresh one (dismiss means "I saw this," not "never tell me about this
+again").
 
 ## Files: a curated, read-only viewer over `show file <path>`
 
@@ -911,14 +953,12 @@ one shared directory for both of the (only) two things this backend
 can optionally remember across a restart, rather than a
 notifications-specific directory.
 
-Nothing raises a notification yet as of this feature landing - this is
-the plumbing (store, `GET`/`POST`/`DELETE /api/notifications...`, the
-frontend feed page and sidebar unread badge) a first real producer
-needs to already exist before it can call `Store.Add`. A background
-container-image-update checker is the intended first one (see
-"Container image update checks" above for the existing manual,
-on-demand version this would run automatically instead of, on a
-schedule) - not yet built as of this feature.
+The background container-image-update checker (see "Background checks"
+under "Container image update checks" above) is the first, and so far
+only, producer - it calls `Store.AddIfNotPresent` rather than plain
+`Add`, so re-finding the same still-outstanding update on every
+scheduled run doesn't pile up duplicate notifications (see that
+section for the full dedupe-key reasoning).
 
 ## Tested against
 

@@ -15,6 +15,8 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+
+	"github.com/robfig/cron/v3"
 )
 
 // AuthMode values, selecting how vyos-client's own login is verified.
@@ -223,12 +225,56 @@ type Config struct {
 	// access an operator may want to opt out of entirely rather than
 	// rely on that allowlist alone.
 	FileBrowserEnabled bool
+
+	// ContainerUpdateBackgroundCheckEnabled turns on a scheduled sweep
+	// (see internal/containerupdatecheck) that runs
+	// ContainerUpdateChecksEnabled's same check automatically, for
+	// every configured container, on ContainerUpdateCheckCron's
+	// schedule - raising an in-app Notification for anything it
+	// finds, rather than requiring an operator to click "Check for
+	// update" themselves. Disabled by default, and requires
+	// ContainerUpdateChecksEnabled to also be true (validated below):
+	// this is the same underlying capability (contacting arbitrary
+	// registries) as that feature, just automated - an operator who
+	// hasn't opted into the manual version almost certainly doesn't
+	// want it happening unattended either.
+	ContainerUpdateBackgroundCheckEnabled bool
+	// ContainerUpdateCheckCron is the schedule
+	// ContainerUpdateBackgroundCheckEnabled's sweep runs on, standard
+	// 5-field cron syntax (minute hour day-of-month month
+	// day-of-week). Defaults to once daily at 03:00 - late enough to
+	// be very unlikely to collide with an operator's own interactive
+	// use, without being tied to any specific timezone consideration
+	// this app doesn't otherwise have an opinion on (interpreted in
+	// the container's own local time, i.e. whatever TZ the deployment
+	// itself runs with).
+	ContainerUpdateCheckCron string
+	// ContainerUpdateBackgroundCheckVarsIgnored reports whether
+	// CONTAINER_UPDATE_CHECK_CRON was set despite
+	// ContainerUpdateBackgroundCheckEnabled == false, in which case
+	// it's silently unused - same "you configured X but it's ignored"
+	// pattern as UIAdminVarsIgnored/TLSCertFilesIgnored/
+	// SelfUpgradeVarsIgnored above.
+	ContainerUpdateBackgroundCheckVarsIgnored bool
 }
 
 // defaultSelfUpgradeGitHubRepo is this project's own GitHub repo -
 // see SelfUpgradeGitHubRepo's doc comment for when a different value
 // matters.
 const defaultSelfUpgradeGitHubRepo = "walnuss0815/vyos-client"
+
+// defaultContainerUpdateCheckCron - see
+// Config.ContainerUpdateCheckCron's own doc comment for why this
+// particular schedule.
+const defaultContainerUpdateCheckCron = "0 3 * * *"
+
+// cronParser validates CONTAINER_UPDATE_CHECK_CRON at startup, using
+// the exact same standard 5-field parser
+// cmd/vyos-client/serve.go's real robfig/cron scheduler uses (see
+// internal/containerupdatecheck) - catching a typo here, at startup,
+// is far clearer than only discovering it the first time the
+// scheduler tries (and silently fails) to register the job.
+var cronParser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
 // selfUpgradeGitHubRepoPattern bounds SELF_UPGRADE_GITHUB_REPO to a
 // structurally valid "owner/repo" shape. This value is interpolated
@@ -421,6 +467,36 @@ func Load(getenv func(string) string) (*Config, error) {
 			return nil, fmt.Errorf("config: FILE_BROWSER_ENABLED: %w", err)
 		}
 		cfg.FileBrowserEnabled = b
+	}
+
+	if v := getenv("CONTAINER_UPDATE_BACKGROUND_CHECK_ENABLED"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return nil, fmt.Errorf("config: CONTAINER_UPDATE_BACKGROUND_CHECK_ENABLED: %w", err)
+		}
+		cfg.ContainerUpdateBackgroundCheckEnabled = b
+	}
+	rawContainerUpdateCheckCron := getenv("CONTAINER_UPDATE_CHECK_CRON")
+	// Applied unconditionally (not just when
+	// ContainerUpdateBackgroundCheckEnabled), same "never leave the
+	// zero value lying about the effective default" reasoning as
+	// SelfUpgradeGitHubRepo above.
+	cfg.ContainerUpdateCheckCron = orDefault(rawContainerUpdateCheckCron, defaultContainerUpdateCheckCron)
+	if cfg.ContainerUpdateBackgroundCheckEnabled {
+		if !cfg.ContainerUpdateChecksEnabled {
+			return nil, fmt.Errorf(
+				"config: CONTAINER_UPDATE_BACKGROUND_CHECK_ENABLED=true requires " +
+					"CONTAINER_UPDATE_CHECKS_ENABLED=true too - this automates that same " +
+					"registry-contacting check, so it shouldn't run unattended unless the " +
+					"manual version has also been explicitly opted into",
+			)
+		}
+		if _, err := cronParser.Parse(cfg.ContainerUpdateCheckCron); err != nil {
+			return nil, fmt.Errorf("config: CONTAINER_UPDATE_CHECK_CRON %q is not a valid cron expression: %w",
+				cfg.ContainerUpdateCheckCron, err)
+		}
+	} else {
+		cfg.ContainerUpdateBackgroundCheckVarsIgnored = rawContainerUpdateCheckCron != ""
 	}
 
 	if v := getenv("DATA_DIR"); v != "" {

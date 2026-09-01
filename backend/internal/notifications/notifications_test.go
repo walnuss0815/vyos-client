@@ -114,6 +114,93 @@ func TestAdd_EvictsOldestOnceMaxItemsExceeded(t *testing.T) {
 	}
 }
 
+func TestAddIfNotPresent_AddsWhenNoMatchingDedupeKeyExists(t *testing.T) {
+	s, err := notifications.NewStore(notifications.Config{})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	added, n, err := s.AddIfNotPresent("update:web:nginx:1.25", notifications.Notification{Title: "Update available"})
+	if err != nil {
+		t.Fatalf("AddIfNotPresent: %v", err)
+	}
+	if !added {
+		t.Error("added = false, want true for a fresh dedupe key")
+	}
+	if n.ID == "" {
+		t.Error("expected a freshly assigned ID")
+	}
+	if len(s.List()) != 1 {
+		t.Errorf("List() has %d items, want 1", len(s.List()))
+	}
+}
+
+func TestAddIfNotPresent_SkipsWhenTheSameDedupeKeyIsAlreadyPresent(t *testing.T) {
+	s, err := notifications.NewStore(notifications.Config{})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	first, err := s.Add(notifications.Notification{Title: "first", DedupeKey: "update:web:nginx:1.25"})
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	added, got, err := s.AddIfNotPresent("update:web:nginx:1.25", notifications.Notification{Title: "second"})
+	if err != nil {
+		t.Fatalf("AddIfNotPresent: %v", err)
+	}
+	if added {
+		t.Error("added = true, want false when the dedupe key already exists")
+	}
+	if got.ID != first.ID {
+		t.Errorf("returned notification ID = %q, want the existing entry's ID %q", got.ID, first.ID)
+	}
+	if len(s.List()) != 1 {
+		t.Errorf("List() has %d items, want 1 (no duplicate added)", len(s.List()))
+	}
+}
+
+func TestAddIfNotPresent_ReAddsAfterTheMatchingEntryWasDismissed(t *testing.T) {
+	s, err := notifications.NewStore(notifications.Config{})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	first, err := s.Add(notifications.Notification{Title: "first", DedupeKey: "update:web:nginx:1.25"})
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if _, err := s.Delete(first.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+
+	added, _, err := s.AddIfNotPresent("update:web:nginx:1.25", notifications.Notification{Title: "second"})
+	if err != nil {
+		t.Fatalf("AddIfNotPresent: %v", err)
+	}
+	if !added {
+		t.Error("added = false, want true once the previous matching entry was dismissed")
+	}
+}
+
+func TestAddIfNotPresent_EmptyDedupeKeyNeverMatches(t *testing.T) {
+	s, err := notifications.NewStore(notifications.Config{})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	if _, _, err := s.AddIfNotPresent("", notifications.Notification{Title: "one"}); err != nil {
+		t.Fatalf("AddIfNotPresent (1): %v", err)
+	}
+	added, _, err := s.AddIfNotPresent("", notifications.Notification{Title: "two"})
+	if err != nil {
+		t.Fatalf("AddIfNotPresent (2): %v", err)
+	}
+	if !added {
+		t.Error("added = false, want true - an empty dedupe key should never suppress a new notification")
+	}
+	if len(s.List()) != 2 {
+		t.Errorf("List() has %d items, want 2", len(s.List()))
+	}
+}
+
 func TestMarkRead_MarksTheMatchingEntry(t *testing.T) {
 	s, err := notifications.NewStore(notifications.Config{})
 	if err != nil {

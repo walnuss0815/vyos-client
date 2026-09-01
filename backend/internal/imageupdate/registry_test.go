@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func testRef(t *testing.T, apiHost string) Reference {
@@ -364,5 +365,105 @@ func TestTagExists_InsecureFallsBackToPlainHTTP(t *testing.T) {
 	}
 	if !exists {
 		t.Error("expected exists=true")
+	}
+}
+
+func TestListTags_CachesWithinTTL(t *testing.T) {
+	var requests int
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"name":"library/nginx","tags":["1.25.3"]}`))
+	}))
+	defer server.Close()
+
+	c := NewClient(Config{HTTPClient: server.Client()})
+	ref := testRef(t, strings.TrimPrefix(server.URL, "https://"))
+
+	if _, err := c.ListTags(context.Background(), ref, nil, false); err != nil {
+		t.Fatalf("ListTags (first): %v", err)
+	}
+	if _, err := c.ListTags(context.Background(), ref, nil, false); err != nil {
+		t.Fatalf("ListTags (second): %v", err)
+	}
+	if requests != 1 {
+		t.Errorf("registry was hit %d times, want 1 (second call should be served from cache)", requests)
+	}
+}
+
+func TestListTags_CacheExpiresAfterTTL(t *testing.T) {
+	var requests int
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"name":"library/nginx","tags":["1.25.3"]}`))
+	}))
+	defer server.Close()
+
+	c := NewClient(Config{HTTPClient: server.Client(), CacheTTL: 1 * time.Millisecond})
+	ref := testRef(t, strings.TrimPrefix(server.URL, "https://"))
+
+	if _, err := c.ListTags(context.Background(), ref, nil, false); err != nil {
+		t.Fatalf("ListTags (first): %v", err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	if _, err := c.ListTags(context.Background(), ref, nil, false); err != nil {
+		t.Fatalf("ListTags (second): %v", err)
+	}
+	if requests != 2 {
+		t.Errorf("registry was hit %d times, want 2 (cache should have expired by the second call)", requests)
+	}
+}
+
+func TestListTags_DoesNotCacheAcrossDifferentRepositories(t *testing.T) {
+	var requests int
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.Header().Set("Content-Type", "application/json")
+		name := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/v2/"), "/tags/list")
+		_, _ = fmt.Fprintf(w, `{"name":%q,"tags":["1.0.0"]}`, name)
+	}))
+	defer server.Close()
+
+	c := NewClient(Config{HTTPClient: server.Client()})
+	host := strings.TrimPrefix(server.URL, "https://")
+	refA := Reference{RegistryName: host, APIHost: host, Repository: "library/nginx", Tag: "1.0.0"}
+	refB := Reference{RegistryName: host, APIHost: host, Repository: "library/redis", Tag: "1.0.0"}
+
+	if _, err := c.ListTags(context.Background(), refA, nil, false); err != nil {
+		t.Fatalf("ListTags (A): %v", err)
+	}
+	if _, err := c.ListTags(context.Background(), refB, nil, false); err != nil {
+		t.Fatalf("ListTags (B): %v", err)
+	}
+	if requests != 2 {
+		t.Errorf("registry was hit %d times, want 2 (different repositories must not share a cache entry)", requests)
+	}
+}
+
+func TestListTags_FailedRequestsAreNotCached(t *testing.T) {
+	var requests int
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if requests == 1 {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"name":"library/nginx","tags":["1.25.3"]}`))
+	}))
+	defer server.Close()
+
+	c := NewClient(Config{HTTPClient: server.Client()})
+	ref := testRef(t, strings.TrimPrefix(server.URL, "https://"))
+
+	if _, err := c.ListTags(context.Background(), ref, nil, false); err == nil {
+		t.Fatal("expected the first (failing) call to return an error")
+	}
+	if _, err := c.ListTags(context.Background(), ref, nil, false); err != nil {
+		t.Fatalf("ListTags (second, should succeed and not be blocked by a cached failure): %v", err)
+	}
+	if requests != 2 {
+		t.Errorf("registry was hit %d times, want 2 (a failed lookup must not be cached)", requests)
 	}
 }

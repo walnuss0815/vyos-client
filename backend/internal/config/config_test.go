@@ -763,6 +763,117 @@ func TestSessionSecretIsEphemeral(t *testing.T) {
 	}
 }
 
+func TestLoad_ContainerUpdateBackgroundCheckDisabledByDefault(t *testing.T) {
+	cfg, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":           "test-key",
+		"UI_ADMIN_USER":          "admin",
+		"UI_ADMIN_PASSWORD_HASH": "$2a$10$fakehash",
+	}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ContainerUpdateBackgroundCheckEnabled {
+		t.Error("expected ContainerUpdateBackgroundCheckEnabled to default to false")
+	}
+	if cfg.ContainerUpdateCheckCron != "0 3 * * *" {
+		t.Errorf("ContainerUpdateCheckCron = %q, want the default even when disabled", cfg.ContainerUpdateCheckCron)
+	}
+}
+
+func TestLoad_ContainerUpdateBackgroundCheckRequiresManualChecksEnabled(t *testing.T) {
+	_, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":           "test-key",
+		"UI_ADMIN_USER":          "admin",
+		"UI_ADMIN_PASSWORD_HASH": "$2a$10$fakehash",
+		"CONTAINER_UPDATE_BACKGROUND_CHECK_ENABLED": "true",
+		// CONTAINER_UPDATE_CHECKS_ENABLED deliberately left unset.
+	}))
+	if err == nil {
+		t.Fatal("expected an error when the background check is enabled but the manual check feature isn't")
+	}
+}
+
+func TestLoad_ContainerUpdateBackgroundCheckEnabledWithManualChecks(t *testing.T) {
+	cfg, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":                              "test-key",
+		"UI_ADMIN_USER":                             "admin",
+		"UI_ADMIN_PASSWORD_HASH":                    "$2a$10$fakehash",
+		"CONTAINER_UPDATE_CHECKS_ENABLED":           "true",
+		"CONTAINER_UPDATE_BACKGROUND_CHECK_ENABLED": "true",
+	}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.ContainerUpdateBackgroundCheckEnabled {
+		t.Error("expected ContainerUpdateBackgroundCheckEnabled to be true")
+	}
+}
+
+func TestLoad_ContainerUpdateCheckCronOverride(t *testing.T) {
+	cfg, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":                              "test-key",
+		"UI_ADMIN_USER":                             "admin",
+		"UI_ADMIN_PASSWORD_HASH":                    "$2a$10$fakehash",
+		"CONTAINER_UPDATE_CHECKS_ENABLED":           "true",
+		"CONTAINER_UPDATE_BACKGROUND_CHECK_ENABLED": "true",
+		"CONTAINER_UPDATE_CHECK_CRON":               "*/15 * * * *",
+	}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ContainerUpdateCheckCron != "*/15 * * * *" {
+		t.Errorf("ContainerUpdateCheckCron = %q, want the override", cfg.ContainerUpdateCheckCron)
+	}
+}
+
+func TestLoad_ContainerUpdateCheckCronRejectsInvalidExpression(t *testing.T) {
+	_, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":                              "test-key",
+		"UI_ADMIN_USER":                             "admin",
+		"UI_ADMIN_PASSWORD_HASH":                    "$2a$10$fakehash",
+		"CONTAINER_UPDATE_CHECKS_ENABLED":           "true",
+		"CONTAINER_UPDATE_BACKGROUND_CHECK_ENABLED": "true",
+		"CONTAINER_UPDATE_CHECK_CRON":               "not a cron expression",
+	}))
+	if err == nil {
+		t.Fatal("expected an error for an invalid CONTAINER_UPDATE_CHECK_CRON expression")
+	}
+}
+
+func TestLoad_ContainerUpdateBackgroundCheckEnabledRejectsInvalidBoolean(t *testing.T) {
+	_, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":           "test-key",
+		"UI_ADMIN_USER":          "admin",
+		"UI_ADMIN_PASSWORD_HASH": "$2a$10$fakehash",
+		"CONTAINER_UPDATE_BACKGROUND_CHECK_ENABLED": "not-a-bool",
+	}))
+	if err == nil {
+		t.Fatal("expected error for an invalid CONTAINER_UPDATE_BACKGROUND_CHECK_ENABLED value")
+	}
+}
+
+func TestLoad_ContainerUpdateBackgroundCheckVarsIgnoredWhenDisabled(t *testing.T) {
+	cfg, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":                "test-key",
+		"UI_ADMIN_USER":               "admin",
+		"UI_ADMIN_PASSWORD_HASH":      "$2a$10$fakehash",
+		"CONTAINER_UPDATE_CHECK_CRON": "*/15 * * * *",
+		// CONTAINER_UPDATE_BACKGROUND_CHECK_ENABLED deliberately left unset (false).
+	}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.ContainerUpdateBackgroundCheckVarsIgnored {
+		t.Error("expected ContainerUpdateBackgroundCheckVarsIgnored to be true")
+	}
+	// Still applied as the effective value (just unused) - same
+	// "never leave the zero value lying" convention as
+	// SelfUpgradeGitHubRepo.
+	if cfg.ContainerUpdateCheckCron != "*/15 * * * *" {
+		t.Errorf("ContainerUpdateCheckCron = %q, want the override applied even while ignored", cfg.ContainerUpdateCheckCron)
+	}
+}
+
 func TestLoad_DataDirUnsetByDefault(t *testing.T) {
 	cfg, err := config.Load(fakeEnv(map[string]string{
 		"VYOS_API_KEY":           "test-key",

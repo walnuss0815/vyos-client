@@ -12,9 +12,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/robfig/cron/v3"
+
 	"github.com/walnuss0815/vyos-client/backend/internal/api"
 	"github.com/walnuss0815/vyos-client/backend/internal/auth"
 	"github.com/walnuss0815/vyos-client/backend/internal/config"
+	"github.com/walnuss0815/vyos-client/backend/internal/containerupdatecheck"
 	"github.com/walnuss0815/vyos-client/backend/internal/imageupdate"
 	"github.com/walnuss0815/vyos-client/backend/internal/notifications"
 	"github.com/walnuss0815/vyos-client/backend/internal/selfupgrade"
@@ -80,6 +83,12 @@ func runServer() error {
 	}
 	if cfg.SelfUpgradeEnabled {
 		logger.Info("self-upgrade enabled", "container_name", cfg.SelfUpgradeContainerName, "github_repo", cfg.SelfUpgradeGitHubRepo)
+	}
+	if cfg.ContainerUpdateBackgroundCheckVarsIgnored {
+		logger.Warn("CONTAINER_UPDATE_CHECK_CRON is set but ignored because " +
+			"CONTAINER_UPDATE_BACKGROUND_CHECK_ENABLED is not true; set that to true to actually turn " +
+			"on scheduled background container image update checks, or remove CONTAINER_UPDATE_CHECK_CRON " +
+			"if that's not intended.")
 	}
 	logger.Info("auth mode", "mode", cfg.AuthMode)
 
@@ -218,6 +227,34 @@ func runServer() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Only scheduled when explicitly opted into (see
+	// config.Config.ContainerUpdateBackgroundCheckEnabled's doc
+	// comment for why this requires ContainerUpdateChecksEnabled too).
+	// Shares apiServer.ImageRegistry - the same *imageupdate.Client
+	// instance the manual "Check for update" button uses - so its
+	// short-TTL tag-listing cache is genuinely shared between the two,
+	// not a second, independently-cold cache.
+	var cronScheduler *cron.Cron
+	if cfg.ContainerUpdateBackgroundCheckEnabled {
+		checker := &containerupdatecheck.Checker{
+			VyOS:          vyosClient,
+			Registry:      apiServer.ImageRegistry,
+			Notifications: notificationStore,
+			Logger:        logger,
+		}
+		cronScheduler = cron.New()
+		if _, err := cronScheduler.AddFunc(cfg.ContainerUpdateCheckCron, func() { checker.Run(ctx) }); err != nil {
+			// config.Load already validates this same expression at
+			// startup (see cronParser), so reaching here would mean
+			// the two parsers disagree - genuinely unexpected, worth
+			// failing loudly over rather than silently never
+			// scheduling the job.
+			return fmt.Errorf("scheduling background container image update check: %w", err)
+		}
+		cronScheduler.Start()
+		logger.Info("background container image update checks enabled", "cron", cfg.ContainerUpdateCheckCron)
+	}
+
 	errCh := make(chan error, 1)
 	go func() {
 		scheme := "https"
@@ -239,6 +276,13 @@ func runServer() error {
 		}
 	case <-ctx.Done():
 		logger.Info("shutting down")
+		if cronScheduler != nil {
+			// Waits for any check currently in flight to either finish
+			// or observe ctx's own cancellation (already Done() at
+			// this point) and return - so a shutdown never races an
+			// in-progress sweep's own VyOS/registry calls.
+			<-cronScheduler.Stop().Done()
+		}
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := srv.Shutdown(shutdownCtx); err != nil {
