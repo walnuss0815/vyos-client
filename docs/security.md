@@ -330,6 +330,24 @@ stay `'self'` with no exception at all.
   don't control — the value is trusted as-is, the same "trust the
   authenticated deployment configuration" posture the rest of
   `internal/config` already takes for every other env var.
+- **`CONTAINER_UPDATE_CHECKS_ENABLED` is the other exception**, and a
+  broader one: when set, an authenticated operator's "Check for
+  update" click on the Containers page makes the backend contact
+  *whatever registry that container's own image reference points at*
+  — not a single fixed host like self-upgrade's GitHub API (see
+  [architecture.md](architecture.md#container-image-update-checks)).
+  This is the same trust model already accepted for the system image
+  install URL field (see
+  [roadmap.md](roadmap.md)'s security-review-findings entry): every
+  authenticated user already has full VyOS configuration access
+  regardless, so an operator-supplied image string determining an
+  outbound request's destination isn't a new privilege boundary being
+  crossed. Disabled by default; also note that checking a container
+  whose image matches a `container registry <name>` entry with
+  credentials configured reads that registry's password directly
+  (`vyos.Client.ReturnValue`, not the browser-facing reveal endpoint)
+  to authenticate the request — logged server-side (`"registry
+  credentials read for a container image update check"`) each time.
 
 ### Restricting access to LAN clients only
 

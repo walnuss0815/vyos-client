@@ -418,6 +418,96 @@ new image. This matches VyOS's documented declarative container
 management model, but should be confirmed against real hardware
 before relying on it operationally.
 
+## Container image update checks
+
+The Containers page's "Check for update" button
+(`backend/internal/imageupdate`,
+`backend/internal/api/container_update_handlers.go`,
+`frontend/src/components/container/ContainerImageUpdateCheck.tsx`)
+generalizes self-upgrade's own pull-and-queue mechanism to **any**
+container configured on the router, not just this app's own -
+deliberately disabled by default
+(`CONTAINER_UPDATE_CHECKS_ENABLED`), for the same reason as
+self-upgrade: it makes this backend call an external service (in this
+case, whatever registry the container's own image reference resolves
+to - not a single fixed one).
+
+The key difference from self-upgrade: there is no single well-known
+API to check against. A container's image can live on Docker Hub,
+GHCR, Quay, or a self-hosted registry, so `internal/imageupdate`
+implements just enough of the standard **Docker Distribution v2 HTTP
+API** - the same protocol every one of those registries speaks,
+including its challenge/response authentication flow - to list a
+repository's published tags:
+
+1. `imageupdate.ParseReference` splits an image string (e.g.
+   `nginx:1.25.3`, `ghcr.io/org/app:v2.0.1`) into a registry host, API
+   host (only different from the registry host for Docker Hub itself,
+   whose public-facing `docker.io` name doesn't serve its own v2 API -
+   that's `registry-1.docker.io`), repository path, and tag - using
+   the same host-vs-repository-path disambiguation rule Docker's own
+   tooling uses (a leading path segment is a registry host only if it
+   contains a "." or ":", or is exactly "localhost").
+2. `imageupdate.Client.ListTags` requests `GET
+   /v2/<repository>/tags/list`, transparently handling a `401`
+   challenge: a `WWW-Authenticate: Bearer ...` challenge (used by
+   Docker Hub, GHCR, Quay, and most registries, even for anonymous
+   access to a public image) triggers a token exchange against
+   whatever realm the registry itself specifies in the challenge - no
+   registry-specific auth logic is hardcoded beyond the Docker Hub API
+   host substitution above. A `WWW-Authenticate: Basic` challenge is
+   also supported for simpler registries that authenticate every
+   request directly rather than issuing a token.
+3. If a `container registry <name>` entry matches the image's
+   registry host (the same hostname-based matching convention
+   VyOS/Podman use themselves - see the Containers > Registries page's
+   own help text), its `authentication username`/`authentication
+   password` are used to authenticate the tag-listing request, and its
+   `insecure` flag controls whether a plain-HTTP/self-signed-certificate
+   registry is tolerated. The password is read directly via
+   `vyos.Client.ReturnValue` - the same backend-internal pattern
+   `auth.VyOSUserVerifier` already uses for reading a login user's own
+   password hash - rather than through the browser-facing `POST
+   /api/config/reveal` endpoint, since the value is only ever used
+   server-side to build an `Authorization` header, never sent to the
+   browser.
+4. `imageupdate.NewestMatching` compares the currently configured tag
+   against every tag the registry returned, using a permissive
+   version parser (optional leading "v", major.minor(.patch)?, optional
+   suffix like "-alpine") - deliberately more permissive than
+   self-upgrade's own strict `vX.Y.Z` comparator (`internal/selfupgrade
+   /semver.go`), since real-world container tags vary far more than
+   this project's own clean release tags. A candidate is only ever
+   suggested as an update if it shares the current tag's exact
+   "flavor" (leading-"v" style, suffix, and patch-presence all
+   identical) - e.g. a `-alpine` tag is never suggested as an update
+   for a plain tag, and a bare `node:22` is never compared against a
+   patched `node:22.1.0` as if the missing patch meant zero.
+5. Clicking "Upgrade to X" reuses the exact same two-step pattern as
+   self-upgrade: pull the new image via the existing `POST
+   /api/container/images`, then queue `set container name <NAME> image
+   <newRef>` into the normal pending-changes cart - not auto-committed,
+   same review/commit flow as any other change (and the same
+   container-recreation-on-commit assumption noted above for
+   self-upgrade applies here too, for the same underlying mechanism).
+
+Unlike self-upgrade (which only ever calls GitHub's API for one fixed
+repo, and caches results server-side for 30 minutes), this feature is
+**manual and on-demand only** - a "Check for update" button per
+container, never triggered automatically on page load - since it can
+contact an arbitrary number of different registries (one per
+configured container) with no server-side caching, and repeatedly
+checking every configured container's image on every page visit could
+plausibly exhaust a registry's own rate limits (Docker Hub's in
+particular) for no operator-requested benefit.
+
+This also means an authenticated operator's own image-string input
+determines which external host gets an outbound request, from
+whatever network this backend itself can reach - the same trust
+model already accepted for the system image install URL feature (see
+docs/security.md): both assume an authenticated session is already a
+trusted, privileged actor, not a boundary this app defends against.
+
 ## Files: a curated, read-only viewer over `show file <path>`
 
 `GET /api/files`/`GET /api/files/roots` (`backend/internal/api/
