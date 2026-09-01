@@ -310,6 +310,16 @@ stay `'self'` with no exception at all.
   Treat the container's environment configuration with the same care as
   root/admin credentials on the router itself — because, functionally,
   it is one.
+- **Rate limiting exists on login (always) and on config commit/import
+  (per authenticated user)**, but not on every authenticated route.
+  `POST /api/config/save` and the file browser
+  (`GET /api/files`) are bounded by request/response size caps instead
+  (`maxRequestBodyBytes`, `maxFileViewContentBytes`) rather than a
+  request-frequency limit — reasonable given every affected route
+  already requires authentication first, so this is a modest
+  self-DoS/compromised-session concern, not an external attack
+  surface, in keeping with this app's single-operator, LAN-only threat
+  model.
 - **`SELF_UPGRADE_ENABLED` is the one deliberate exception** to this
   app never talking to anything but VyOS's own API — when set, the
   backend makes unauthenticated HTTPS calls to `api.github.com` to
