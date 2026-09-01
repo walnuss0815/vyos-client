@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import ContainerForm from './ContainerForm'
+import ContainerImageUpdateCheck from './ContainerImageUpdateCheck'
 import ContainerNestedSections from './ContainerNestedSections'
 import { deleteContainerOp } from '../../lib/containerForm'
 import type { ContainerDefinition, ContainerNetwork } from '../../lib/containerTypes'
@@ -90,6 +91,7 @@ export default function ContainerList({
                   )}
                 </div>
                 <p className="text-xs text-slate-400">{container.image || 'no image set'}</p>
+                {container.image && <ContainerImageUpdateCheck image={container.image} containerName={container.name} />}
               </div>
               <div className="flex shrink-0 items-center gap-2 text-xs">
                 <button
