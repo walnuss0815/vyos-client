@@ -515,6 +515,18 @@ checking every configured container's image on every page visit could
 plausibly exhaust a registry's own rate limits (Docker Hub's in
 particular) for no operator-requested benefit.
 
+The last result of an explicit check IS remembered client-side though
+(`frontend/src/store/containerImageUpdateChecks.ts`, backed by
+`localStorage` so it survives a full browser restart, not just a
+reload) - purely so navigating away and back (or reloading) doesn't
+throw away a result the operator already paid the registry round-trip
+for. A cached result is only shown while it still matches the
+container's *current* image (an edited image invalidates it), is
+always shown with a "Checked at ..." timestamp so its age is never
+ambiguous, and a "Re-check" button is always available alongside it.
+Nothing here changes the "manual and on-demand only" rule above: no
+code path ever performs a check on its own.
+
 This also means an authenticated operator's own image-string input
 determines which external host gets an outbound request, from
 whatever network this backend itself can reach - the same trust

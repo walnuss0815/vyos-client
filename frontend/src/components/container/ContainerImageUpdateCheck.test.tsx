@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { server } from '../../test/mocks/server'
 import { renderWithProviders } from '../../test/testUtils'
 import { usePendingChangesStore } from '../../store/pendingChanges'
+import { useContainerImageUpdateChecksStore } from '../../store/containerImageUpdateChecks'
 import ContainerImageUpdateCheck from './ContainerImageUpdateCheck'
 
 const DISABLED = { enabled: false, currentTag: '', recognized: false, latestTag: '', updateAvailable: false, newImageRef: '' }
@@ -38,6 +39,8 @@ const UPDATE_AVAILABLE = {
 
 beforeEach(() => {
   usePendingChangesStore.setState({ changes: [] })
+  localStorage.clear()
+  useContainerImageUpdateChecksStore.setState({ checks: {} })
 })
 
 describe('ContainerImageUpdateCheck', () => {
@@ -141,5 +144,48 @@ describe('ContainerImageUpdateCheck', () => {
 
     const { changes } = usePendingChangesStore.getState()
     expect(changes).toHaveLength(0)
+  })
+
+  it('shows a previously cached result on mount, without needing to click Check for update', () => {
+    useContainerImageUpdateChecksStore.getState().setCheck('web', 'nginx:1.25.3', UPDATE_AVAILABLE)
+    renderWithProviders(<ContainerImageUpdateCheck image="nginx:1.25.3" containerName="web" />)
+
+    expect(screen.getByText(/update available/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Check for update' })).not.toBeInTheDocument()
+    expect(screen.getByText(/checked at/i)).toBeInTheDocument()
+  })
+
+  it('ignores a cached result that was checked against a different image', () => {
+    useContainerImageUpdateChecksStore.getState().setCheck('web', 'nginx:1.25.3', UPDATE_AVAILABLE)
+    renderWithProviders(<ContainerImageUpdateCheck image="nginx:1.26.0" containerName="web" />)
+
+    expect(screen.getByRole('button', { name: 'Check for update' })).toBeInTheDocument()
+    expect(screen.queryByText(/update available/i)).not.toBeInTheDocument()
+  })
+
+  it('lets a cached result be replaced with a fresh check via Re-check', async () => {
+    useContainerImageUpdateChecksStore.getState().setCheck('web', 'nginx:1.25.3', UPDATE_AVAILABLE)
+    server.use(http.post('/api/container/images/check-update', () => HttpResponse.json(UP_TO_DATE)))
+    const user = userEvent.setup()
+    renderWithProviders(<ContainerImageUpdateCheck image="nginx:1.25.3" containerName="web" />)
+
+    expect(screen.getByText(/update available/i)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Re-check' }))
+
+    expect(await screen.findByText(/up to date/i)).toBeInTheDocument()
+    expect(useContainerImageUpdateChecksStore.getState().checks.web.result).toEqual(UP_TO_DATE)
+  })
+
+  it('persists a fresh check result so it survives a remount', async () => {
+    server.use(http.post('/api/container/images/check-update', () => HttpResponse.json(UPDATE_AVAILABLE)))
+    const user = userEvent.setup()
+    const { unmount } = renderWithProviders(<ContainerImageUpdateCheck image="nginx:1.25.3" containerName="web" />)
+
+    await user.click(screen.getByRole('button', { name: 'Check for update' }))
+    await screen.findByText(/update available/i)
+    unmount()
+
+    renderWithProviders(<ContainerImageUpdateCheck image="nginx:1.25.3" containerName="web" />)
+    expect(screen.getByText(/update available/i)).toBeInTheDocument()
   })
 })
