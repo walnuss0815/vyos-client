@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/walnuss0815/vyos-client/backend/internal/config"
@@ -818,5 +819,44 @@ func TestLoad_DataDirRejectsAPlainFile(t *testing.T) {
 	}))
 	if err == nil {
 		t.Fatal("expected an error for a DATA_DIR that is a file, not a directory")
+	}
+}
+
+// TestLoad_DataDirRejectsAnUnwritableDirectory guards a real
+// production incident: a container engine auto-created DATA_DIR's
+// bind-mount source directory with mode 0666 (no execute/"search"
+// bit) despite already having the correct owning UID:GID. Stat/IsDir
+// alone can't catch this - the directory genuinely exists and is a
+// directory - but it's completely unusable: nothing can be created or
+// found inside it. Left undetected, this previously only surfaced
+// much later as a bare, misleading "permission denied" trying to read
+// the (not yet created) session-secret file, since a missing search
+// bit makes the kernel return a permission error rather than "file
+// does not exist" for anything inside. See checkDataDirWritable's own
+// doc comment for the full explanation.
+func TestLoad_DataDirRejectsAnUnwritableDirectory(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("running as root bypasses directory permission checks entirely")
+	}
+	dir := t.TempDir()
+	unwritable := filepath.Join(dir, "unwritable")
+	// 0666: readable/writable but deliberately missing the execute
+	// ("search") bit for anyone, including the owner - reproducing
+	// the exact mode seen in production.
+	if err := os.Mkdir(unwritable, 0o666); err != nil {
+		t.Fatalf("Mkdir: %v", err)
+	}
+
+	_, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":           "test-key",
+		"UI_ADMIN_USER":          "admin",
+		"UI_ADMIN_PASSWORD_HASH": "$2a$10$fakehash",
+		"DATA_DIR":               unwritable,
+	}))
+	if err == nil {
+		t.Fatal("expected an error for a DATA_DIR directory missing the execute/search permission bit")
+	}
+	if !strings.Contains(err.Error(), "DATA_DIR") {
+		t.Errorf("error = %q, want it to name DATA_DIR directly", err.Error())
 	}
 }
