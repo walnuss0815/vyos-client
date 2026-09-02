@@ -1989,6 +1989,20 @@ not a silently-missing gap.
   change to the "manual and on-demand only" design. See
   [architecture.md](architecture.md#container-image-update-checks).
 
+- **Bugfix: creating a user or container with only a name queued
+  nothing to commit**: `userFormToOps`/`containerFormToOps` are pure
+  field-diffs against a "before" state - for a brand-new resource,
+  every field starts blank, so every diff was a no-op unless the
+  operator also filled in at least one other field (a password, an
+  image, ...). Creating a user with just a username, or a container
+  with just a name, silently queued nothing at all: the create form
+  closed with no error, no pending change, and no Commit button to
+  click. Ten+ other "create a new tagged resource" forms in this
+  codebase already had the fix for exactly this class of bug - an
+  unconditional `if (before === undefined) ops.push({ op: 'set', path:
+  base })` - which `userFormToOps` and `containerFormToOps` never
+  adopted; not a regression, present since the initial release.
+
 - **Committed-but-unsaved indicator, list, Save, and Rollback**: VyOS's
   well-known commit/save gotcha - a committed change is live but
   silently lost on the next reboot unless also saved - had no
