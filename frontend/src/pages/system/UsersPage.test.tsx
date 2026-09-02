@@ -65,6 +65,23 @@ describe('UsersPage', () => {
     })
   })
 
+  // Regression test: userFormToOps used to queue nothing at all for a
+  // user created with only a username (no full name, password, disable,
+  // or SSH key), silently leaving the pending-changes cart empty with
+  // nothing to commit.
+  it('queues a pending change for a user created with only a username', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<UsersPage />)
+    await screen.findByText('admin')
+
+    await user.click(screen.getByRole('button', { name: /\+ new user/i }))
+    await user.type(screen.getByLabelText(/username/i), 'bob')
+    await user.click(screen.getByRole('button', { name: /queue user creation/i }))
+
+    const { changes } = usePendingChangesStore.getState()
+    expect(changes.map((c) => c.op)).toContainEqual({ op: 'set', path: ['system', 'login', 'user', 'bob'] })
+  })
+
   // Regression test: an SSH public key used to only be addable AFTER
   // a user already existed - see UserForm.tsx's "First SSH public
   // key" field.

@@ -116,7 +116,13 @@ const FLAG_FIELDS: FlagField[] = [
  * 11-value enum, multi-valued in VyOS) is diffed as a set: added
  * values get individual `set` ops, removed values get individual
  * `delete` ops with the specific value (matching how ChipList queues
- * per-value delete ops for any other multi-valued leaf).
+ * per-value delete ops for any other multi-valued leaf). `before ===
+ * undefined` always includes a bare `set` for the container itself,
+ * same convention as serviceLldpForm.ts's lldpInterfaceFormToOps -
+ * without it, a new container created with every field left blank
+ * (name only) queued nothing at all: every field-diff below against a
+ * blank form is a no-op, so the pending-changes cart stayed empty and
+ * there was nothing to commit.
  */
 export function containerFormToOps(
   name: string,
@@ -126,6 +132,8 @@ export function containerFormToOps(
   const beforeValues = before ? containerToFormValues(before) : blankContainerFormValues()
   const ops: ConfigOp[] = []
   const base = containerNamePath(name)
+
+  if (before === undefined) ops.push({ op: 'set', path: base })
 
   for (const field of SCALAR_FIELDS) {
     const oldValue = field.get(beforeValues)

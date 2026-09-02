@@ -61,6 +61,23 @@ describe('ContainersPage', () => {
     })
   })
 
+  // Regression test: containerFormToOps used to queue nothing at all
+  // for a container created with only a name (every other field left
+  // blank), silently leaving the pending-changes cart empty with
+  // nothing to commit.
+  it('queues a pending change for a container created with only a name', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<ContainersPage />)
+    await screen.findByText('web')
+
+    await user.click(screen.getByRole('button', { name: /\+ new container/i }))
+    await user.type(screen.getByLabelText(/^name/i), 'bare')
+    await user.click(screen.getByRole('button', { name: /queue container creation/i }))
+
+    const { changes } = usePendingChangesStore.getState()
+    expect(changes.map((c) => c.op)).toContainEqual({ op: 'set', path: ['container', 'name', 'bare'] })
+  })
+
   it('prompts to pull an image that is not present on the router yet', async () => {
     const user = userEvent.setup()
     server.use(http.get('/api/container/images', () => HttpResponse.json({ images: [] })))

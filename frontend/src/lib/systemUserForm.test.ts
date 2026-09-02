@@ -14,8 +14,15 @@ function emptyUser(overrides: Partial<SystemUser> = {}): SystemUser {
 }
 
 describe('userFormToOps - creating a new user', () => {
-  it('queues nothing for a blank form', () => {
-    expect(userFormToOps('alice', undefined, blankUserFormValues())).toEqual([])
+  // Regression test: without an unconditional base op, a new user
+  // created with only a username (no full name, no password, not
+  // disabled, no SSH key) queued nothing at all - every field-diff
+  // against a blank form is a no-op, so there was nothing to commit
+  // and the Commit button/pending-changes bar never appeared.
+  it('always sets the user itself, even with a blank form', () => {
+    expect(userFormToOps('alice', undefined, blankUserFormValues())).toEqual([
+      { op: 'set', path: ['system', 'login', 'user', 'alice'] },
+    ])
   })
 
   it('queues full-name, disable, and password', () => {
@@ -27,6 +34,7 @@ describe('userFormToOps - creating a new user', () => {
     const ops = userFormToOps('alice', undefined, values)
 
     expect(ops).toEqual([
+      { op: 'set', path: ['system', 'login', 'user', 'alice'] },
       { op: 'set', path: ['system', 'login', 'user', 'alice', 'full-name'], value: 'Alice Example' },
       { op: 'set', path: ['system', 'login', 'user', 'alice', 'disable'] },
       {
