@@ -59,6 +59,19 @@ type Notification struct {
 	// background check) can still recognize its own past entries
 	// after one.
 	DedupeKey string `json:"dedupeKey,omitempty"`
+	// Link, if set, is an in-app frontend route path (e.g.
+	// "/container/containers") the frontend renders as a "View" link
+	// alongside the notification - for a producer whose finding is
+	// actionable somewhere specific in the UI (e.g. the background
+	// container-image-update checker linking to the Containers page,
+	// where the suggested upgrade can actually be applied), rather
+	// than leaving the operator to go find that page themselves.
+	// Entirely optional: a notification with no Link renders exactly
+	// as before. Deliberately just a path, not an arbitrary URL - the
+	// frontend is the only thing that ever renders this, so there's
+	// no reason to support (or need to validate) anything beyond its
+	// own routes.
+	Link string `json:"link,omitempty"`
 }
 
 // fileName is the persisted notifications file's name within

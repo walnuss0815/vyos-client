@@ -933,14 +933,22 @@ supported).
 
 `backend/internal/notifications` is a small, capped (200 entries,
 oldest evicted first) in-app feed - `{id, createdAt, severity,
-category, title, message, read}` entries other parts of the backend
-raise (e.g. the background container-image-update checker) and the
-frontend polls, marks read, and dismisses. It's deliberately *not*
+category, title, message, read, link}` entries other parts of the
+backend raise (e.g. the background container-image-update checker) and
+the frontend polls, marks read, and dismisses. It's deliberately *not*
 VyOS state: a notification describes something this app itself
 noticed or was told, not something read from `/retrieve` or `/show`,
 so it needs somewhere of its own to live - the first genuine exception
 to this project's "no separate server-side state management"
 principle.
+
+`link` is optional and purely presentational - an in-app frontend
+route path (e.g. `/container/containers`) the frontend renders as a
+"View" link next to the notification, for a producer whose finding is
+actionable somewhere specific in the UI rather than leaving the
+operator to go find it themselves. It's just a path, never an
+arbitrary URL, since the frontend is the only thing that ever renders
+it.
 
 That exception is kept as narrow as possible: `Store` works purely
 in-memory with zero configuration (same as every other feature here),
@@ -958,7 +966,13 @@ under "Container image update checks" above) is the first, and so far
 only, producer - it calls `Store.AddIfNotPresent` rather than plain
 `Add`, so re-finding the same still-outstanding update on every
 scheduled run doesn't pile up duplicate notifications (see that
-section for the full dedupe-key reasoning).
+section for the full dedupe-key reasoning). Every notification it
+raises sets `link` to the Containers page
+(`containerupdatecheck.ContainersPageLink`) - where the suggested
+upgrade can actually be applied (the same "Check for update" ->
+"Upgrade" flow this background sweep automates the first half of),
+not a deep link to the specific container's own row, since that page
+has no such highlighting mechanism.
 
 ## Tested against
 

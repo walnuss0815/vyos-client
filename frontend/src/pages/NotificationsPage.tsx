@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import { useNotifications } from '../hooks/useNotifications'
 import { buttonClass } from '../lib/formStyles'
 import type { Notification } from '../lib/vyosApi'
@@ -131,6 +132,11 @@ export default function NotificationsPage() {
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
+                  {n.link && (
+                    <Link to={n.link} className="text-xs text-accent-500 hover:text-accent-400">
+                      View
+                    </Link>
+                  )}
                   {!n.read && (
                     <button
                       onClick={() => void handleMarkRead(n.id)}

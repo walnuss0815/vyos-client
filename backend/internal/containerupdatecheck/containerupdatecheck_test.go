@@ -211,6 +211,9 @@ func TestChecker_Run_RaisesNotificationForAvailableUpdate(t *testing.T) {
 	if !strings.Contains(got[0].Message, "1.26.0") {
 		t.Errorf("Message = %q, want it to mention the new tag", got[0].Message)
 	}
+	if got[0].Link != containerupdatecheck.ContainersPageLink {
+		t.Errorf("Link = %q, want %q (where the suggested upgrade can actually be applied)", got[0].Link, containerupdatecheck.ContainersPageLink)
+	}
 }
 
 func TestChecker_Run_NoNotificationWhenUpToDate(t *testing.T) {

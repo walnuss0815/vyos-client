@@ -47,6 +47,26 @@ describe('NotificationsPage', () => {
     expect(screen.getAllByRole('button', { name: 'Mark read' })).toHaveLength(1)
   })
 
+  it('shows a "View" link when a notification has one, pointing at its link target', async () => {
+    server.use(
+      http.get('/api/notifications', () =>
+        HttpResponse.json({ notifications: [{ ...sampleNotification, link: '/container/containers' }] }),
+      ),
+    )
+    renderWithProviders(<NotificationsPage />)
+    await screen.findByText('Update available')
+
+    expect(screen.getByRole('link', { name: 'View' })).toHaveAttribute('href', '/container/containers')
+  })
+
+  it('shows no "View" link for a notification with no link', async () => {
+    server.use(http.get('/api/notifications', () => HttpResponse.json({ notifications: [sampleNotification] })))
+    renderWithProviders(<NotificationsPage />)
+    await screen.findByText('Update available')
+
+    expect(screen.queryByRole('link', { name: 'View' })).not.toBeInTheDocument()
+  })
+
   it('shows an error message when the list request fails', async () => {
     server.use(http.get('/api/notifications', () => HttpResponse.json({ error: 'unreachable' }, { status: 502 })))
     renderWithProviders(<NotificationsPage />)

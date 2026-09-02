@@ -148,15 +148,17 @@ export default function Layout() {
                   }`
                 }
               >
-                <span>{item.label}</span>
-                {item.to === '/notifications' && unreadNotificationCount > 0 && (
-                  <span
-                    aria-label={`${unreadNotificationCount} unread notification${unreadNotificationCount === 1 ? '' : 's'}`}
-                    className="rounded-full bg-accent-600 px-1.5 py-0.5 text-[10px] font-semibold text-white"
-                  >
-                    {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
-                  </span>
-                )}
+                <span className="flex items-center gap-2">
+                  {item.to === '/notifications' && unreadNotificationCount > 0 && (
+                    <span
+                      aria-label={`${unreadNotificationCount} unread notification${unreadNotificationCount === 1 ? '' : 's'}`}
+                      className="rounded-full bg-accent-600 px-1.5 py-0.5 text-[10px] font-semibold text-white"
+                    >
+                      {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
+                    </span>
+                  )}
+                  <span>{item.label}</span>
+                </span>
                 {disabled && <span className="ml-1 text-xs text-slate-600">(off)</span>}
               </NavLink>
             )

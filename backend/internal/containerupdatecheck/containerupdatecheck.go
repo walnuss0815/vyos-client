@@ -30,6 +30,14 @@ import (
 // string themselves.
 const NotificationCategory = "container-image-update"
 
+// ContainersPageLink is the notifications.Notification.Link value
+// every notification Checker.Run raises points at - the frontend
+// route where a found update can actually be acted on (the same
+// "Check for update" -> "Upgrade" flow this background sweep
+// automates the first half of). Exported so tests don't need to
+// hardcode the route string themselves either.
+const ContainersPageLink = "/container/containers"
+
 // LookupRegistryCredentials looks up a VyOS `container registry
 // <registryName>` entry's credentials and `insecure` flag, for
 // authenticating a tag-listing request against that registry - the
@@ -197,6 +205,12 @@ func (c *Checker) checkOne(ctx context.Context, containerName, image string) {
 		Category: NotificationCategory,
 		Title:    fmt.Sprintf("Update available: %s", containerName),
 		Message:  fmt.Sprintf("%s can be updated to %s.", image, newImageRef),
+		// The Containers page is where this suggested upgrade can
+		// actually be applied (the same "Check for update" ->
+		// "Upgrade" flow this background sweep automates the first
+		// half of) - not a deep link to this specific container's own
+		// row, since that page has no such highlighting mechanism.
+		Link: ContainersPageLink,
 	})
 	if err != nil {
 		c.Logger.Error("background container image update check: recording notification",

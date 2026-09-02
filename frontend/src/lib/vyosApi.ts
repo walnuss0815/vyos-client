@@ -755,6 +755,10 @@ export interface Notification {
   title: string
   message: string
   read: boolean
+  /** An in-app route path (e.g. "/container/containers") rendered as
+   * a "View" link next to this notification - undefined for a
+   * notification with nothing specific to link to. */
+  link?: string
 }
 
 export interface NotificationsResponse {

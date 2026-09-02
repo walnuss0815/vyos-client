@@ -2049,6 +2049,18 @@ not a silently-missing gap.
   this again"). See [architecture.md](architecture.md#background-checks-container_update_background_check_enabled)
   and [security.md](security.md#threat-model-notes).
 
+- **Notification links + sidebar unread-count placement**:
+  `notifications.Notification` gains an optional `link` field (an
+  in-app frontend route path) rendered as a "View" link next to a
+  notification - the background container-image-update checker sets
+  it to the Containers page (`containerupdatecheck.ContainersPageLink`),
+  where a found update can actually be applied, rather than leaving an
+  operator to go find that page themselves. Purely additive: a
+  notification with no `link` renders exactly as before. Also moves
+  the sidebar's unread-notification-count badge to the left of the
+  "Notifications" label instead of after it. See
+  [architecture.md](architecture.md#notifications-the-one-thing-this-backend-persists-beyond-vyos-itself).
+
 ## Next
 
 Not yet decided - see "Later" below for the candidate list (the

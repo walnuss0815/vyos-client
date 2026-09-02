@@ -145,6 +145,30 @@ describe('Layout', () => {
       expect(await screen.findByLabelText('1 unread notification')).toBeInTheDocument()
     })
 
+    it('places the unread count badge to the left of the "Notifications" label', async () => {
+      server.use(
+        http.get('/api/notifications', () =>
+          HttpResponse.json({
+            notifications: [
+              { id: '1', createdAt: '2024-01-01T00:00:00Z', severity: 'info', category: 'x', title: 'a', message: '', read: false },
+            ],
+          }),
+        ),
+      )
+      renderWithProviders(<Layout />)
+      // Wait for the badge itself, not just the (always-present)
+      // "Notifications" link - that link exists before the
+      // notifications query resolves too, which would let this
+      // assertion run against the pre-badge render otherwise.
+      await screen.findByLabelText('1 unread notification')
+      const link = screen.getByRole('link', { name: /notifications/i })
+      // Both the badge ("1") and the label ("Notifications") are
+      // plain sibling text nodes with no separator between them, so
+      // their concatenated order in the link's own textContent
+      // directly reflects which one is rendered first in the DOM.
+      expect(link.textContent).toBe('1Notifications')
+    })
+
     it('caps the displayed badge count at "99+"', async () => {
       const many = Array.from({ length: 150 }, (_, i) => ({
         id: String(i),
