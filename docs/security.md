@@ -370,8 +370,9 @@ stay `'self'` with no exception at all.
   — not a single fixed host like self-upgrade's GitHub API (see
   [architecture.md](architecture.md#container-image-update-checks)).
   This is the same trust model already accepted for the system image
-  install URL field (see
-  [roadmap.md](roadmap.md)'s security-review-findings entry): every
+  install URL field (see [roadmap.md](roadmap.md)'s "Security review
+  follow-ups" entry, which explicitly accepted this same SSRF risk):
+  every
   authenticated user already has full VyOS configuration access
   regardless, so an operator-supplied image string determining an
   outbound request's destination isn't a new privilege boundary being
