@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useSelfUpgrade } from '../../hooks/useSelfUpgrade'
 import { containerNamePath } from '../../lib/containerParse'
 import { buttonClass } from '../../lib/formStyles'
-import { pullContainerImage } from '../../lib/vyosApi'
+import { getSelfUpgradeStatus, pullContainerImage } from '../../lib/vyosApi'
 import { hasPendingSet, usePendingChangesStore } from '../../store/pendingChanges'
 
 const codeClass = 'rounded bg-surface-800 px-1 py-0.5 font-mono text-xs text-slate-300'
@@ -83,6 +83,8 @@ export default function UpgradesPage() {
   const [pullingVersion, setPullingVersion] = useState<string | null>(null)
   const [pullError, setPullError] = useState<string | null>(null)
   const [queuedVersion, setQueuedVersion] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+  const [refreshError, setRefreshError] = useState<string | null>(null)
 
   if (query.isLoading) return <p className="text-sm text-slate-400">Loading…</p>
   if (query.isError || !query.data) {
@@ -137,8 +139,24 @@ export default function UpgradesPage() {
     }
   }
 
-  function refresh() {
-    void queryClient.invalidateQueries({ queryKey: ['self-upgrade'] })
+  // Bypasses the backend's own cache entirely (force: true - see
+  // getSelfUpgradeStatus's own doc comment) rather than just
+  // invalidating this query, which alone would only re-request
+  // whatever the backend still had cached, for up to 30 minutes. The
+  // fresh result is written directly into the query cache
+  // (setQueryData), so the page updates immediately without a second,
+  // redundant (and now cache-served) request.
+  async function handleRefresh() {
+    setRefreshing(true)
+    setRefreshError(null)
+    try {
+      const fresh = await getSelfUpgradeStatus(true)
+      queryClient.setQueryData(['self-upgrade'], fresh)
+    } catch (err) {
+      setRefreshError(err instanceof Error ? err.message : 'Failed to check for updates.')
+    } finally {
+      setRefreshing(false)
+    }
   }
 
   return (
@@ -154,10 +172,15 @@ export default function UpgradesPage() {
               </p>
             )}
           </div>
-          <button onClick={refresh} className={`bg-surface-800 ${buttonClass}`}>
-            Refresh
+          <button
+            onClick={() => void handleRefresh()}
+            disabled={refreshing}
+            className={`bg-surface-800 ${buttonClass}`}
+          >
+            {refreshing ? 'Refreshing…' : 'Refresh'}
           </button>
         </div>
+        {refreshError && <p className="mt-2 text-xs text-danger-500">{refreshError}</p>}
         {!status.currentVersionRecognized && (
           <p className="mt-3 text-xs text-slate-500">
             This build&apos;s version (<span className="font-mono">{status.currentVersion || 'dev'}</span>) isn&apos;t a

@@ -2005,6 +2005,25 @@ not a silently-missing gap.
   review in that context. See
   [architecture.md](architecture.md#the-commitsave-engine).
 
+- **Bugfix: Upgrades page "Refresh" couldn't actually see a genuinely
+  newer release/image**: `internal/selfupgrade.Client.ListReleases`
+  caches GitHub's response for 30 minutes with no way for any caller
+  to bypass it - the "Refresh" button only ever invalidated the
+  *frontend's* query cache, which still just re-requested whatever the
+  *backend* had cached, so a real new release published less than 30
+  minutes earlier could silently go undetected no matter how many
+  times Refresh was clicked. `Client` gains a new `ForceRefresh`
+  (bypasses both the positive and negative/failure cache, still falls
+  back to a stale result on failure), reachable via a new
+  `?force=true` query param on `GET /api/system/self-upgrade` - a
+  plain page load still respects the cache (so passive viewing never
+  itself contributes to hammering GitHub's rate-limited API), but an
+  explicit, human-initiated Refresh click always sees a real, live
+  check. Whatever's already cached continues to display immediately
+  on page load with no click required - that part was already
+  working correctly, now pinned by an explicit regression test. See
+  [architecture.md](architecture.md#self-upgrade).
+
 ## Next
 
 Not yet decided - see "Later" below for the candidate list (the

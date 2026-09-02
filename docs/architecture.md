@@ -438,7 +438,16 @@ had, rather than any new privileged access:
    against `main.version` (the same ldflags-embedded version
    `/healthz` already reports) using a small hand-rolled
    major.minor.patch comparator - no semver-parsing dependency added
-   for this.
+   for this. `Client.ForceRefresh` bypasses that cache (both the
+   positive one and the shorter negative/failure one) entirely for an
+   explicit, human-initiated check - the Upgrades page's "Refresh"
+   button (`?force=true` on the endpoint below) uses this, so it
+   never has to wait out up to 30 minutes of staleness to see a
+   release/image published after the cache was last populated. A
+   plain page load still respects the ordinary cache, so passively
+   viewing the page never itself contributes to hammering GitHub's
+   rate-limited API - only `ListReleases` (the cached path) is used
+   there.
 2. `GET /api/system/self-upgrade` surfaces that comparison plus the
    notes for every release newer than current. When disabled, it
    returns `{"enabled": false}` immediately without ever calling

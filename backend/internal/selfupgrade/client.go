@@ -188,6 +188,45 @@ func (c *Client) ListReleases(ctx context.Context) ([]Release, error) {
 	}
 	c.mu.Unlock()
 
+	return c.fetchAndCache(ctx)
+}
+
+// ForceRefresh always performs a live GitHub fetch, bypassing both the
+// positive cache (Config.CacheTTL) and the negative cache
+// (Config.NegativeCacheTTL) that ListReleases itself respects - see
+// that method's own doc comment for why those exist at all (avoiding
+// hammering GitHub's rate-limited unauthenticated API on passive page
+// loads/polling).
+//
+// This exists for an explicit, human-initiated "check right now"
+// action (the Upgrades page's "Refresh" button) - unlike passive
+// polling, a button click is inherently rate-limited by how fast a
+// human can click it, so there's no reason to make that action wait
+// out either cache window, up to 30 minutes, before it can possibly
+// see a release that was published (or an image that was verified to
+// exist) after the cache was last populated. This was the ORIGINAL,
+// documented intent of ListReleases's caller in
+// internal/api/self_upgrade_handlers.go, but nothing ever actually
+// plumbed a bypass through to here - see that handler's own doc
+// comment for how it now does.
+//
+// On failure, this still falls back to serving a stale cached result
+// if one exists, exactly like ListReleases does - a failed forced
+// check shouldn't discard a previously-known-good result.
+func (c *Client) ForceRefresh(ctx context.Context) ([]Release, error) {
+	return c.fetchAndCache(ctx)
+}
+
+// fetchAndCache is ListReleases/ForceRefresh's shared implementation:
+// perform a live fetch, then update the cache (or fall back to
+// serving a stale one) accordingly. Callers are responsible for
+// deciding whether a fetch is needed at all (ListReleases) or always
+// forcing one (ForceRefresh) before calling this.
+func (c *Client) fetchAndCache(ctx context.Context) ([]Release, error) {
+	c.mu.Lock()
+	hasStaleCache := !c.cachedAt.IsZero()
+	c.mu.Unlock()
+
 	releases, err := c.fetchReleases(ctx)
 
 	c.mu.Lock()

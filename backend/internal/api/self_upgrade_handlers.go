@@ -85,6 +85,16 @@ type selfUpgradeStatusResponse struct {
 // makes the "Upgrade" button (client-side) accurately reflect whether
 // clicking it can actually succeed, rather than only discovering a
 // missing image when the pull itself fails.
+//
+// A "force" query parameter set to "true" (UpgradesPage.tsx's
+// "Refresh" button) bypasses internal/selfupgrade.Client's own
+// caching entirely (see Client.ForceRefresh's own doc comment) - a
+// plain request (every ordinary page load) still respects that cache,
+// so passively viewing this page never itself hammers GitHub's
+// rate-limited unauthenticated API, but an explicit, human-initiated
+// "check right now" click can always see a release/image newer than
+// whatever's currently cached, rather than being stuck reporting
+// stale "up to date" results for up to CacheTTL (30 minutes).
 func (s *Server) handleSelfUpgradeStatus(w http.ResponseWriter, r *http.Request) {
 	if !s.SelfUpgradeEnabled {
 		writeJSON(w, http.StatusOK, selfUpgradeStatusResponse{Enabled: false})
@@ -112,7 +122,13 @@ func (s *Server) handleSelfUpgradeStatus(w http.ResponseWriter, r *http.Request)
 		Releases:       []selfUpgradeReleaseResponse{},
 	}
 
-	releases, err := s.SelfUpgradeGitHub.ListReleases(r.Context())
+	var releases []selfupgrade.Release
+	var err error
+	if r.URL.Query().Get("force") == "true" {
+		releases, err = s.SelfUpgradeGitHub.ForceRefresh(r.Context())
+	} else {
+		releases, err = s.SelfUpgradeGitHub.ListReleases(r.Context())
+	}
 	if err != nil {
 		s.Logger.Error("checking for self-upgrade releases", "error", err)
 		writeError(w, http.StatusBadGateway, "failed checking for updates on GitHub")
