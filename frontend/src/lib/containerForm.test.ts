@@ -12,8 +12,15 @@ function emptyContainer(overrides: Partial<ContainerDefinition> = {}): Container
 }
 
 describe('containerFormToOps - creating a new container', () => {
-  it('queues nothing for a blank form', () => {
-    expect(containerFormToOps('web', undefined, blankContainerFormValues())).toEqual([])
+  // Regression test: without an unconditional base op, a new
+  // container created with every field left blank (name only) queued
+  // nothing at all - every field-diff against a blank form is a
+  // no-op, so there was nothing to commit and the Commit button/
+  // pending-changes bar never appeared.
+  it('always sets the container itself, even with a blank form', () => {
+    expect(containerFormToOps('web', undefined, blankContainerFormValues())).toEqual([
+      { op: 'set', path: ['container', 'name', 'web'] },
+    ])
   })
 
   it('queues image and scalar fields', () => {
@@ -25,6 +32,7 @@ describe('containerFormToOps - creating a new container', () => {
     const ops = containerFormToOps('web', undefined, values)
 
     expect(ops).toEqual([
+      { op: 'set', path: ['container', 'name', 'web'] },
       { op: 'set', path: ['container', 'name', 'web', 'image'], value: 'nginx:latest' },
       { op: 'set', path: ['container', 'name', 'web', 'host-name'], value: 'web-host' },
       { op: 'set', path: ['container', 'name', 'web', 'restart'], value: 'always' },
@@ -41,6 +49,7 @@ describe('containerFormToOps - creating a new container', () => {
     const ops = containerFormToOps('web', undefined, values)
 
     expect(ops).toEqual([
+      { op: 'set', path: ['container', 'name', 'web'] },
       { op: 'set', path: ['container', 'name', 'web', 'disable'] },
       { op: 'set', path: ['container', 'name', 'web', 'allow-host-pid'] },
       { op: 'set', path: ['container', 'name', 'web', 'allow-host-networks'] },
@@ -56,11 +65,12 @@ describe('containerFormToOps - creating a new container', () => {
 
     expect(ops).toEqual(
       expect.arrayContaining([
+        { op: 'set', path: ['container', 'name', 'web'] },
         { op: 'set', path: ['container', 'name', 'web', 'capability'], value: 'net-admin' },
         { op: 'set', path: ['container', 'name', 'web', 'capability'], value: 'sys-time' },
       ]),
     )
-    expect(ops).toHaveLength(2)
+    expect(ops).toHaveLength(3)
   })
 })
 

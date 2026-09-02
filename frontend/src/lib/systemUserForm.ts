@@ -24,7 +24,13 @@ export function userToFormValues(user: SystemUser): SystemUserFormValues {
 
 /**
  * Diffs `before` against `values`, same set-or-delete-per-field
- * approach as bgpPeerForm.ts's peerFormToOps.
+ * approach as bgpPeerForm.ts's peerFormToOps. `before === undefined`
+ * always includes a bare `set` for the user itself, same convention
+ * as serviceLldpForm.ts's lldpInterfaceFormToOps - without it, a new
+ * user created with only a username (no full name, no password, not
+ * disabled, no SSH key) queued nothing at all: every field-diff below
+ * against a blank form is a no-op, so the pending-changes cart stayed
+ * empty and there was nothing to commit.
  */
 export function userFormToOps(
   username: string,
@@ -34,6 +40,8 @@ export function userFormToOps(
   const beforeValues = before ? userToFormValues(before) : blankUserFormValues()
   const ops: ConfigOp[] = []
   const base = userPath(username)
+
+  if (before === undefined) ops.push({ op: 'set', path: base })
 
   if (beforeValues.fullName !== values.fullName) {
     const path = [...base, 'full-name']
