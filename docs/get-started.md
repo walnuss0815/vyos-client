@@ -145,9 +145,13 @@ password (the default `vyos-users` auth mode from step 2) — or with
   tab for local `system login user` accounts (password, SSH keys,
   disable) - real synergy with `AUTH_MODE=vyos-users`, since those are
   the accounts that can log into this app; a Syslog tab for local
-  and remote logging; and an Upgrades tab that can check this app's
-  own GitHub releases for updates and pull/queue a new version for
-  you - disabled by default, see
+  and remote logging; a Power tab for reboot/poweroff plus the
+  standalone Save and Rollback actions described below; an Images tab
+  for the VyOS system releases installed on the router itself
+  (install/delete, and setting which one boots next - distinct from
+  the Container area's own image management); and an Upgrades tab
+  that can check this app's own GitHub releases for updates and
+  pull/queue a new version for you - disabled by default, see
   [configuration-reference.md](configuration-reference.md).
 - **Container** — Podman-based container definitions (image,
   entrypoint/command/arguments, capabilities, networking, port and
