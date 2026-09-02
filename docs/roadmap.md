@@ -1279,8 +1279,8 @@ not a silently-missing gap.
 
 - **Log viewer**: a new top-level "Logs" nav page - a bounded, refreshable
   view of one of a curated set of this app's log sources, plus an
-  opt-in auto-poll mode. `GET /api/logs` (`backend/internal/api/
-  log_handlers.go`) wraps `show log ...`/`show container log <name>`
+  opt-in auto-poll mode. `GET /api/logs`
+  (`backend/internal/api/log_handlers.go`) wraps `show log ...`/`show container log <name>`
   behind an explicit `?source=` whitelist (`system`, `firewall`, `ssh`,
   `https`, `dhcp-server`, `vpn`, `frr`, plus parameterized `facility`/
   `priority`/`container`) rather than a generic op-mode-path
@@ -1451,8 +1451,8 @@ not a silently-missing gap.
   features linked only by one cross-reference field
   (conntrack-sync's `failover-mechanism vrrp sync-group`, required by
   VyOS's own conf-mode script to point at an existing sync-group),
-  confirmed directly against vyos-1x's `interface-definitions/
-  high-availability.xml.in`/`service_conntrack-sync.xml.in`.
+  confirmed directly against vyos-1x's
+  `interface-definitions/high-availability.xml.in`/`service_conntrack-sync.xml.in`.
   Configuration needed zero backend changes, same as Load-balancing -
   all typed modeling lives frontend-only (`haTypes.ts`/`haParse.ts`/
   `haVrrpForm.ts`/`haConntrackSyncForm.ts`). The **VRRP** tab covers
@@ -1473,8 +1473,8 @@ not a silently-missing gap.
   (accept-protocol, expect-sync, ignore-address, listen-address via
   ChipList.tsx, disable-external-cache/syslog, startup-resync, event-
   listen-queue-size, mcast-group, sync-queue-size, purge-timeout) plus
-  a nested sync `interface <name>` list (peer/port) - its `failover-
-  mechanism vrrp sync-group` field is a real dropdown fed by the VRRP
+  a nested sync `interface <name>` list (peer/port) - its
+  `failover-mechanism vrrp sync-group` field is a real dropdown fed by the VRRP
   tab's sync-groups, from the same `useHAConfig()` fetch. Per the
   user's explicit scope decisions: both VRRP and conntrack-sync
   shipped together (not sequenced), and both tabs include a **basic
@@ -1506,14 +1506,14 @@ not a silently-missing gap.
   this app's own interface-binding picker pre-filters accordingly),
   `cake`/`fq-codel` (modern non-classful AQM), and `priority-queue`/
   `round-robin`/`rate-control`. Configuration needed zero backend
-  changes - all typed modeling is frontend-only across ten new `lib/
-  qos*.ts` files. One shared `QosMatchList.tsx` component covers the
+  changes - all typed modeling is frontend-only across ten new
+  `lib/qos*.ts` files. One shared `QosMatchList.tsx` component covers the
   `match <name>` rule editor for all 5 classful types plus standalone
   `qos traffic-match-group` (reusable named filter sets, referenced
   from any class via `match-group`), since they all share the exact
   same underlying match schema; `priority-queue`/`round-robin` also
-  share one list/form component entirely (`SimpleClassfulPolicyList
-  .tsx`), parameterized by type, since their class shapes are
+  share one list/form component entirely
+  (`SimpleClassfulPolicyList.tsx`), parameterized by type, since their class shapes are
   structurally identical bar one field. Interface bindings (`qos
   interface <ifname> { ingress <policy>, egress <policy> }`) and
   match-group references are both real dropdowns fed by sibling data
@@ -1577,8 +1577,8 @@ not a silently-missing gap.
     name collision (`existingStaticMappingNames`).
   - **Config warnings banner**: a persistent, global banner
     (`ConfigWarningsBanner.tsx`, wired into `Layout.tsx` above every
-    page) surfacing 5 pure, unit-tested checks (`lib/configWarnings
-    .ts`) over already-loaded config: firewall input/forward chains
+    page) surfacing 5 pure, unit-tested checks
+    (`lib/configWarnings.ts`) over already-loaded config: firewall input/forward chains
     defaulting to `accept`, SSH password authentication allowed, the
     HTTPS API with no client address restriction, SNMP `public`/
     `private` community strings, and enabled users with neither a
@@ -1757,11 +1757,11 @@ not a silently-missing gap.
 - **Docs: restricting access to LAN clients only (host networking)**:
   documentation-only - no backend/frontend code changes. Host
   networking (this app's recommended default) has no network-level
-  isolation of its own, so `deploy/container-config-examples/
-  host-networking.txt` now documents binding `LISTEN_ADDR` to a LAN
+  isolation of its own, so
+  `deploy/container-config-examples/host-networking.txt` now documents binding `LISTEN_ADDR` to a LAN
   interface address (e.g. `192.168.1.1:8443` instead of the wildcard
-  `:8443` default - this already worked with zero code changes, `
-  LISTEN_ADDR` was just unvalidated and undocumented for this use) plus
+  `:8443` default - this already worked with zero code changes,
+  `LISTEN_ADDR` was just unvalidated and undocumented for this use) plus
   a zone-based VyOS firewall rule blocking WAN → local traffic to that
   port as defense-in-depth. `docs/security.md` gained a new
   "Restricting access to LAN clients only" section explaining both
@@ -1983,15 +1983,15 @@ not a silently-missing gap.
   committed *through this app* since the last save, appended to on
   every successful commit. Deliberately scoped to what this app itself
   committed, never a universal claim about the router (a commit via
-  the CLI or another session is invisible to it). `PendingChangesBar
-  .tsx` shows a persistent, collapsed-by-default "N changes committed
+  the CLI or another session is invisible to it).
+  `PendingChangesBar.tsx` shows a persistent, collapsed-by-default "N changes committed
   but not saved" message whenever the list is non-empty, even with an
   empty pending-changes cart - expanding it lists the actual changes,
   same rendering as the ordinary pending-changes list. Two actions:
   **Save** (+ "Mark as saved", a manual dismiss for a stale list - e.g.
   already saved via the CLI), and **Rollback**
-  (`POST /api/config/rollback`, backed by a new `vyos.Client
-  .ConfigFileLoadFile` sending VyOS's `/config-file` `{"op":"load",
+  (`POST /api/config/rollback`, backed by a new
+  `vyos.Client.ConfigFileLoadFile` sending VyOS's `/config-file` `{"op":"load",
   "file":"/config/config.boot"}` so VyOS reads and parses its own saved
   file rather than this app needing a config-file parser), which
   discards the tracked changes by restoring the last saved
