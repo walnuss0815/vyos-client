@@ -134,9 +134,9 @@ Two actions are offered on that persistent message:
   already saved via the CLI instead).
 - **Rollback** (`POST /api/config/rollback`) — discards the tracked
   changes entirely by replacing the running configuration with
-  whatever's saved on disk. Backed by a new `vyos.Client
-  .ConfigFileLoadFile`, which sends VyOS's `/config-file` `{"op":"load",
-  "file":"/config/config.boot"}` — a file-based `load`, so VyOS reads
+  whatever's saved on disk. Backed by a new
+  `vyos.Client.ConfigFileLoadFile`, which sends VyOS's `/config-file`
+  `{"op":"load", "file":"/config/config.boot"}` — a file-based `load`, so VyOS reads
   and parses its own saved file rather than this app fetching or
   reformatting it (which would hit the exact same "no parser" wall
   described above). This always requests a commit-confirm window, even
@@ -339,8 +339,8 @@ completes. Fixed two ways:
   timeout (45s) instead of this Client's normal ~30s default, since a
   log fetch's duration is inherently far less predictable than this
   app's other, well-bounded calls. Deliberately kept under this
-  backend's own `http.Server.WriteTimeout` (60s, `cmd/vyos-client/
-  serve.go`) - going past that would have this backend's own server
+  backend's own `http.Server.WriteTimeout` (60s,
+`cmd/vyos-client/serve.go`) - going past that would have this backend's own server
   abort the response before the longer client-side timeout ever got a
   chance to produce a clear error.
 
@@ -352,13 +352,13 @@ view.
 
 ## Container images: op-mode, synchronous, and immediate (no pending-changes cart)
 
-`GET/POST/DELETE /api/container/images` (`backend/internal/api/
-container_image_handlers.go`, `backend/internal/vyos/
-container_image.go`) wrap `show container image`, `add container
+`GET/POST/DELETE /api/container/images`
+(`backend/internal/api/container_image_handlers.go`,
+`backend/internal/vyos/container_image.go`) wrap `show container image`, `add container
 image <name>`, and `delete container image <name>` - all three are
 VyOS *op-mode* commands (a separate `/container-image` REST endpoint,
-confirmed directly against vyos-1x's `configsession.py`/`op_mode/
-container.py`), not part of `/configure` at all. That has two
+confirmed directly against vyos-1x's
+`configsession.py`/`op_mode/container.py`), not part of `/configure` at all. That has two
 consequences that make this feature look different from the rest of
 the Container area (Containers/Networks/Registries, all staged through
 the pending-changes cart and applied only on commit):
@@ -373,8 +373,8 @@ the pending-changes cart and applied only on commit):
   timeout on VyOS's side. Rather than introduce a background-job/
   polling architecture (new in-memory state this app has deliberately
   avoided everywhere else), the pull handler just extends *that one
-  request's* write deadline via `http.NewResponseController(w).
-  SetWriteDeadline(...)` past the server's normal 60s
+  request's* write deadline via
+`http.NewResponseController(w).SetWriteDeadline(...)` past the server's normal 60s
   `WriteTimeout` - a plain, long-lived synchronous request, matching
   VyOS's own model instead of working around it.
 
@@ -462,8 +462,8 @@ had, rather than any new privileged access:
    Containers page's own "Check for update" button uses, a manifest
    existence check rather than a full tag-list fetch), always
    anonymous since the repo is fixed by `SELF_UPGRADE_GITHUB_REPO`,
-   not operator-supplied. This exists because `.github/workflows/
-   release.yml` publishes the GitHub Release and the GHCR image as
+   not operator-supplied. This exists because
+`.github/workflows/release.yml` publishes the GitHub Release and the GHCR image as
    two separate jobs (`build-and-push` has `needs: release`, but
    nothing enforces the reverse) - the image build can take minutes,
    or fail outright, leaving a release visible via GitHub's API with
@@ -554,8 +554,8 @@ repository's published tags:
    against every tag the registry returned, using a permissive
    version parser (optional leading "v", major.minor(.patch)?, optional
    suffix like "-alpine") - deliberately more permissive than
-   self-upgrade's own strict `vX.Y.Z` comparator (`internal/selfupgrade
-   /semver.go`), since real-world container tags vary far more than
+   self-upgrade's own strict `vX.Y.Z` comparator
+   (`internal/selfupgrade/semver.go`), since real-world container tags vary far more than
    this project's own clean release tags. A candidate is only ever
    suggested as an update if it shares the current tag's exact
    "flavor" (leading-"v" style, suffix, and patch-presence all
@@ -601,8 +601,8 @@ trusted, privileged actor, not a boundary this app defends against.
 
 ## Files: a curated, read-only viewer over `show file <path>`
 
-`GET /api/files`/`GET /api/files/roots` (`backend/internal/api/
-file_handlers.go`, `backend/internal/vyos/files.go`) wrap VyOS's
+`GET /api/files`/`GET /api/files/roots`
+(`backend/internal/api/file_handlers.go`, `backend/internal/vyos/files.go`) wrap VyOS's
 `show file <path>` op-mode command - confirmed directly against
 vyos-1x's `src/op_mode/file.py` that this is a single, dual-purpose
 command: VyOS itself decides server-side (`os.path.isdir`/
@@ -673,8 +673,8 @@ has no supported way to write arbitrary file content back to an
 arbitrary path at all (confirmed - the only file.py operations reachable
 through the REST/GraphQL surface are `show`; `copy`/`delete` exist on
 the CLI but have no generic pass-through in `configsession.py`). The
-only file-shaped write path in this app remains `POST /api/config/
-import` (`/config-file`), which is always schema-validated as a VyOS
+only file-shaped write path in this app remains
+`POST /api/config/import` (`/config-file`), which is always schema-validated as a VyOS
 config tree, not arbitrary bytes to an arbitrary path - so there is
 no editor here, and none is planned against this endpoint. This was
 explicitly re-checked (not just assumed) during a later feature pass
@@ -692,8 +692,8 @@ hyphenated form, matching VyOS's own naming.)
 `load-balancing wan` (multi-uplink failover/distribution) and
 `load-balancing haproxy` (a TCP/HTTP reverse-proxy) are entirely
 separate VyOS features that merely share a common config-tree
-prefix - confirmed directly against vyos-1x's `interface-definitions/
-load-balancing_wan.xml.in`/`load-balancing_haproxy.xml.in`. Their
+prefix - confirmed directly against vyos-1x's
+`interface-definitions/load-balancing_wan.xml.in`/`load-balancing_haproxy.xml.in`. Their
 *configuration* needed no backend changes at all: like every other
 config-tree area, it's read via the generic `GET /api/config/tree` and
 written via `POST /api/config/commit`'s `ConfigOp[]` - all the typed
@@ -745,8 +745,8 @@ status check, not a live-updating dashboard.
 Firewall-group references in WAN rules (`source`/`destination`
 `address-group`/`network-group`/`port-group`/`domain-group`) reuse the
 exact same `group { ... }` shape Firewall/NAT rules already use
-(`interface-definitions/include/firewall/source-destination-group-
-ipv4.xml.i`) - `WANMatch` is its own type rather than reusing
+(`interface-definitions/include/firewall/source-destination-group-ipv4.xml.i`)
+- `WANMatch` is its own type rather than reusing
 `FirewallMatch`, matching how NAT already has its own `NATMatch`
 instead of sharing one either, but the underlying VyOS leaf names are
 identical. HAProxy's `backend` field on a `service` (frontend) is a
@@ -770,8 +770,8 @@ under `load-balancing`), these are genuinely separate top-level VyOS
 trees, linked only by one cross-reference field (conntrack-sync's
 `failover-mechanism vrrp sync-group`, which VyOS's own conf-mode script
 requires to point at a sync-group that actually exists) - confirmed
-directly against vyos-1x's `interface-definitions/
-high-availability.xml.in`/`service_conntrack-sync.xml.in`.
+directly against vyos-1x's
+`interface-definitions/high-availability.xml.in`/`service_conntrack-sync.xml.in`.
 `useHAConfig()` (`frontend/src/hooks/useHAConfig.ts`) does two
 independent `getConfigTree()` fetches for this reason, mirroring
 `useInterfaceConfig()`'s existing `interfaces` + `vrf` two-fetch shape
@@ -784,8 +784,8 @@ pattern as Load-balancing) - all typed modeling is frontend-only
 Status for both areas is, once again, op-mode text with no JSON form
 reachable through this app's REST-only integration:
 
-- `show vrrp` (`vyos.ParseVRRPStatus`, `backend/internal/vyos/
-  highavailability.go`) is a `tabulate`-formatted table, confirmed
+- `show vrrp` (`vyos.ParseVRRPStatus`,
+  `backend/internal/vyos/highavailability.go`) is a `tabulate`-formatted table, confirmed
   against `python/vyos/ifconfig/vrrp.py`'s `VRRP.format()` - the exact
   same rendering library and layout HAProxy's status uses. Rather than
   duplicate the column-slicing logic a second time, both now share one
@@ -794,8 +794,8 @@ reachable through this app's REST-only integration:
   existed).
 - `show conntrack-sync status` (`vyos.ParseConntrackSyncStatus`,
   `backend/internal/vyos/conntracksync.go`) is a fixed 4-line
-  `label : value` block (confirmed against `src/op_mode/
-  conntrack_sync.py`'s own f-string template) - trivially parsed by
+  `label : value` block (confirmed against
+  `src/op_mode/conntrack_sync.py`'s own f-string template) - trivially parsed by
   splitting each line on its first `:`. Unlike this app's other
   lenient text parsers, a genuinely unrecognized shape here *is*
   treated as an error rather than silently returning a mostly-empty
@@ -870,8 +870,8 @@ interface) - `ether`/TCP-flags/max-length matching is still parsed and
 displayed correctly for existing matches (so nothing is lost by
 viewing a match created another way, e.g. via Config Tree), just not
 offered when creating a *new* one. `priority-queue`/`round-robin`
-additionally share one list/form component (`SimpleClassfulPolicyList
-.tsx`) entirely, parameterized by policy type, since their class/
+additionally share one list/form component
+(`SimpleClassfulPolicyList.tsx`) entirely, parameterized by policy type, since their class/
 default-class shapes are structurally identical (only round-robin's
 class gets an extra `quantum` field, and only round-robin's *default*
 class defaults to `queue-type fair-queue` instead of `drop-tail` - a
