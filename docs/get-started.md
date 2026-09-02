@@ -49,7 +49,7 @@ generate a bcrypt hash for a chosen password. Never put the plaintext
 password into VyOS's own config, since `show configuration` does not
 mask arbitrary container environment values:
 
-```
+```sh
 docker run --rm ghcr.io/<org>/vyos-client:latest hash-password
 Password: ********
 $2a$10$N/PWSTvPq41SstHSaMTAQuiy/RhmgGlIKwQcWgmpGMbr975/E2DoG
