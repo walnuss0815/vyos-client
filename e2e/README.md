@@ -76,14 +76,8 @@ older Stream release doesn't get hidden by rolling passing fine.
      against a pending bump before merging it.
    - **`VYOS_STREAM_1_TAG` through `VYOS_STREAM_3_TAG`** are manually
      curated - not something Renovate can discover automatically, for
-     the same "no API" reason. Whenever `VYOS_STREAM_0_TAG` moves to a
-     new Stream release, shift the old values down one slot
-     (`STREAM_0`→`STREAM_1`→`STREAM_2`→`STREAM_3`) and drop what falls
-     off the end, checking <https://vyos.net/get/stream/> for the exact
-     tags. Since Stream itself only ships ~quarterly, this needs a
-     human touch a few times a year at most - re-run the suite (at
-     least against the newly-shifted-in `stream-3`) to confirm it still
-     passes before merging.
+     the same "no API" reason. See "Re-pinning VyOS Stream" below for
+     the rotation procedure.
 2. **`download-vyos-iso.sh <version-key>`** downloads the pinned ISO
    for the given key (`rolling`, `stream-0`, `stream-1`, `stream-2`, or
    `stream-3`) and its `.minisig`, then verifies the signature with
@@ -134,6 +128,19 @@ older Stream release doesn't get hidden by rolling passing fine.
    and no `sudo apt-get install` needed; CI (no nix devShell there)
    falls back to `npx playwright install --with-deps chromium`. Bump
    both together if you update one.
+
+### Re-pinning VyOS Stream
+
+`VYOS_STREAM_1_TAG` through `VYOS_STREAM_3_TAG` (`vyos-versions.env`)
+can't be Renovate-automated the way `VYOS_ROLLING_TAG`/`VYOS_STREAM_0_TAG`
+are - Stream has no structured release feed/API at all, only an HTML
+page. Whenever `VYOS_STREAM_0_TAG` moves to a new Stream release, shift
+the old values down one slot (`STREAM_0`→`STREAM_1`→`STREAM_2`→`STREAM_3`)
+and drop what falls off the end, checking <https://vyos.net/get/stream/>
+for the exact tags. Since Stream itself only ships ~quarterly, this
+needs a human touch a few times a year at most - re-run the suite (at
+least against the newly-shifted-in `stream-3`) to confirm it still
+passes before merging.
 
 ### What's actually tested
 
