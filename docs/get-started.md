@@ -196,7 +196,20 @@ password (the default `vyos-users` auth mode from step 2) — or with
 - **Commit vs Save** — mirrors VyOS's own distinction. **Commit** applies
   to the running configuration immediately (like typing `commit` at the
   CLI); **Save** persists the running configuration to `/config/config.boot`
-  (like `save`), independent of Commit.
+  (like `save`), independent of Commit. If you commit without saving, the
+  pending-changes bar stays visible with a collapsed, expandable list of
+  exactly what's committed but not saved, plus a **Save** button, once
+  the cart is otherwise empty — a plain reload doesn't clear it, only
+  actually saving does (or dismissing it via "Mark as saved", if it's
+  gone stale). A **Rollback** button next to Save discards those
+  changes entirely, restoring the last saved configuration — always
+  behind its own commit-confirm window, so VyOS can automatically
+  restore what was running if the rollback itself turns out to be a
+  problem. This can only ever track commits made *through this app* —
+  a change committed via the CLI or another session won't be detected,
+  which is why the System > Power page also has standalone,
+  always-available **Save now** and **Rollback** buttons, independent
+  of that tracked list.
 
 Not every configuration surface has a dedicated form yet (most of
 `service`, DHCPv6, PPPoE, RADIUS/TACACS+ authentication, NAT64/NAT66/CGNAT,

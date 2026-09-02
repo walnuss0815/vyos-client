@@ -44,3 +44,22 @@ func (c *Client) ConfigFileLoad(ctx context.Context, configText string, confirmT
 func (c *Client) ConfigFileConfirm(ctx context.Context) error {
 	return c.do(ctx, "/config-file", confirmOp{Op: "confirm"}, nil)
 }
+
+// ConfigFileLoadFile replaces the entire candidate configuration with
+// the contents of file (VyOS reads and parses it itself, unlike
+// ConfigFileLoad's inline-text variant) and commits it - same
+// full-replace semantics and lockout risk as ConfigFileLoad, see its
+// own doc comment. Used for "rollback to the last saved configuration"
+// (internal/api/config_handlers.go's handleRollback), pointed at
+// /config/config.boot: this app never fetches or reformats that
+// file's content itself, since it doesn't have (and doesn't need) a
+// parser for VyOS's own config-file syntax - VyOS already has one.
+//
+// If confirmTime > 0, a commit-confirm timer is started (see
+// Configure) - strongly recommended here too: the saved configuration
+// being rolled back to isn't automatically risk-free just because it
+// was saved before (it may be exactly what an operator committed a
+// fix over), so the same auto-revert safety net applies.
+func (c *Client) ConfigFileLoadFile(ctx context.Context, file string, confirmTime int) error {
+	return c.do(ctx, "/config-file", configFileOp{Op: "load", File: file, ConfirmTime: confirmTime}, nil)
+}

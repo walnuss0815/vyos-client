@@ -1971,6 +1971,40 @@ not a silently-missing gap.
   design (including the identifier-*is*-the-secret gap this still
   doesn't cover, e.g. SNMP community strings).
 
+- **Committed-but-unsaved indicator, list, Save, and Rollback**: VyOS's
+  well-known commit/save gotcha - a committed change is live but
+  silently lost on the next reboot unless also saved - had no
+  visibility in the UI at all beyond an ephemeral error message when
+  Commit & Save's own save step failed. VyOS's REST API has no
+  endpoint to answer "does the running config differ from the saved
+  one" (only 10 endpoints exist, none a config comparison), so
+  `frontend/src/store/unsavedCommit.ts` tracks this client-side
+  instead - a `localStorage`-backed list of exactly which changes were
+  committed *through this app* since the last save, appended to on
+  every successful commit. Deliberately scoped to what this app itself
+  committed, never a universal claim about the router (a commit via
+  the CLI or another session is invisible to it). `PendingChangesBar
+  .tsx` shows a persistent, collapsed-by-default "N changes committed
+  but not saved" message whenever the list is non-empty, even with an
+  empty pending-changes cart - expanding it lists the actual changes,
+  same rendering as the ordinary pending-changes list. Two actions:
+  **Save** (+ "Mark as saved", a manual dismiss for a stale list - e.g.
+  already saved via the CLI), and **Rollback**
+  (`POST /api/config/rollback`, backed by a new `vyos.Client
+  .ConfigFileLoadFile` sending VyOS's `/config-file` `{"op":"load",
+  "file":"/config/config.boot"}` so VyOS reads and parses its own saved
+  file rather than this app needing a config-file parser), which
+  discards the tracked changes by restoring the last saved
+  configuration - always behind a commit-confirm window (confirmed via
+  the same endpoint a normal commit-confirm uses), since the saved
+  configuration isn't automatically risk-free either. System > Power
+  also gained standalone "Save now" and "Rollback" buttons, independent
+  of the tracked list entirely, for acting proactively regardless of
+  what this app did or didn't track - Rollback there requires an
+  explicit "Confirm rollback?" click first, since there's no list to
+  review in that context. See
+  [architecture.md](architecture.md#the-commitsave-engine).
+
 ## Next
 
 Not yet decided - see "Later" below for the candidate list (the

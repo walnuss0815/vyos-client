@@ -436,6 +436,20 @@ export function save(file?: string): Promise<void> {
   return apiRequest<void>('/api/config/save', { body: { file: file || undefined } })
 }
 
+/** Discards the running configuration's divergence from the last
+ * saved one - replaces the entire running configuration with whatever
+ * is currently saved on disk (/config/config.boot). Shares the same
+ * commit-confirm mechanism as commit()/importConfig() - a non-zero
+ * confirmSeconds starts VyOS's auto-revert timer, and a pendingConfirm
+ * result is confirmed via the same confirmCommit() as any other
+ * commit. See store/unsavedCommit.ts's own doc comment for the
+ * broader "committed but not saved" feature this is part of. */
+export function rollback(confirmSeconds?: number): Promise<CommitResponse> {
+  return apiRequest<CommitResponse>('/api/config/rollback', {
+    body: { confirmSeconds: confirmSeconds || undefined },
+  })
+}
+
 export type ImportMode = 'merge' | 'load'
 
 /** Applies an uploaded configuration file - 'merge' overlays it onto

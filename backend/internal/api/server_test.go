@@ -837,6 +837,102 @@ func TestSave(t *testing.T) {
 	}
 }
 
+func TestRollback_RequiresAuth(t *testing.T) {
+	e := newTestEnv(t)
+	resp := e.doJSON(t, http.MethodPost, "/api/config/rollback", nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", resp.StatusCode)
+	}
+}
+
+// TestRollback_RestoresSavedConfig guards the actual behavior a
+// rollback is for: discarding whatever was committed after the last
+// save, restoring the running configuration to what's on disk - not
+// just the wire shape of the request.
+func TestRollback_RestoresSavedConfig(t *testing.T) {
+	e := newTestEnv(t)
+	e.login(t)
+
+	e.fakeVyOS.Config["system"] = map[string]any{"host-name": "saved-name"}
+	saveResp := e.doJSON(t, http.MethodPost, "/api/config/save", nil)
+	defer func() { _ = saveResp.Body.Close() }()
+	if saveResp.StatusCode != http.StatusNoContent {
+		t.Fatalf("save: status=%d", saveResp.StatusCode)
+	}
+
+	// A further commit, not yet saved.
+	commitResp := e.doJSON(t, http.MethodPost, "/api/config/commit", map[string]any{
+		"ops": []map[string]any{{"op": "set", "path": []string{"system", "host-name"}, "value": "uncommitted-name"}},
+	})
+	defer func() { _ = commitResp.Body.Close() }()
+	if commitResp.StatusCode != http.StatusOK {
+		t.Fatalf("commit: status=%d", commitResp.StatusCode)
+	}
+
+	resp := e.doJSON(t, http.MethodPost, "/api/config/rollback", nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("rollback: status=%d body=%s", resp.StatusCode, b)
+	}
+
+	system, _ := e.fakeVyOS.Config["system"].(map[string]any)
+	if system["host-name"] != "saved-name" {
+		t.Errorf("host-name = %q after rollback, want the saved value restored", system["host-name"])
+	}
+
+	last := e.fakeVyOS.Requests[len(e.fakeVyOS.Requests)-1]
+	if last.Endpoint != "/config-file" {
+		t.Errorf("endpoint = %q, want /config-file", last.Endpoint)
+	}
+	if !bytes.Contains(last.Data, []byte(`"op":"load"`)) {
+		t.Errorf("expected op=load, got: %s", last.Data)
+	}
+	if !bytes.Contains(last.Data, []byte(`"file":"/config/config.boot"`)) {
+		t.Errorf("expected the saved config-file path, got: %s", last.Data)
+	}
+}
+
+func TestRollback_WithConfirmSecondsStartsCommitConfirmAndIsConfirmable(t *testing.T) {
+	e := newTestEnv(t)
+	e.login(t)
+
+	resp := e.doJSON(t, http.MethodPost, "/api/config/rollback", map[string]any{"confirmSeconds": 90})
+	defer func() { _ = resp.Body.Close() }()
+	var out map[string]bool
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	if resp.StatusCode != http.StatusOK || !out["pendingConfirm"] {
+		t.Fatalf("status=%d pendingConfirm=%v, want 200/true", resp.StatusCode, out["pendingConfirm"])
+	}
+	if !e.fakeVyOS.PendingConfirm {
+		t.Fatal("expected fake VyOS to have a pending commit-confirm")
+	}
+
+	// Same endpoint used to confirm a regular commit's commit-confirm
+	// timer works here too - same underlying VyOS mechanism regardless
+	// of which endpoint started it.
+	confirmResp := e.doJSON(t, http.MethodPost, "/api/config/commit/confirm", nil)
+	defer func() { _ = confirmResp.Body.Close() }()
+	if confirmResp.StatusCode != http.StatusNoContent {
+		t.Fatalf("confirm: status=%d", confirmResp.StatusCode)
+	}
+	if e.fakeVyOS.PendingConfirm {
+		t.Error("expected pending confirm to be cleared")
+	}
+}
+
+func TestRollback_RejectsOutOfRangeConfirmSeconds(t *testing.T) {
+	e := newTestEnv(t)
+	e.login(t)
+
+	resp := e.doJSON(t, http.MethodPost, "/api/config/rollback", map[string]any{"confirmSeconds": 5})
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", resp.StatusCode)
+	}
+}
+
 func TestImportConfig_RequiresAuth(t *testing.T) {
 	e := newTestEnv(t)
 	resp := e.doJSON(t, http.MethodPost, "/api/config/import", map[string]any{"content": "x", "mode": "merge"})

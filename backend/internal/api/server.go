@@ -141,6 +141,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /api/config/commit", rateLimited(s.handleCommit))
 	mux.Handle("POST /api/config/commit/confirm", rateLimited(s.handleCommitConfirm))
 	mux.Handle("POST /api/config/save", authed(s.handleSave))
+	mux.Handle("POST /api/config/rollback", rateLimited(s.handleRollback))
 	mux.Handle("POST /api/config/import", rateLimited(s.handleImportConfig))
 
 	mux.Handle("GET /api/system/resources", authed(s.handleSystemResources))

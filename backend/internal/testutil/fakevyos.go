@@ -40,6 +40,28 @@ type FakeVyOS struct {
 	// values are strings; flag ("valueless") nodes are empty maps.
 	Config map[string]any
 
+	// SavedConfig is a snapshot of Config as of the most recent
+	// "save" /config-file call - this fake's stand-in for "what's on
+	// disk" (/config/config.boot), kept genuinely separate from the
+	// live, mutable Config the running-config reads/writes
+	// (/retrieve, /configure) use. A file-based "load" /config-file
+	// call (the shape vyos.Client.ConfigFileLoadFile sends for
+	// rollback) restores Config from this snapshot, simulating VyOS
+	// reading its own saved file back. Starts nil (never saved) -
+	// same "no prior state" meaning real VyOS's /config/config.boot
+	// has before the very first save on a fresh install.
+	//
+	// A "load"/"merge" call carrying inline text (the String field,
+	// rather than File) is NOT simulated against Config at all -
+	// deliberately: this fake has no parser for VyOS's own
+	// curly-brace config-file syntax (nothing in this codebase does;
+	// see docs/architecture.md's "commit/save engine" section), so
+	// there's no way to turn arbitrary config text into this fake's
+	// map[string]any shape. Tests that need to assert on a
+	// string-based load/merge's *effect* on Config aren't supported
+	// by this fake - only its wire shape (op, confirm_time) is.
+	SavedConfig map[string]any
+
 	// Requests records the most recent maxRecordedRequests requests
 	// handled, in order (oldest first), for assertion in tests. Bounded
 	// rather than unbounded: this struct is also reused as a
@@ -561,11 +583,21 @@ func (f *FakeVyOS) handleConfigFile(w http.ResponseWriter, r *http.Request) {
 
 	switch p.Op {
 	case "save":
+		f.SavedConfig = deepCopyMap(f.Config)
 		writeSuccess(w, "Saving configuration to '/config/config.boot'...\nDone\n")
 	case "confirm":
 		f.PendingConfirm = false
 		writeSuccess(w, "Reload timer stopped\n")
 	case "load", "merge":
+		// A file-based load (vyos.Client.ConfigFileLoadFile - the
+		// shape rollback sends) restores Config from whatever was
+		// last saved, simulating VyOS reading its own file back - see
+		// SavedConfig's own doc comment for why a String-based
+		// load/merge (arbitrary config text) can't be simulated the
+		// same way.
+		if p.Op == "load" && p.File != "" {
+			f.Config = deepCopyMap(f.SavedConfig)
+		}
 		if p.ConfirmTime > 0 {
 			f.PendingConfirm = true
 		}
@@ -573,6 +605,27 @@ func (f *FakeVyOS) handleConfigFile(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(w, 400, fmt.Sprintf("'%s' is not a valid operation", p.Op))
 	}
+}
+
+// deepCopyMap returns a deep copy of m - every nested map[string]any is
+// copied too, not just the top-level one, so mutating the original
+// Config afterward (via setNested/deleteNested) never retroactively
+// changes an earlier SavedConfig snapshot, or vice versa. Leaf values
+// are plain strings (immutable, safe to share). A nil m copies to nil,
+// matching SavedConfig's "never saved yet" zero value.
+func deepCopyMap(m map[string]any) map[string]any {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		if nested, ok := v.(map[string]any); ok {
+			out[k] = deepCopyMap(nested)
+		} else {
+			out[k] = v
+		}
+	}
+	return out
 }
 
 // --- nested map helpers -----------------------------------------------
