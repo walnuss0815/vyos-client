@@ -388,18 +388,6 @@ stay `'self'` with no exception at all.
   so even this app's own curated allowlist (`/config`, `/var/log`) is
   something an operator may reasonably want to opt out of entirely
   rather than rely on that allowlist alone.
-- **`DATA_DIR` is this backend's first and only local persistence**,
-  used for two things: a generated session secret (`0600` permissions,
-  written atomically - see `internal/atomicfile`, same sensitivity as
-  `SESSION_SECRET` itself) and the in-app notification feed
-  (`notifications.json`, not sensitive - just what this app itself
-  noticed, e.g. "an image update is available" - but still local-only,
-  never sent anywhere but the authenticated frontend). Optional and
-  unset by default; if you mount a volume for it, that volume inherits
-  the same access-control expectations as anything else this container
-  can read/write - no new network-facing surface, purely local
-  filesystem state. See
-  [architecture.md](architecture.md#notifications-the-one-thing-this-backend-persists-beyond-vyos-itself).
 
 ### Restricting access to LAN clients only
 
