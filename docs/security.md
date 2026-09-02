@@ -252,11 +252,11 @@ a fully isolated/trusted network** (e.g. it's already confined to
 VyOS's own container networking with no exposed host port). With TLS
 disabled:
 
-- All traffic - including the login form's plaintext password and the
-  session cookie - travels unencrypted between the client and this
+- All traffic — including the login form's plaintext password and the
+  session cookie — travels unencrypted between the client and this
   process.
 - The session cookie's `Secure` attribute is also dropped automatically
-  by default (it has to be, in the general case - browsers silently
+  by default (it has to be, in the general case — browsers silently
   refuse to send a `Secure` cookie back over a plain HTTP connection,
   so leaving it set would make login appear to succeed while the
   session never actually persists). **If the reverse proxy in front of
@@ -265,10 +265,10 @@ disabled:
   though this process itself only ever sees plain HTTP from the proxy,
   so the cookie both can and should still be marked `Secure` in that
   case. Set `COOKIE_SECURE=true` to opt back into that, independently
-  of `TLS_ENABLED` - without it, that topology silently ends up with
+  of `TLS_ENABLED` — without it, that topology silently ends up with
   non-`Secure` cookies on what the browser considers an HTTPS origin.
-  (The reverse combination - `COOKIE_SECURE=false` while
-  `TLS_ENABLED=true` - is flagged with a startup warning, since it's
+  (The reverse combination — `COOKIE_SECURE=false` while
+  `TLS_ENABLED=true` — is flagged with a startup warning, since it's
   almost always a mistake rather than an intentional choice.)
 
 This is the same trade-off as the "reverse proxy in front" option
