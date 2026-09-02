@@ -75,14 +75,13 @@ in*, it doesn't change what that one API key can do.
 
 **Known consequence (either mode):** there's no per-human audit trail
 on the VyOS side for changes made through the UI — VyOS's own logs
-will show the API key was used, not which person was logged into
-VyOS Client at the time. `vyos-users` mode makes VyOS the source of
-truth for *credentials*, but doesn't fix this: VyOS's own logs still
-only see the one shared API key, not which VyOS Client user triggered
-a given change. If multiple people administer the router through this
-UI, that's a real limitation to be aware of (mitigated somewhat by
-VyOS Client's own request logging, which does log the authenticated
-username per request, just not inside VyOS itself).
+will show the shared API key was used, not which person was logged
+into VyOS Client at the time. `vyos-users` mode makes VyOS the source
+of truth for *credentials*, but doesn't fix this. If multiple people
+administer the router through this UI, that's a real limitation to be
+aware of (mitigated somewhat by VyOS Client's own request logging,
+which does log the authenticated username per request, just not
+inside VyOS itself).
 
 ## Session model
 
