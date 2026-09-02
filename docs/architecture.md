@@ -2,7 +2,7 @@
 
 ## Overview
 
-```
+```text
 Browser (React SPA)                    Container on VyOS (host networking)
   - Login form                                    Go backend
   - Dashboard / Interfaces /       <--HTTPS-->     - serves the embedded SPA
