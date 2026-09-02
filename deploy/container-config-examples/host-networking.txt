@@ -59,35 +59,7 @@ set container name vyos-client environment SESSION_SECRET value '<GENERATE-A-LON
 # set container name vyos-client environment SELF_UPGRADE_ENABLED value 'true'
 # set container name vyos-client environment SELF_UPGRADE_CONTAINER_NAME value 'vyos-client'
 
-# 4. Optional: DATA_DIR, so a generated SESSION_SECRET and the in-app
-#    notification feed both survive a container restart (see
-#    docs/configuration-reference.md#DATA_DIR). Skip this whole step
-#    if you set SESSION_SECRET explicitly above and don't care about
-#    the notification feed persisting - both features work fine with
-#    no DATA_DIR at all, just without surviving a restart.
-#
-#    First, on the router itself (SSH in - this is a plain shell
-#    command, not a `set`/`show` CLI command), create the host
-#    directory and set its ownership AND permissions. This app's
-#    image runs as the distroless "nonroot" user, fixed UID/GID 65532
-#    - both chown AND chmod are required: some container engines
-#    auto-create a missing bind-mount source directory with a mode
-#    that's missing the execute/"search" bit (e.g. 0666), even once
-#    ownership is otherwise correct, which leaves it completely
-#    unusable regardless of ownership. Skip this step (and the
-#    `sudo mkdir`) if the directory already exists with the right
-#    ownership and mode from a previous deployment.
-#
-#      sudo mkdir -p /config/containers/vyos-client/data
-#      sudo chown -R 65532:65532 /config/containers/vyos-client/data
-#      sudo chmod -R u+rwx,g+rwx /config/containers/vyos-client/data
-#
-#    Then mount it and point DATA_DIR at the same in-container path:
-set container name vyos-client volume data source '/config/containers/vyos-client/data'
-set container name vyos-client volume data destination '/data'
-set container name vyos-client environment DATA_DIR value '/data'
-
-# 5. Belt-and-suspenders: an explicit firewall rule blocking WAN access
+# 4. Belt-and-suspenders: an explicit firewall rule blocking WAN access
 #    to the UI's port, on top of step 3's LISTEN_ADDR binding - so a
 #    LAN-only setup doesn't depend on LISTEN_ADDR alone (e.g. if it's
 #    ever accidentally reset to ':8443'). This assumes zone-based

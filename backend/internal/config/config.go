@@ -431,9 +431,6 @@ func Load(getenv func(string) string) (*Config, error) {
 		if !info.IsDir() {
 			return nil, fmt.Errorf("config: DATA_DIR %q is not a directory", v)
 		}
-		if err := checkDataDirWritable(v); err != nil {
-			return nil, err
-		}
 		cfg.DataDir = v
 	}
 
@@ -446,52 +443,6 @@ func Load(getenv func(string) string) (*Config, error) {
 // cmd/vyos-client's session-secret persistence (see sessionsecret.go)
 // can hold a persisted secret to the same minimum bar.
 const MinSessionSecretLength = 32
-
-// checkDataDirWritable confirms DATA_DIR is actually usable - not just
-// present and a directory (already checked by the caller) - by
-// creating and immediately removing a small temp file in it.
-//
-// This exists because Stat/IsDir alone can't catch a real-world
-// failure mode: a container engine that auto-creates a missing
-// bind-mount source directory can leave it with a mode that omits the
-// execute/"search" bit entirely (e.g. mode 0666 instead of 0755),
-// even when its ownership already correctly matches this process's
-// UID:GID. A directory in that state is completely unusable - nothing
-// can be created, opened, or even determined to exist inside it,
-// regardless of ownership - despite passing both checks above.
-//
-// Left undetected here, this surfaces far later and far more
-// confusingly: attempting to read a not-yet-created file inside such
-// a directory returns a permission error, not a "file does not
-// exist" one (a POSIX quirk - the kernel can't determine whether a
-// file exists without search permission on its parent directory
-// first), which silently defeats the "generate one if it's missing"
-// logic in both cmd/vyos-client/sessionsecret.go and
-// internal/notifications.Store. An operator would see only a bare,
-// misleading "permission denied" deep in one of those unrelated code
-// paths, with nothing pointing at the directory's own permission bits
-// as the actual cause. Checking this once, here, at startup, turns
-// that into one clear, actionable error naming DATA_DIR directly.
-func checkDataDirWritable(dir string) error {
-	f, err := os.CreateTemp(dir, ".vyos-client-write-test-*")
-	if err != nil {
-		return fmt.Errorf(
-			"config: DATA_DIR %q exists but isn't writable/searchable by this process (%w) - "+
-				"check both its ownership AND its permission bits: a directory also needs "+
-				"the execute/\"search\" bit set (e.g. 0755, not 0666), not just matching "+
-				"ownership, or nothing can be created or found inside it even for the "+
-				"right user - this commonly happens when a container engine auto-creates "+
-				"a missing bind-mount source directory with the wrong mode",
-			dir, err,
-		)
-	}
-	name := f.Name()
-	_ = f.Close()
-	if err := os.Remove(name); err != nil {
-		return fmt.Errorf("config: DATA_DIR %q: removing write-test file %q: %w", dir, name, err)
-	}
-	return nil
-}
 
 // validateVyOSAPIURL checks that raw is a structurally valid absolute
 // URL with an http or https scheme and a non-empty host, returning the
