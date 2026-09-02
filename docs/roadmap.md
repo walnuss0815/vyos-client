@@ -1973,6 +1973,22 @@ not a silently-missing gap.
   design (including the identifier-*is*-the-secret gap this still
   doesn't cover, e.g. SNMP community strings).
 
+- **Container image update check results now persist across reloads**:
+  the per-container "Check for update" result used to live only in
+  component state, so it vanished the instant the Containers page
+  reloaded or was navigated away from - forcing a re-check (and a
+  fresh registry hit) just to see a result already fetched moments
+  earlier. New `frontend/src/store/containerImageUpdateChecks.ts`
+  (`localStorage`-backed, keyed by container name) remembers the last
+  result, the exact image it was checked against, and when it was
+  checked - shown on the Containers page with a "Checked at ..."
+  timestamp and a "Re-check" button, and automatically ignored (not
+  shown) if the container's image has since changed, so a stale result
+  never gets attributed to the wrong image. Purely a client-side cache
+  of an already-explicitly-requested check - no new registry calls, no
+  change to the "manual and on-demand only" design. See
+  [architecture.md](architecture.md#container-image-update-checks).
+
 - **Committed-but-unsaved indicator, list, Save, and Rollback**: VyOS's
   well-known commit/save gotcha - a committed change is live but
   silently lost on the next reboot unless also saved - had no
