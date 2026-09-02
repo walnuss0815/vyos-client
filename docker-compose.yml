@@ -35,3 +35,15 @@ services:
       - '${HOST_PORT:-8443}:8443'
     depends_on:
       - mock-vyos
+    # Optional: persist a generated SESSION_SECRET and the in-app
+    # notification feed across restarts - both work fine without this,
+    # just without surviving one. Uncomment this alongside setting
+    # DATA_DIR=/data in .env (see .env.example's own DATA_DIR section
+    # for the full explanation, including the real-router chown/chmod
+    # caveat - not needed for this named Docker volume, only for a
+    # real host directory bind mount).
+    # volumes:
+    #   - vyos-client-data:/data
+
+# volumes:
+#   vyos-client-data:
