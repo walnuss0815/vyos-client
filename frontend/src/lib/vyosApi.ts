@@ -154,10 +154,20 @@ export interface SelfUpgradeStatus {
 /** Checks this app's own GitHub releases for an available update -
  * see docs/architecture.md's "Self-upgrade" section. Cached
  * server-side for a while (internal/selfupgrade.Client), so calling
- * this repeatedly (e.g. a manual "Refresh" button) doesn't hammer
- * GitHub's API. */
-export function getSelfUpgradeStatus(): Promise<SelfUpgradeStatus> {
-  return apiRequest<SelfUpgradeStatus>('/api/system/self-upgrade')
+ * this repeatedly (e.g. on every page load) doesn't hammer GitHub's
+ * API.
+ *
+ * Pass `force: true` (UpgradesPage.tsx's "Refresh" button) to bypass
+ * that server-side cache entirely and always perform a live GitHub
+ * check - see backend/internal/api/self_upgrade_handlers.go's
+ * handleSelfUpgradeStatus doc comment for why a plain call still
+ * respects the cache (so ordinary page views never themselves
+ * contribute to hammering GitHub's rate-limited API) while an
+ * explicit, human-initiated Refresh click always can. */
+export function getSelfUpgradeStatus(force?: boolean): Promise<SelfUpgradeStatus> {
+  return apiRequest<SelfUpgradeStatus>('/api/system/self-upgrade', {
+    query: { force: force ? 'true' : undefined },
+  })
 }
 
 /** One entry from `show system image` - a VyOS release installed on

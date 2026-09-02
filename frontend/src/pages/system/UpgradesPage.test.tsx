@@ -198,4 +198,69 @@ describe('UpgradesPage', () => {
     expect(upgradeButton).toBeDisabled()
     expect(screen.getByText(/isn't available on ghcr.io yet/i)).toBeInTheDocument()
   })
+
+  // Regression guard for the explicit requirement that whatever's
+  // already cached/known must show up on mount, with zero user
+  // interaction - not just after clicking Refresh. This is already
+  // implicitly exercised by the tests above (none of them click
+  // anything before asserting on the shown status), but this test
+  // makes that guarantee explicit and named.
+  it('shows update availability from the initial load alone, with no interaction required', async () => {
+    server.use(http.get('/api/system/self-upgrade', () => HttpResponse.json(UPDATE_AVAILABLE_STATUS)))
+    renderWithProviders(<UpgradesPage />)
+
+    expect(await screen.findByText(/1 update available/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Upgrade to 1.3.0' })).toBeInTheDocument()
+  })
+
+  describe('Refresh', () => {
+    it('sends force=true and replaces the shown data with the fresh result', async () => {
+      server.use(http.get('/api/system/self-upgrade', () => HttpResponse.json(UP_TO_DATE_STATUS)))
+      const user = userEvent.setup()
+      renderWithProviders(<UpgradesPage />)
+      await screen.findByText(/running the latest published release/i)
+
+      let requestedForceParam: string | null = null
+      server.use(
+        http.get('/api/system/self-upgrade', ({ request }) => {
+          requestedForceParam = new URL(request.url).searchParams.get('force')
+          return HttpResponse.json(UPDATE_AVAILABLE_STATUS)
+        }),
+      )
+      await user.click(screen.getByRole('button', { name: 'Refresh' }))
+
+      expect(await screen.findByText(/1 update available/i)).toBeInTheDocument()
+      expect(requestedForceParam).toBe('true')
+    })
+
+    it('shows "Refreshing…" and disables the button while the forced check is in flight', async () => {
+      server.use(http.get('/api/system/self-upgrade', () => HttpResponse.json(UP_TO_DATE_STATUS)))
+      const user = userEvent.setup()
+      renderWithProviders(<UpgradesPage />)
+      await screen.findByText(/running the latest published release/i)
+
+      server.use(http.get('/api/system/self-upgrade', () => new Promise(() => {})))
+      await user.click(screen.getByRole('button', { name: 'Refresh' }))
+
+      const refreshingButton = await screen.findByRole('button', { name: 'Refreshing…' })
+      expect(refreshingButton).toBeDisabled()
+    })
+
+    it('shows an error message when the forced check fails, without discarding the last known status', async () => {
+      server.use(http.get('/api/system/self-upgrade', () => HttpResponse.json(UP_TO_DATE_STATUS)))
+      const user = userEvent.setup()
+      renderWithProviders(<UpgradesPage />)
+      await screen.findByText(/running the latest published release/i)
+
+      server.use(
+        http.get('/api/system/self-upgrade', () => HttpResponse.json({ error: 'unreachable' }, { status: 502 })),
+      )
+      await user.click(screen.getByRole('button', { name: 'Refresh' }))
+
+      expect(await screen.findByText(/unreachable/i)).toBeInTheDocument()
+      // The last known (successful) status must still be shown - a
+      // failed manual refresh shouldn't blank out the page.
+      expect(screen.getByText(/running the latest published release/i)).toBeInTheDocument()
+    })
+  })
 })

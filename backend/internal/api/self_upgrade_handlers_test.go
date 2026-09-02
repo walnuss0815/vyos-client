@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -423,5 +424,111 @@ func TestSelfUpgradeStatus_LatestVersionSkipsUnparseableNewestRelease(t *testing
 	}
 	if out.LatestVersion != "1.5.0" {
 		t.Errorf("latestVersion = %q, want 1.5.0 (skipping the unparseable newest release)", out.LatestVersion)
+	}
+}
+
+// TestSelfUpgradeStatus_PlainRequestsAreServedFromCache guards the
+// half of the "Refresh" fix that must NOT change: an ordinary page
+// load (no "force" query param) should keep reusing
+// internal/selfupgrade.Client's own cache exactly as before, so
+// passively viewing this page never itself hammers GitHub's
+// rate-limited unauthenticated API.
+func TestSelfUpgradeStatus_PlainRequestsAreServedFromCache(t *testing.T) {
+	var requestCount int
+	github := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"tag_name": "v1.0.0", "name": "1.0.0", "draft": false, "prerelease": false}]`))
+	}))
+	t.Cleanup(github.Close)
+	ghClient, err := selfupgrade.New(selfupgrade.Config{Repo: "example/repo", BaseURL: github.URL, HTTPClient: github.Client()})
+	if err != nil {
+		t.Fatalf("selfupgrade.New: %v", err)
+	}
+
+	e := newTestEnv(t)
+	e.apiServer.SelfUpgradeEnabled = true
+	e.apiServer.SelfUpgradeContainerName = "vyos-client"
+	e.apiServer.SelfUpgradeGitHub = ghClient
+	e.apiServer.Version = "0.9.0"
+	e.login(t)
+
+	for range 2 {
+		resp := e.doJSON(t, http.MethodGet, "/api/system/self-upgrade", nil)
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d, want 200", resp.StatusCode)
+		}
+	}
+	if requestCount != 1 {
+		t.Errorf("expected the second plain request to be served from cache, got %d GitHub requests", requestCount)
+	}
+}
+
+// TestSelfUpgradeStatus_ForceQueryParamBypassesCache guards the
+// actual bug fix: a "Refresh" click (force=true) must see data newer
+// than whatever's cached, even well within CacheTTL - previously,
+// nothing in the request could ever bypass the backend's own 30-minute
+// cache, so "Refresh" could silently do nothing for up to that long.
+func TestSelfUpgradeStatus_ForceQueryParamBypassesCache(t *testing.T) {
+	var requestCount int
+	github := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `[{"tag_name": "v1.0.%d", "name": "", "draft": false, "prerelease": false}]`, requestCount)
+	}))
+	t.Cleanup(github.Close)
+	ghClient, err := selfupgrade.New(selfupgrade.Config{Repo: "example/repo", BaseURL: github.URL, HTTPClient: github.Client()})
+	if err != nil {
+		t.Fatalf("selfupgrade.New: %v", err)
+	}
+
+	e := newTestEnv(t)
+	e.apiServer.SelfUpgradeEnabled = true
+	e.apiServer.SelfUpgradeContainerName = "vyos-client"
+	e.apiServer.SelfUpgradeGitHub = ghClient
+	e.apiServer.Version = "0.9.0"
+	e.login(t)
+
+	// First, plain request populates the cache with "1.0.1".
+	first := e.doJSON(t, http.MethodGet, "/api/system/self-upgrade", nil)
+	var firstOut selfUpgradeStatusOut
+	if err := json.NewDecoder(first.Body).Decode(&firstOut); err != nil {
+		t.Fatalf("decode (first): %v", err)
+	}
+	_ = first.Body.Close()
+	if firstOut.LatestVersion != "1.0.1" {
+		t.Fatalf("latestVersion (first) = %q, want 1.0.1", firstOut.LatestVersion)
+	}
+
+	// A second plain request, right after, must still be cached - a
+	// newer "1.0.2" tag exists on the (fake) server now, but a plain
+	// request has no way to know that yet.
+	second := e.doJSON(t, http.MethodGet, "/api/system/self-upgrade", nil)
+	var secondOut selfUpgradeStatusOut
+	if err := json.NewDecoder(second.Body).Decode(&secondOut); err != nil {
+		t.Fatalf("decode (second): %v", err)
+	}
+	_ = second.Body.Close()
+	if requestCount != 1 {
+		t.Fatalf("expected the second plain request to be served from cache, got %d GitHub requests", requestCount)
+	}
+	if secondOut.LatestVersion != "1.0.1" {
+		t.Errorf("latestVersion (second, plain) = %q, want the still-cached 1.0.1", secondOut.LatestVersion)
+	}
+
+	// A forced request must bypass the cache and see the real,
+	// currently-newest tag.
+	third := e.doJSON(t, http.MethodGet, "/api/system/self-upgrade?force=true", nil)
+	var thirdOut selfUpgradeStatusOut
+	if err := json.NewDecoder(third.Body).Decode(&thirdOut); err != nil {
+		t.Fatalf("decode (third): %v", err)
+	}
+	_ = third.Body.Close()
+	if requestCount != 2 {
+		t.Errorf("expected force=true to bypass the cache and hit GitHub again, got %d requests", requestCount)
+	}
+	if thirdOut.LatestVersion != "1.0.2" {
+		t.Errorf("latestVersion (third, forced) = %q, want the freshly fetched 1.0.2", thirdOut.LatestVersion)
 	}
 }

@@ -293,6 +293,155 @@ func TestListReleases_NegativeCacheExpires(t *testing.T) {
 	}
 }
 
+func TestForceRefresh_BypassesFreshPositiveCache(t *testing.T) {
+	var requestCount int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `[{"tag_name": "v1.0.%d", "name": "", "draft": false, "prerelease": false}]`, requestCount)
+	}))
+	defer server.Close()
+
+	// CacheTTL deliberately left long (the default) - the whole point
+	// of ForceRefresh is to bypass it while it's still fresh.
+	client, err := New(Config{Repo: "example/repo", BaseURL: server.URL, HTTPClient: server.Client()})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	first, err := client.ListReleases(context.Background())
+	if err != nil {
+		t.Fatalf("ListReleases: %v", err)
+	}
+	if len(first) != 1 || first[0].Version != "1.0.1" {
+		t.Fatalf("unexpected first result: %+v", first)
+	}
+
+	// A plain ListReleases call right after must be served from the
+	// (still-fresh) cache, not hit the server again - establishes the
+	// baseline ForceRefresh is meant to override.
+	if _, err := client.ListReleases(context.Background()); err != nil {
+		t.Fatalf("ListReleases (cached): %v", err)
+	}
+	if requestCount != 1 {
+		t.Fatalf("expected the second ListReleases to be served from cache, got %d requests", requestCount)
+	}
+
+	second, err := client.ForceRefresh(context.Background())
+	if err != nil {
+		t.Fatalf("ForceRefresh: %v", err)
+	}
+	if requestCount != 2 {
+		t.Errorf("expected ForceRefresh to hit the server despite a fresh cache, got %d requests", requestCount)
+	}
+	if len(second) != 1 || second[0].Version != "1.0.2" {
+		t.Errorf("expected ForceRefresh to return the newly fetched result, got: %+v", second)
+	}
+
+	// The forced result must also update the cache, so a subsequent
+	// plain ListReleases sees it rather than the earlier value.
+	third, err := client.ListReleases(context.Background())
+	if err != nil {
+		t.Fatalf("ListReleases (after ForceRefresh): %v", err)
+	}
+	if requestCount != 2 {
+		t.Errorf("expected ListReleases right after ForceRefresh to reuse its cache, got %d requests", requestCount)
+	}
+	if len(third) != 1 || third[0].Version != "1.0.2" {
+		t.Errorf("expected ListReleases to now see ForceRefresh's result, got: %+v", third)
+	}
+}
+
+// TestForceRefresh_BypassesNegativeCache guards the other half of
+// ForceRefresh's contract: a recent failure (still within
+// NegativeCacheTTL) must not suppress a forced retry the way it would
+// suppress a plain ListReleases call - a human clicking "Refresh"
+// explicitly wants a real attempt right now, not the remembered
+// failure from a moment ago.
+func TestForceRefresh_BypassesNegativeCache(t *testing.T) {
+	var requestCount int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"message": "API rate limit exceeded"}`))
+	}))
+	defer server.Close()
+
+	client, err := New(Config{
+		Repo:             "example/repo",
+		BaseURL:          server.URL,
+		HTTPClient:       server.Client(),
+		NegativeCacheTTL: 1 * time.Hour,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	if _, err := client.ListReleases(context.Background()); err == nil {
+		t.Fatal("expected an error for the first, failing request")
+	}
+	if requestCount != 1 {
+		t.Fatalf("expected exactly 1 request, got %d", requestCount)
+	}
+
+	// A plain ListReleases call must be suppressed by the negative
+	// cache (the existing, unchanged behavior) ...
+	if _, err := client.ListReleases(context.Background()); err == nil {
+		t.Fatal("expected the remembered error to be returned")
+	}
+	if requestCount != 1 {
+		t.Fatalf("expected the negative cache to suppress a second request, got %d", requestCount)
+	}
+
+	// ... but ForceRefresh must retry anyway, negative cache or not.
+	if _, err := client.ForceRefresh(context.Background()); err == nil {
+		t.Fatal("expected ForceRefresh to surface a real (failing) attempt")
+	}
+	if requestCount != 2 {
+		t.Errorf("expected ForceRefresh to bypass the negative cache and hit the server, got %d requests", requestCount)
+	}
+}
+
+// TestForceRefresh_FallsBackToStaleCacheOnFailure guards that
+// ForceRefresh keeps ListReleases's own resilience guarantee: a
+// failed forced check shouldn't discard a previously-known-good
+// result, only fail to improve on it.
+func TestForceRefresh_FallsBackToStaleCacheOnFailure(t *testing.T) {
+	var failing bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if failing {
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"message": "API rate limit exceeded"}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"tag_name": "v1.0.0", "name": "1.0.0", "draft": false, "prerelease": false}]`))
+	}))
+	defer server.Close()
+
+	client, err := New(Config{Repo: "example/repo", BaseURL: server.URL, HTTPClient: server.Client()})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	releases, err := client.ListReleases(context.Background())
+	if err != nil {
+		t.Fatalf("ListReleases (first, successful): %v", err)
+	}
+	if len(releases) != 1 || releases[0].Version != "1.0.0" {
+		t.Fatalf("unexpected first result: %+v", releases)
+	}
+
+	failing = true
+	stale, err := client.ForceRefresh(context.Background())
+	if err != nil {
+		t.Fatalf("expected the stale cache to be served without an error, got: %v", err)
+	}
+	if len(stale) != 1 || stale[0].Version != "1.0.0" {
+		t.Errorf("expected the stale cached result to be returned, got: %+v", stale)
+	}
+}
+
 // TestListReleases_SortsParseableVersionsBeforeUnparseable guards the
 // sort comparator's tie-breaking tier: a release with an unparseable
 // tag must never outrank a parseable one, even if it happens to have
