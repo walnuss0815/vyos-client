@@ -25,19 +25,21 @@ SSH):
 A fourth path, however, works and is what `AUTH_MODE=vyos-users` (the
 default) uses: `system login user <name> authentication
 encrypted-password` is returned **verbatim** by `/retrieve` (confirmed
-against vyos-1x's actual source — the `****************` masking you'd
+against vyos-1x's actual source). The `****************` masking you'd
 see in the interactive `show configuration` CLI is an opt-in flag the
 REST API never passes, not a property of the underlying config-tree
-storage everything shares), and VyOS's own conf-mode script hashes it
-with `sha512_crypt` (`$6$...`) when a `plaintext-password` is
-configured — a scheme `backend/internal/auth`'s pure-Go, no-cgo
-`github.com/GehirnInc/crypt`-based verification supports directly
-(along with `$1$`/`$5$`/apr1, for a hand-pasted `encrypted-password` in
-a different format; `$y$` yescrypt is not supported and is treated as
-non-matching, but VyOS never auto-generates one). This means a login
-attempt can be verified against a real VyOS local user's real password
-using only the backend's existing `VYOS_API_KEY` — no SSH, PAM, or
-VyOS's GraphQL surface needed.
+storage everything shares.
+
+VyOS's own conf-mode script hashes that value with `sha512_crypt`
+(`$6$...`) when a `plaintext-password` is configured — a scheme
+`backend/internal/auth`'s pure-Go, no-cgo `github.com/GehirnInc/crypt`-based
+verification supports directly, along with `$1$`/`$5$`/apr1 for a
+hand-pasted `encrypted-password` in a different format (`$y$` yescrypt
+is not supported and is treated as non-matching, but VyOS never
+auto-generates one). This means a login attempt can be verified
+against a genuine VyOS local user's own password using only the
+backend's existing `VYOS_API_KEY` — no SSH, PAM, or VyOS's GraphQL
+surface needed.
 
 VyOS Client supports two login modes, selected by `AUTH_MODE`
 (`backend/internal/auth/verifier.go`,
