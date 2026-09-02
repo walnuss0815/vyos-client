@@ -226,11 +226,12 @@ fallback for anything not yet covered by a purpose-built page.
 - **"server is misconfigured (VyOS API key rejected)"** — the
   `VYOS_API_KEY` env var doesn't match a key configured under
   `service https api keys`. Check `show configuration commands | match "api keys"`.
-- **"Unable to verify credentials right now" at login** (only in the
-  default `AUTH_MODE=vyos-users` mode) — the backend reached its own
-  HTTP listener but couldn't reach VyOS's API to check your password,
-  distinct from actually getting the password wrong. Check the same
-  things as "Container can't reach the API at all" below.
+- **"unable to verify credentials right now, try again shortly" at
+  login** (only in the default `AUTH_MODE=vyos-users` mode) — the
+  backend reached its own HTTP listener but couldn't reach VyOS's API
+  to check your password, distinct from actually getting the password
+  wrong. Check the same things as "Container can't reach the API at
+  all" below.
 - **Login works with `AUTH_MODE=static` but not with a real VyOS user's
   password** — confirm the account isn't disabled (`system login user
   <name> disable`) and has a password set at all (`encrypted-password`
