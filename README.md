@@ -3,7 +3,8 @@
 A modern web UI for [VyOS](https://vyos.io), designed to run as a container
 on the router itself and manage it entirely through VyOS's own HTTPS REST
 API — no separate database, no config file, no server-side state beyond
-an ephemeral login session. All configuration lives only in VyOS.
+ephemeral login sessions and in-memory rate-limit bookkeeping. All
+configuration lives only in VyOS.
 
 [![CI](https://github.com/walnuss0815/vyos-client/actions/workflows/ci.yml/badge.svg)](https://github.com/walnuss0815/vyos-client/actions/workflows/ci.yml)
 
