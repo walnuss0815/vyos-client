@@ -29,7 +29,7 @@ layer between the browser and VyOS's own REST API; it keeps no database
 and no config file of its own — only environment variables at startup
 (see [configuration-reference.md](configuration-reference.md)) and,
 transiently, signed session tokens that need no server-side storage at
-all (see below).
+all (see [Auth: stateless sessions](#auth-stateless-sessions) below).
 
 ## Why REST only (no SSH, no GraphQL)
 
