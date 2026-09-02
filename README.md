@@ -13,21 +13,29 @@ VyOS is a powerful router/firewall OS, but its native interfaces are the
 CLI and a low-level HTTP API — there's no first-party web UI. VyOS Client
 fills that gap with something closer to what you'd expect from a
 consumer/prosumer router (EdgeOS, UniFi): a dashboard, a config tree
-editor, a dedicated Firewall UI, and (in progress — see
-[roadmap](docs/roadmap.md)) a DHCP page, all backed by real commit/save
-semantics and a "safe apply" countdown for risky changes.
+editor, and dedicated UIs for most major VyOS configuration areas, all
+backed by real commit/save semantics and a "safe apply" countdown for
+risky changes.
 
 ## Features
 
+- **Dashboard** — hostname, VyOS version, uptime/load, CPU/memory/disk
+  usage, a live interface preview, and full IPv4/IPv6 routing tables.
 - **Config Tree editor** — the entire VyOS running configuration, as an
   editable tree or as flat `set` commands, covering anything not (yet)
   covered by a dedicated page.
-- **Firewall UI** — zones, rulesets (base chains and custom
-  `firewall ipv4 name` chains) with full rule CRUD, address/network/port/
-  interface/mac/domain groups, and global options.
+- **Dedicated config UIs** — typed forms instead of raw config paths for
+  Firewall, DHCP, Interfaces, Routing (Static/BGP/OSPF), NAT, Policy,
+  PKI, System, Container, Service (17 tabs), VPN (8 tabs), Load
+  Balancing, High Availability, and Traffic Policy/QoS, plus a Logs
+  viewer and an optional read-only Files browser — see
+  **[docs/get-started.md](docs/get-started.md)**'s Tour for the full
+  breakdown of what each area covers.
 - **Commit / Save, matching VyOS's own model** — nothing is sent to VyOS
   until you click Commit; Save (persist to `/config/config.boot`) is a
-  separate, independent action, exactly like the CLI.
+  separate, independent action, exactly like the CLI. Committed-but-
+  unsaved changes stay visible until saved or rolled back, so nothing
+  silently gets lost on a reboot.
 - **Safe apply** — optional VyOS commit-confirm countdown: if you don't
   confirm, VyOS automatically reverts. No custom revert logic — this is a
   native VyOS feature.
@@ -63,10 +71,13 @@ testing — see [docs/development.md](docs/development.md) for details.
 
 ## Status
 
-Foundation, auth, the commit/save engine, the Config Tree editor, and the
-Firewall UI are implemented and tested. A DHCP page, the dashboard, and
-real-VyOS VM-based end-to-end testing are in progress — see
-[docs/roadmap.md](docs/roadmap.md) for the current state and what's next.
+Foundation, auth, the commit/save engine, the Config Tree editor, the
+Dashboard, and dedicated config UIs for Firewall, DHCP, Interfaces,
+Routing, NAT, Policy, PKI, System, Container, Service, VPN, Load
+Balancing, High Availability, and Traffic Policy/QoS are implemented and
+tested, including real-VyOS VM-based end-to-end testing. See
+[docs/roadmap.md](docs/roadmap.md) for exactly what's covered and the
+remaining `service` sub-areas still planned.
 
 ## License
 
