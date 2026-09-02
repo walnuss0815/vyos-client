@@ -1996,26 +1996,6 @@ not a silently-missing gap.
   twice. See [architecture.md](architecture.md#notifications-the-one-thing-this-backend-persists-beyond-vyos-itself)
   and [security.md](security.md#threat-model-notes).
 
-- **Bugfix: `DATA_DIR` writability check at startup**: a real
-  production incident on real VyOS hardware found that `Stat`/`IsDir`
-  alone can't catch every way `DATA_DIR` can be unusable - a container
-  engine auto-created the bind-mount source directory with mode `0666`
-  (missing the execute/"search" bit) despite already having the
-  correct owning UID:GID (`65532`, the distroless `nonroot` image's
-  fixed identity). `chown` alone doesn't fix that, and the failure
-  mode is actively misleading: reading a not-yet-created file inside
-  an unsearchable directory returns a permission error, not "file
-  does not exist" (a POSIX quirk), which silently defeated the
-  "generate a new secret if one doesn't exist yet" logic and surfaced
-  only as a bare `permission denied` deep inside session-secret
-  resolution. `config.Load` now does a real write-test (create and
-  remove a temp file) on `DATA_DIR` at startup, so this class of
-  misconfiguration fails immediately with a clear, actionable error
-  naming the exact problem. See
-  [security.md](security.md#threat-model-notes) for the corrected
-  `chown` + `chmod` fix, now also demonstrated end-to-end in
-  `deploy/container-config-examples/host-networking.txt`.
-
 ## Next
 
 Not yet decided - see "Later" below for the candidate list (the

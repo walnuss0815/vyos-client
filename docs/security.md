@@ -400,25 +400,6 @@ stay `'self'` with no exception at all.
   can read/write - no new network-facing surface, purely local
   filesystem state. See
   [architecture.md](architecture.md#notifications-the-one-thing-this-backend-persists-beyond-vyos-itself).
-  **Mounting a fresh volume for this in production has one common
-  gotcha**: the container image runs as the distroless `nonroot` user
-  (fixed UID/GID `65532`), and a container engine that auto-creates a
-  missing bind-mount source directory can leave it with a mode that
-  omits the execute/"search" bit entirely (e.g. `0666` instead of
-  `0755`) - even when its ownership already correctly shows
-  `65532:65532`. A directory in that state is completely unusable
-  (nothing can be created or found inside it, for any user), and
-  `chown` alone does **not** fix it - you need to fix the mode too:
-  ```
-  sudo chown -R 65532:65532 <host-path>
-  sudo chmod -R u+rwx,g+rwx <host-path>
-  ```
-  `config.Load` now catches this at startup (a real write-test, not
-  just `stat`), so a misconfigured `DATA_DIR` fails immediately with a
-  message naming the exact problem, instead of surfacing later as a
-  bare, misleading "permission denied" trying to read a file that was
-  never actually missing - it just could never be created in the
-  first place.
 
 ### Restricting access to LAN clients only
 
