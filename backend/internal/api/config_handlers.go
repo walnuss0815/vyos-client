@@ -219,6 +219,59 @@ func (s *Server) handleImportConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, commitResponse{PendingConfirm: confirmMinutes > 0})
 }
 
+// savedConfigFile is where VyOS's own Save action persists to when no
+// explicit file is given (vyos.Client.ConfigFileSave's own default) -
+// handleRollback loads back from this same, fixed path, matching
+// ConfigFileSave's behavior rather than accepting an arbitrary
+// operator-supplied path (there's exactly one file this app's own
+// Save/Commit & Save ever writes to).
+const savedConfigFile = "/config/config.boot"
+
+type rollbackRequest struct {
+	ConfirmSeconds int `json:"confirmSeconds,omitempty"`
+}
+
+// handleRollback discards the running configuration's divergence from
+// the last saved one - VyOS's own /config-file `load` semantics,
+// pointed at savedConfigFile, replacing the entire candidate
+// configuration with whatever's on disk (see
+// vyos.Client.ConfigFileLoadFile's own doc comment for the full
+// reasoning, including why this is a `load` from a file path rather
+// than fetching/reformatting the file's content through this app).
+//
+// This is exactly as risky as any other full-config load: the saved
+// configuration isn't automatically safe just because it predates the
+// current session's commits (it may be exactly what those commits
+// fixed), so this enforces the same confirmSeconds bounds as
+// handleCommit/handleImportConfig - a caller should virtually always
+// supply a confirm window here, though (mirroring handleImportConfig)
+// this handler doesn't refuse an unconfirmed rollback outright.
+func (s *Server) handleRollback(w http.ResponseWriter, r *http.Request) {
+	var req rollbackRequest
+	if err := decodeJSON(w, r, &req); err != nil && !errors.Is(err, io.EOF) {
+		writeError(w, http.StatusBadRequest, "malformed request")
+		return
+	}
+	if req.ConfirmSeconds != 0 && (req.ConfirmSeconds < minConfirmSeconds || req.ConfirmSeconds > maxConfirmSeconds) {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf(
+			"confirmSeconds must be 0 (disabled) or between %d and %d", minConfirmSeconds, maxConfirmSeconds))
+		return
+	}
+
+	// Same seconds-to-minutes rounding as handleCommit.
+	confirmMinutes := 0
+	if req.ConfirmSeconds > 0 {
+		confirmMinutes = (req.ConfirmSeconds + 59) / 60
+	}
+
+	if err := s.VyOS.ConfigFileLoadFile(r.Context(), savedConfigFile, confirmMinutes); err != nil {
+		s.handleVyOSError(w, "rolling back configuration", err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, commitResponse{PendingConfirm: confirmMinutes > 0})
+}
+
 type saveRequest struct {
 	File string `json:"file,omitempty"`
 }

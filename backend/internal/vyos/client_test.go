@@ -350,6 +350,62 @@ func TestConfigFile_SaveAndConfirm(t *testing.T) {
 	}
 }
 
+// TestConfigFile_LoadFile guards the wire shape ConfigFileLoadFile
+// sends (a `load` carrying `file`, not `string`) and, via
+// testutil.FakeVyOS's SavedConfig snapshot, that this genuinely
+// behaves as a full restore of whatever was last saved - the
+// mechanism internal/api's handleRollback relies on.
+func TestConfigFile_LoadFile(t *testing.T) {
+	fake := testutil.New("test-key")
+	defer fake.Close()
+	c := newTestClient(t, fake)
+	ctx := context.Background()
+
+	fake.Config["system"] = map[string]any{"host-name": "saved-name"}
+	if err := c.ConfigFileSave(ctx, ""); err != nil {
+		t.Fatalf("ConfigFileSave: %v", err)
+	}
+
+	// Simulate further commits made after the save, not yet saved.
+	fake.Config["system"] = map[string]any{"host-name": "uncommitted-name"}
+
+	if err := c.ConfigFileLoadFile(ctx, "/config/config.boot", 0); err != nil {
+		t.Fatalf("ConfigFileLoadFile: %v", err)
+	}
+	if fake.PendingConfirm {
+		t.Fatal("expected no pending confirm without a confirm_time")
+	}
+
+	system, _ := fake.Config["system"].(map[string]any)
+	if system["host-name"] != "saved-name" {
+		t.Errorf("Config[system][host-name] = %q after load, want the saved value restored", system["host-name"])
+	}
+
+	last := fake.Requests[len(fake.Requests)-1]
+	if last.Endpoint != "/config-file" {
+		t.Errorf("endpoint = %q, want /config-file", last.Endpoint)
+	}
+	if !bytes.Contains(last.Data, []byte(`"op":"load"`)) {
+		t.Errorf("expected the request to carry op=load, got: %s", last.Data)
+	}
+	if !bytes.Contains(last.Data, []byte(`"file":"/config/config.boot"`)) {
+		t.Errorf("expected the request to carry the file path, got: %s", last.Data)
+	}
+	if bytes.Contains(last.Data, []byte(`"string"`)) {
+		t.Errorf("expected no string field for a file-based load, got: %s", last.Data)
+	}
+
+	if err := c.ConfigFileLoadFile(ctx, "/config/config.boot", 60); err != nil {
+		t.Fatalf("ConfigFileLoadFile with confirm_time: %v", err)
+	}
+	if !fake.PendingConfirm {
+		t.Fatal("expected pending confirm after load with confirm_time")
+	}
+	if err := c.ConfigFileConfirm(ctx); err != nil {
+		t.Fatalf("ConfigFileConfirm: %v", err)
+	}
+}
+
 func TestConfigFile_Load(t *testing.T) {
 	fake := testutil.New("test-key")
 	defer fake.Close()

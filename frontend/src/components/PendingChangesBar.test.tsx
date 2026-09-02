@@ -5,11 +5,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../test/mocks/server'
 import { createTestQueryClient, renderWithProviders } from '../test/testUtils'
 import { usePendingChangesStore } from '../store/pendingChanges'
+import { useUnsavedCommitStore } from '../store/unsavedCommit'
 import PendingChangesBar from './PendingChangesBar'
 
 beforeEach(() => {
   usePendingChangesStore.setState({ changes: [] })
+  useUnsavedCommitStore.setState({ committedChanges: [] })
   sessionStorage.clear()
+  localStorage.clear()
 })
 
 describe('PendingChangesBar', () => {
@@ -358,5 +361,215 @@ describe('PendingChangesBar', () => {
     await user.click(screen.getByRole('button', { name: /^commit$/i }))
 
     expect(await screen.findByText(/protocol must be defined/i)).toBeInTheDocument()
+  })
+
+  describe('committed but not saved', () => {
+    it('shows a persistent message and Save button after a plain Commit (no Save)', async () => {
+      usePendingChangesStore
+        .getState()
+        .add({ op: { op: 'set', path: ['system', 'host-name'], value: 'r1' }, label: 'set host-name' })
+      const user = userEvent.setup()
+      renderWithProviders(<PendingChangesBar />)
+
+      await user.click(screen.getByRole('button', { name: /^commit$/i }))
+
+      expect(await screen.findByText(/committed but not saved/i)).toBeInTheDocument()
+      expect(useUnsavedCommitStore.getState().committedChanges).toHaveLength(1)
+    })
+
+    it('does not show the message after "Commit & Save"', async () => {
+      usePendingChangesStore
+        .getState()
+        .add({ op: { op: 'set', path: ['system', 'host-name'], value: 'r1' }, label: 'set host-name' })
+      const user = userEvent.setup()
+      renderWithProviders(<PendingChangesBar />)
+
+      await user.click(screen.getByRole('checkbox', { name: /safe apply/i })) // disable safe apply -> no confirm step
+      await user.click(screen.getByRole('button', { name: /commit & save/i }))
+
+      await waitFor(() => {
+        expect(usePendingChangesStore.getState().changes).toHaveLength(0)
+      })
+      expect(screen.queryByText(/committed but not saved/i)).not.toBeInTheDocument()
+      expect(useUnsavedCommitStore.getState().committedChanges).toHaveLength(0)
+    })
+
+    it('lists the actual committed changes, collapsed by default', async () => {
+      useUnsavedCommitStore.setState({
+        committedChanges: [
+          { id: 'c1', op: { op: 'set', path: ['system', 'host-name'], value: 'r1' }, label: 'set host-name' },
+        ],
+      })
+      const user = userEvent.setup()
+      renderWithProviders(<PendingChangesBar />)
+      await screen.findByText(/committed but not saved/i)
+
+      expect(screen.queryByText('system host-name')).not.toBeInTheDocument()
+
+      await user.click(screen.getByText(/committed but not saved/i))
+
+      expect(screen.getByText(/system host-name/)).toBeInTheDocument()
+    })
+
+    it('clicking Save clears the message on success', async () => {
+      useUnsavedCommitStore.setState({
+        committedChanges: [{ id: 'c1', op: { op: 'set', path: ['system', 'host-name'], value: 'r1' }, label: '' }],
+      })
+      const user = userEvent.setup()
+      renderWithProviders(<PendingChangesBar />)
+      await screen.findByText(/committed but not saved/i)
+
+      await user.click(screen.getByRole('button', { name: /^save$/i }))
+
+      await waitFor(() => {
+        expect(useUnsavedCommitStore.getState().committedChanges).toHaveLength(0)
+      })
+      expect(screen.queryByText(/committed but not saved/i)).not.toBeInTheDocument()
+    })
+
+    it('shows an error (via the existing dismissible error bar) when Save fails', async () => {
+      server.use(http.post('/api/config/save', () => HttpResponse.json({ error: 'disk full' }, { status: 500 })))
+      useUnsavedCommitStore.setState({
+        committedChanges: [{ id: 'c1', op: { op: 'set', path: ['system', 'host-name'], value: 'r1' }, label: '' }],
+      })
+      const user = userEvent.setup()
+      renderWithProviders(<PendingChangesBar />)
+      await screen.findByText(/committed but not saved/i)
+
+      await user.click(screen.getByRole('button', { name: /^save$/i }))
+
+      expect(await screen.findByText(/disk full/i)).toBeInTheDocument()
+      // Must still be present - the config really is unsaved - so
+      // dismissing this transient error falls through to the
+      // persistent message again rather than vanishing entirely.
+      expect(useUnsavedCommitStore.getState().committedChanges).toHaveLength(1)
+
+      await user.click(screen.getByRole('button', { name: /dismiss/i }))
+      expect(await screen.findByText(/committed but not saved/i)).toBeInTheDocument()
+    })
+
+    it('"Mark as saved" clears the message without calling the save API', async () => {
+      const saveSpy = vi.fn(() => new HttpResponse(null, { status: 204 }))
+      server.use(http.post('/api/config/save', saveSpy))
+      useUnsavedCommitStore.setState({
+        committedChanges: [{ id: 'c1', op: { op: 'set', path: ['system', 'host-name'], value: 'r1' }, label: '' }],
+      })
+      const user = userEvent.setup()
+      renderWithProviders(<PendingChangesBar />)
+      await screen.findByText(/committed but not saved/i)
+
+      await user.click(screen.getByRole('button', { name: /mark as saved/i }))
+
+      expect(screen.queryByText(/committed but not saved/i)).not.toBeInTheDocument()
+      expect(useUnsavedCommitStore.getState().committedChanges).toHaveLength(0)
+      expect(saveSpy).not.toHaveBeenCalled()
+    })
+
+    it('keeps the flag true if Save fails after confirming a commit-confirm without "& Save"', async () => {
+      server.use(http.post('/api/config/commit', () => HttpResponse.json({ pendingConfirm: true })))
+      usePendingChangesStore
+        .getState()
+        .add({ op: { op: 'set', path: ['system', 'host-name'], value: 'r1' }, label: 'set host-name' })
+      const user = userEvent.setup()
+      renderWithProviders(<PendingChangesBar />)
+
+      await user.click(screen.getByRole('button', { name: /^commit$/i }))
+      await screen.findByText(/keep these changes/i)
+      await user.click(screen.getByRole('button', { name: /keep changes/i }))
+
+      expect(await screen.findByText(/committed but not saved/i)).toBeInTheDocument()
+      expect(useUnsavedCommitStore.getState().committedChanges).toHaveLength(1)
+    })
+
+    it('accumulates across multiple commits made without an intervening save', async () => {
+      usePendingChangesStore
+        .getState()
+        .add({ op: { op: 'set', path: ['system', 'host-name'], value: 'r1' }, label: 'set host-name' })
+      const user = userEvent.setup()
+      renderWithProviders(<PendingChangesBar />)
+      await user.click(screen.getByRole('button', { name: /^commit$/i }))
+      await screen.findByText(/1 change committed but not saved/i)
+
+      // The already-rendered bar reacts to the store directly - no
+      // need to render a second instance.
+      usePendingChangesStore
+        .getState()
+        .add({ op: { op: 'set', path: ['system', 'name-server'], value: '1.1.1.1' }, label: 'set name-server' })
+      await user.click(await screen.findByRole('button', { name: /^commit$/i }))
+
+      expect(await screen.findByText(/2 changes committed but not saved/i)).toBeInTheDocument()
+    })
+  })
+
+  describe('rollback', () => {
+    beforeEach(() => {
+      useUnsavedCommitStore.setState({
+        committedChanges: [{ id: 'c1', op: { op: 'set', path: ['system', 'host-name'], value: 'r1' }, label: '' }],
+      })
+    })
+
+    it('discards the committed changes and invalidates config queries on success', async () => {
+      const queryClient = createTestQueryClient()
+      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+      server.use(http.post('/api/config/rollback', () => HttpResponse.json({ pendingConfirm: false })))
+      const user = userEvent.setup()
+      renderWithProviders(<PendingChangesBar />, { queryClient })
+      await screen.findByText(/committed but not saved/i)
+
+      await user.click(screen.getByRole('button', { name: /^rollback$/i }))
+
+      await waitFor(() => {
+        expect(useUnsavedCommitStore.getState().committedChanges).toHaveLength(0)
+      })
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['config-tree'] })
+    })
+
+    it('always requests a commit-confirm window, and shows a rollback-specific confirm prompt', async () => {
+      let requestedConfirmSeconds: number | undefined
+      server.use(
+        http.post('/api/config/rollback', async ({ request }) => {
+          const body = (await request.json()) as { confirmSeconds?: number }
+          requestedConfirmSeconds = body.confirmSeconds
+          return HttpResponse.json({ pendingConfirm: true })
+        }),
+      )
+      const user = userEvent.setup()
+      renderWithProviders(<PendingChangesBar />)
+      await screen.findByText(/committed but not saved/i)
+
+      await user.click(screen.getByRole('button', { name: /^rollback$/i }))
+
+      expect(await screen.findByText(/keep this rollback\?/i)).toBeInTheDocument()
+      expect(requestedConfirmSeconds).toBeGreaterThan(0)
+    })
+
+    it('confirming a rollback clears the committed changes and invalidates config queries', async () => {
+      server.use(http.post('/api/config/rollback', () => HttpResponse.json({ pendingConfirm: true })))
+      const queryClient = createTestQueryClient()
+      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+      const user = userEvent.setup()
+      renderWithProviders(<PendingChangesBar />, { queryClient })
+      await screen.findByText(/committed but not saved/i)
+
+      await user.click(screen.getByRole('button', { name: /^rollback$/i }))
+      await screen.findByText(/keep this rollback\?/i)
+      await user.click(screen.getByRole('button', { name: /keep this rollback/i }))
+
+      await waitFor(() => {
+        expect(useUnsavedCommitStore.getState().committedChanges).toHaveLength(0)
+      })
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['config-tree'] })
+    })
+
+    it('shows an error when the rollback request fails', async () => {
+      server.use(http.post('/api/config/rollback', () => HttpResponse.json({ error: 'unreachable' }, { status: 502 })))
+      const user = userEvent.setup()
+      renderWithProviders(<PendingChangesBar />)
+      await screen.findByText(/committed but not saved/i)
+
+      await user.click(screen.getByRole('button', { name: /^rollback$/i }))
+
+      expect(await screen.findByText(/unreachable/i)).toBeInTheDocument()
+    })
   })
 })

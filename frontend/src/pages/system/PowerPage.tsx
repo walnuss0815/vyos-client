@@ -3,7 +3,17 @@ import { NavLink } from 'react-router-dom'
 import Modal from '../../components/Modal'
 import { useSystemInfo } from '../../hooks/useSystemInfo'
 import { buttonClass, inputClass, labelClass } from '../../lib/formStyles'
-import { poweroffSystem, rebootSystem } from '../../lib/vyosApi'
+import { confirmCommit, poweroffSystem, rebootSystem, rollback, save } from '../../lib/vyosApi'
+import { useUnsavedCommitStore } from '../../store/unsavedCommit'
+
+// Fixed commit-confirm window Rollback always requests - no
+// configurable control here (unlike PendingChangesBar.tsx's "Safe
+// apply" seconds input, which is specifically about a normal Commit),
+// matching PendingChangesBar's own Rollback button, which always
+// protects itself the same way with no opt-out. See
+// store/unsavedCommit.ts's doc comment for why rolling back to the
+// saved configuration isn't automatically risk-free.
+const ROLLBACK_CONFIRM_SECONDS = 90
 
 /**
  * Immediate reboot/poweroff (`reboot now` / `poweroff now` - see
@@ -37,8 +47,168 @@ export default function PowerPage() {
         </NavLink>{' '}
         from the Config Tree page - a quick safety net if you need to compare or restore it later.
       </p>
+      <SaveSection />
+      <RollbackSection />
       <RebootSection />
       <PoweroffSection hostname={info?.hostname ?? ''} />
+    </div>
+  )
+}
+
+/**
+ * Always-available manual Save, independent of the pending-changes
+ * cart or PendingChangesBar.tsx's own "committed but not saved"
+ * indicator - see store/unsavedCommit.ts's doc comment for why that
+ * indicator can only ever track commits made through this app itself.
+ * A commit made via the CLI, another session, or another browser is
+ * invisible to it, so this button exists as the way to still save
+ * proactively regardless of what this app does or doesn't know about.
+ */
+function SaveSection() {
+  const markSaved = useUnsavedCommitStore((s) => s.markSaved)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [done, setDone] = useState(false)
+
+  async function handleSave() {
+    setBusy(true)
+    setError(null)
+    setDone(false)
+    try {
+      await save()
+      markSaved()
+      setDone(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save configuration.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-surface-border bg-surface-900 p-4">
+      <h2 className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">
+        Save configuration
+      </h2>
+      <p className="mb-3 text-xs text-slate-500">
+        Persists the currently running configuration to disk, independent of the pending-changes
+        cart - useful after changes made via the CLI, another session, or a previous visit this
+        app didn't track.
+      </p>
+      <button onClick={() => void handleSave()} disabled={busy} className={`bg-surface-800 ${buttonClass}`}>
+        {busy ? 'Saving…' : 'Save now'}
+      </button>
+      {done && !error && <p className="mt-2 text-xs text-success-500">Configuration saved.</p>}
+      {error && <p className="mt-2 text-xs text-danger-500">{error}</p>}
+    </div>
+  )
+}
+
+/**
+ * Always-available rollback, independent of PendingChangesBar.tsx's
+ * own "committed but not saved" indicator - since that indicator can
+ * only ever track commits made through this app (see
+ * store/unsavedCommit.ts's doc comment), this exists so an operator
+ * can still discard divergence from the saved configuration that this
+ * app never noticed (e.g. committed via the CLI).
+ *
+ * Two-step confirmation, unlike SaveSection: Rollback discards
+ * whatever's currently running in favor of the last saved
+ * configuration, and this component has no visibility into what
+ * exactly that discards (unlike PendingChangesBar.tsx's own Rollback
+ * button, which the operator can expand to review first) - so an
+ * explicit "Confirm rollback?" click is required before even sending
+ * the request, on top of the VyOS-side commit-confirm window every
+ * rollback also gets (ROLLBACK_CONFIRM_SECONDS) - if the saved
+ * configuration itself turns out to be broken, not confirming within
+ * that window lets VyOS automatically restore what was running before
+ * the rollback.
+ */
+function RollbackSection() {
+  const markSaved = useUnsavedCommitStore((s) => s.markSaved)
+  const [confirming, setConfirming] = useState(false)
+  const [pendingConfirm, setPendingConfirm] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [done, setDone] = useState(false)
+
+  async function handleRollback() {
+    if (!confirming) {
+      setConfirming(true)
+      setError(null)
+      return
+    }
+    setConfirming(false)
+    setBusy(true)
+    setError(null)
+    try {
+      const result = await rollback(ROLLBACK_CONFIRM_SECONDS)
+      if (result.pendingConfirm) {
+        setPendingConfirm(true)
+      } else {
+        markSaved()
+        setDone(true)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to roll back configuration.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleKeep() {
+    setBusy(true)
+    setError(null)
+    try {
+      // Same underlying VyOS mechanism as PendingChangesBar.tsx's own
+      // commit-confirm - confirms the one session-scoped timer
+      // regardless of which endpoint started it.
+      await confirmCommit()
+      markSaved()
+      setPendingConfirm(false)
+      setDone(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to confirm the rollback.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-danger-500/40 bg-surface-900 p-4">
+      <h2 className="mb-1 text-xs font-medium uppercase tracking-wide text-danger-500">Rollback</h2>
+      <p className="mb-3 text-xs text-slate-500">
+        Discards any committed-but-unsaved configuration, restoring the last saved configuration
+        - independent of the pending-changes cart, and independent of whether this app itself
+        tracked the commit (e.g. one made via the CLI). Always protected by a{' '}
+        {ROLLBACK_CONFIRM_SECONDS}-second commit-confirm window: VyOS automatically restores what
+        was running if you don&apos;t confirm in time.
+      </p>
+      {done ? (
+        <p className="text-xs text-success-500">Rolled back to the last saved configuration.</p>
+      ) : pendingConfirm ? (
+        <div>
+          <p className="mb-2 text-xs text-warning-500">
+            Keep this rollback? VyOS will automatically restore what was running otherwise.
+          </p>
+          <button
+            onClick={() => void handleKeep()}
+            disabled={busy}
+            className="rounded-lg bg-success-500 px-3 py-1.5 text-xs font-medium text-black hover:brightness-110 disabled:opacity-60"
+          >
+            {busy ? 'Confirming…' : 'Keep this rollback'}
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={() => void handleRollback()}
+          disabled={busy}
+          className={confirming ? `bg-danger-600 ${buttonClass}` : `bg-surface-800 ${buttonClass}`}
+        >
+          {busy ? 'Rolling back…' : confirming ? 'Confirm rollback?' : 'Rollback'}
+        </button>
+      )}
+      {error && <p className="mt-2 text-xs text-danger-500">{error}</p>}
     </div>
   )
 }

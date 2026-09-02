@@ -101,6 +101,57 @@ mirrors this exactly rather than inventing its own semantics:
   `{"op":"save"}`, independent of Commit — useful for persisting changes
   made outside the UI too.
 
+Committing without saving is a well-known VyOS gotcha: the change is
+live, but silently lost on the next reboot. VyOS's REST API has no
+endpoint to ask "does the running configuration differ from the saved
+one" — it exposes exactly ten endpoints (see above), none of them a
+config comparison, and building one ourselves would mean diffing `show
+configuration commands`'s flat set-command output against `show file
+/config/config.boot`'s completely different curly-brace format, which
+needs a real parser this app doesn't have. `frontend/src
+/store/unsavedCommit.ts` tracks this client-side instead — a
+`localStorage`-backed list of exactly which changes were committed
+*through this app* since the last save (`committedChanges`, not just a
+boolean), appended to on every successful commit and cleared once a
+save (or rollback, below) succeeds. `PendingChangesBar.tsx` shows a
+persistent "N changes committed but not saved" message, collapsed by
+default (same expand/collapse pattern as the ordinary pending-changes
+list), even with an empty pending-changes cart. This is deliberately
+scoped to what this app itself committed, never a universal claim
+about the router's actual state — a commit made via the CLI, another
+session, or another browser is invisible to it.
+
+Two actions are offered on that persistent message:
+
+- **Save** — the same `POST /api/config/save` as above, clearing the
+  tracked list on success. A "Mark as saved" link next to it clears the
+  list without calling the API at all, for when it's gone stale (e.g.
+  already saved via the CLI instead).
+- **Rollback** (`POST /api/config/rollback`) — discards the tracked
+  changes entirely by replacing the running configuration with
+  whatever's saved on disk. Backed by a new `vyos.Client
+  .ConfigFileLoadFile`, which sends VyOS's `/config-file` `{"op":"load",
+  "file":"/config/config.boot"}` — a file-based `load`, so VyOS reads
+  and parses its own saved file rather than this app fetching or
+  reformatting it (which would hit the exact same "no parser" wall
+  described above). This always requests a commit-confirm window, even
+  though a normal Commit's "Safe apply" is optional: the saved
+  configuration being rolled back to isn't automatically risk-free just
+  because it predates these commits (it may be exactly what they
+  fixed), so the same VyOS-side auto-revert safety net always applies.
+  Confirming reuses the exact same `POST /api/config/commit/confirm` as
+  a normal commit-confirm — VyOS treats it as one session-scoped timer
+  regardless of which endpoint started it.
+
+`PowerPage.tsx`'s System > Power tab also has standalone "Save now" and
+"Rollback" buttons, independent of `committedChanges` entirely — since
+that list can only ever reflect what this app itself tracked, these
+exist so an operator can still act proactively regardless of what this
+app does or doesn't know about (e.g. a commit made via the CLI).
+Rollback there additionally requires an explicit "Confirm rollback?"
+click before the request is even sent, since (unlike the bar's own
+version) there's no committed-changes list to review first.
+
 See `backend/internal/vyos/configure.go` and `configfile.go` for the exact
 request shapes, which were verified against vyos-1x's actual pydantic
 request models (`src/services/api/rest/models.py`) rather than assumed
