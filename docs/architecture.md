@@ -58,10 +58,15 @@ recording since it shapes the auth model:
 - **Network diagnostics (ping/traceroute/DNS lookup) were investigated
   and found genuinely unreachable through this app's REST-only
   constraint, not just unbuilt.** VyOS's REST API exposes exactly ten
-  endpoints, confirmed directly against docs.vyos.io's VyOS API
-  reference rather than assumed: `/info`, `/retrieve`, `/reset`,
-  `/reboot`, `/poweroff`, `/image`, `/show`, `/generate`, `/configure`,
-  `/config-file`. `/show` only dispatches op-mode commands that begin
+  *documented* endpoints, confirmed directly against docs.vyos.io's
+  VyOS API reference rather than assumed: `/info`, `/retrieve`,
+  `/reset`, `/reboot`, `/poweroff`, `/image`, `/show`, `/generate`,
+  `/configure`, `/config-file`. (There's one further, officially-
+  undocumented op-mode endpoint, `/container-image`, that this app
+  does use - see "Container images" below - which doesn't appear on
+  that reference page at all; it doesn't change the conclusion here,
+  since it's just as fixed-dispatch as `/show`, not a generic
+  "run anything" escape hatch.) `/show` only dispatches op-mode commands that begin
   with the CLI word "show" (its `path` maps directly onto the words
   *after* "show" — e.g. `path: ["system","image"]` is `show system
   image`) — `ping`/`traceroute` are top-level op-mode verbs on VyOS's
@@ -104,7 +109,7 @@ mirrors this exactly rather than inventing its own semantics:
 Committing without saving is a well-known VyOS gotcha: the change is
 live, but silently lost on the next reboot. VyOS's REST API has no
 endpoint to ask "does the running configuration differ from the saved
-one" — it exposes exactly ten endpoints (see above), none of them a
+one" — it exposes exactly ten documented endpoints (see above), none of them a
 config comparison, and building one ourselves would mean diffing `show
 configuration commands`'s flat set-command output against `show file
 /config/config.boot`'s completely different curly-brace format, which
