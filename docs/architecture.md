@@ -113,8 +113,8 @@ one" — it exposes exactly ten documented endpoints (see above), none of them a
 config comparison, and building one ourselves would mean diffing `show
 configuration commands`'s flat set-command output against `show file
 /config/config.boot`'s completely different curly-brace format, which
-needs a real parser this app doesn't have. `frontend/src
-/store/unsavedCommit.ts` tracks this client-side instead — a
+needs a real parser this app doesn't have.
+`frontend/src/store/unsavedCommit.ts` tracks this client-side instead — a
 `localStorage`-backed list of exactly which changes were committed
 *through this app* since the last save (`committedChanges`, not just a
 boolean), appended to on every successful commit and cleared once a
