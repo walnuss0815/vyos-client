@@ -1876,7 +1876,9 @@ not a silently-missing gap.
   a plain tag. Manual/on-demand only (a button per container, never
   triggered automatically) since, unlike self-upgrade's single
   server-cached check, this can contact an arbitrary number of
-  different registries with no caching on this app's side.
+  different registries with no caching on this app's side. See
+  [architecture.md](architecture.md#container-image-update-checks) for
+  the full design rationale.
 
 - **amd64-only builds**: `.github/workflows/release.yml`'s image build
   now targets `linux/amd64` only, dropping `linux/arm64` and the
