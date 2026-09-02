@@ -847,16 +847,6 @@ unset, a random one is generated at startup and everyone is logged out on
 the next restart (a deliberate, documented trade-off in favor of true
 statelessness over persistence-without-configuration).
 
-For an operator who wants that persistence without having to manage
-`SESSION_SECRET` by hand, `cmd/vyos-client/sessionsecret.go` implements
-a three-tier resolution: an explicit `SESSION_SECRET` always wins;
-otherwise, if `DATA_DIR` is configured, a secret is read from - or
-generated once and persisted to - `<DATA_DIR>/session-secret`
-(`0600` permissions, written atomically - see `internal/atomicfile`);
-otherwise, the original always-ephemeral behavior above is unchanged.
-This is the same `DATA_DIR` the notification feed below optionally
-persists to.
-
 `RequireSession` (`backend/internal/auth/middleware.go`) reissues a
 fresh token on every successfully-authenticated request via
 `SessionManager.Renew` - the original `issued_at` is preserved and a
@@ -898,39 +888,6 @@ being masked unconditionally forever — see
 GET, why it's scoped to sensitive leaves only, why there's no step-up
 re-authentication in v1, and why multi-value array leaves aren't
 supported).
-
-## Notifications: the one thing this backend persists beyond VyOS itself
-
-`backend/internal/notifications` is a small, capped (200 entries,
-oldest evicted first) in-app feed - `{id, createdAt, severity,
-category, title, message, read}` entries other parts of the backend
-raise (e.g. the background container-image-update checker) and the
-frontend polls, marks read, and dismisses. It's deliberately *not*
-VyOS state: a notification describes something this app itself
-noticed or was told, not something read from `/retrieve` or `/show`,
-so it needs somewhere of its own to live - the first genuine exception
-to this project's "no separate server-side state management"
-principle.
-
-That exception is kept as narrow as possible: `Store` works purely
-in-memory with zero configuration (same as every other feature here),
-and only persists to `<DATA_DIR>/notifications.json` when the new
-`DATA_DIR` env var is set - unset by default, so a fresh deployment
-behaves exactly as before (an empty feed on every restart) until an
-operator opts in to surviving one. The same `DATA_DIR` also backs
-session-secret persistence (see "Auth: stateless sessions" below) -
-one shared directory for both of the (only) two things this backend
-can optionally remember across a restart, rather than a
-notifications-specific directory.
-
-Nothing raises a notification yet as of this feature landing - this is
-the plumbing (store, `GET`/`POST`/`DELETE /api/notifications...`, the
-frontend feed page and sidebar unread badge) a first real producer
-needs to already exist before it can call `Store.Add`. A background
-container-image-update checker is the intended first one (see
-"Container image update checks" above for the existing manual,
-on-demand version this would run automatically instead of, on a
-schedule) - not yet built as of this feature.
 
 ## Tested against
 

@@ -23,7 +23,6 @@ import (
 
 	"github.com/walnuss0815/vyos-client/backend/internal/api"
 	"github.com/walnuss0815/vyos-client/backend/internal/auth"
-	"github.com/walnuss0815/vyos-client/backend/internal/notifications"
 	"github.com/walnuss0815/vyos-client/backend/internal/testutil"
 	"github.com/walnuss0815/vyos-client/backend/internal/vyos"
 )
@@ -57,10 +56,6 @@ func newTestEnvWithVerifier(t *testing.T, buildVerifier func(vyosClient *vyos.Cl
 	}
 
 	loginLimiter := auth.NewLoginLimiter()
-	notificationStore, err := notifications.NewStore(notifications.Config{})
-	if err != nil {
-		t.Fatalf("notifications.NewStore: %v", err)
-	}
 	srv := &api.Server{
 		VyOS:                    vyosClient,
 		Sessions:                auth.NewSessionManager([]byte("test-session-secret")),
@@ -69,7 +64,6 @@ func newTestEnvWithVerifier(t *testing.T, buildVerifier func(vyosClient *vyos.Cl
 		Logger:                  slog.New(slog.NewTextHandler(io.Discard, nil)),
 		CookiesSecure:           false,
 		SafeApplyDefaultSeconds: 90,
-		Notifications:           notificationStore,
 	}
 
 	ts := httptest.NewServer(srv.Routes())

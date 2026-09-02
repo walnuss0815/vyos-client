@@ -23,8 +23,7 @@ no config file. This is the complete list, matching
 | `TLS_ENABLED` | `true` | Whether the backend's own listener serves HTTPS (`true`) or plain HTTP (`false`). Only set this to `false` behind a trusted reverse proxy that terminates real TLS, or on a fully isolated/trusted network — see [security.md](security.md#serving-plain-http-instead-tls_enabledfalse). Also controls the default for `COOKIE_SECURE`, below. |
 | `TLS_CERT_FILE` / `TLS_KEY_FILE` | unset | Path to a real TLS certificate/key for the backend's own HTTPS listener (mount as a volume). Only used when `TLS_ENABLED=true` (the default); if either is unset in that case, a self-signed certificate is generated at startup, mirroring VyOS's own default behavior for its API — fine for evaluation, but browsers will warn. |
 | `COOKIE_SECURE` | matches `TLS_ENABLED` | Whether session/CSRF cookies get the `Secure` attribute (browsers drop `Secure` cookies sent over plain HTTP, so this defaults to `TLS_ENABLED`). Override independently for a TLS-terminating reverse proxy in front of this process (`TLS_ENABLED=false`, but the browser's own connection to the proxy is genuinely HTTPS) — set `COOKIE_SECURE=true` in that case. Setting it to `false` while `TLS_ENABLED=true` is flagged with a startup warning (almost always a mistake). See [security.md](security.md#serving-plain-http-instead-tls_enabledfalse). |
-| `SESSION_SECRET` | randomly generated at startup | HMAC key signing session and CSRF tokens. **Set this explicitly** if you want sessions to survive a container restart; otherwise a fresh random secret each boot means every session is invalidated on restart (unless `DATA_DIR` is set - see below). Treat it as a high-value secret. |
-| `DATA_DIR` | unset | Directory this backend may persist local state to across restarts: a generated `SESSION_SECRET` (when that variable itself is left unset - see above) and the in-app notification feed (see [architecture.md](architecture.md#notifications-the-one-thing-this-backend-persists-beyond-vyos-itself)). Optional — both features work with no `DATA_DIR` at all, just without surviving a restart. Must already exist and be a directory (mount it as a volume); the backend never creates it. |
+| `SESSION_SECRET` | randomly generated at startup | HMAC key signing session and CSRF tokens. **Set this explicitly** if you want sessions to survive a container restart; otherwise a fresh random secret each boot means every session is invalidated on restart. Treat it as a high-value secret. |
 | `SAFE_APPLY_DEFAULT_SECONDS` | `90` | Default commit-confirm countdown (seconds) the UI's "safe apply" toggle suggests. Always overridable per-commit in the UI. |
 | `CONFIG_WARNINGS_ENABLED` | `false` | Whether the UI's persistent "configuration warnings" banner (firewall default-action, SSH password auth, HTTPS API restrictions, SNMP default community strings, users with no password/SSH key) is shown at all. Disabled by default since the checks are opinionated security-posture judgment calls, not factual VyOS state — enable if you want them. |
 | `SELF_UPGRADE_ENABLED` | `false` | Whether System > Upgrades checks this app's own GitHub releases for an update and lets you pull/queue a new image. Disabled by default — this is the only outbound-to-the-internet call anywhere in the backend; everything else only ever talks to VyOS's own API. See [architecture.md](architecture.md#self-upgrade). |
@@ -53,9 +52,6 @@ no config file. This is the complete list, matching
 - Session TTL: 30 minutes, sliding (renewed on every authenticated
   request), capped at 12 hours from login regardless of activity
   (`backend/internal/auth/session.go`).
-- Notification feed retention: 200 entries, oldest evicted first
-  regardless of read state (`backend/internal/notifications`). The
-  frontend polls `GET /api/notifications` every 30 seconds.
 
 ## Generating secrets
 

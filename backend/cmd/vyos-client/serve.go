@@ -16,7 +16,6 @@ import (
 	"github.com/walnuss0815/vyos-client/backend/internal/auth"
 	"github.com/walnuss0815/vyos-client/backend/internal/config"
 	"github.com/walnuss0815/vyos-client/backend/internal/imageupdate"
-	"github.com/walnuss0815/vyos-client/backend/internal/notifications"
 	"github.com/walnuss0815/vyos-client/backend/internal/selfupgrade"
 	"github.com/walnuss0815/vyos-client/backend/internal/vyos"
 	"github.com/walnuss0815/vyos-client/backend/internal/webapp"
@@ -29,22 +28,9 @@ func runServer() error {
 	if err != nil {
 		return err
 	}
-	// See resolveSessionSecret's own doc comment for the three-tier
-	// resolution this implements (explicit SESSION_SECRET > a secret
-	// persisted under DATA_DIR > today's ephemeral-random fallback).
-	// sessionSecret (not cfg.SessionSecret) is what actually gets
-	// wired into auth.NewSessionManager below.
-	sessionSecret, sessionSecretEphemeral, err := resolveSessionSecret(cfg)
-	if err != nil {
-		return fmt.Errorf("resolving session secret: %w", err)
-	}
-	if sessionSecretEphemeral {
+	if cfg.SessionSecretIsEphemeral {
 		logger.Warn("SESSION_SECRET not set; a random one was generated for this run. " +
-			"All sessions will be invalidated on the next restart. Set SESSION_SECRET explicitly, " +
-			"or DATA_DIR to have a generated one persisted automatically, for session persistence across restarts.")
-	}
-	if cfg.DataDir != "" {
-		logger.Info("data directory configured", "path", cfg.DataDir)
+			"All sessions will be invalidated on the next restart. Set SESSION_SECRET explicitly for session persistence across restarts.")
 	}
 	if cfg.VyOSAPIURLUsesPlainHTTP {
 		logger.Warn("VYOS_API_URL uses plain http://, not https://. This is expected for local "+
@@ -115,16 +101,6 @@ func runServer() error {
 	// two independently-constructed limiters, or the failures
 	// recorded inside Verify never affect the Allow check handleLogin
 	// actually makes, silently disabling rate limiting.
-	// Constructed unconditionally - it works with no DataDir at all
-	// (purely in-memory, reset on restart, same as the pre-Notifications
-	// behavior of having no such feature) and only persists to disk
-	// when DataDir is configured. See internal/notifications.Store's
-	// own doc comment.
-	notificationStore, err := notifications.NewStore(notifications.Config{DataDir: cfg.DataDir})
-	if err != nil {
-		return fmt.Errorf("configuring notification store: %w", err)
-	}
-
 	loginLimiter := auth.NewLoginLimiter()
 	// 30 commits/confirms/imports per 5 minutes per authenticated
 	// user - generous enough for normal interactive use (including
@@ -147,7 +123,7 @@ func runServer() error {
 
 	apiServer := &api.Server{
 		VyOS:     vyosClient,
-		Sessions: auth.NewSessionManager(sessionSecret),
+		Sessions: auth.NewSessionManager(cfg.SessionSecret),
 		Verifier: verifier,
 		Limiter:  loginLimiter,
 		Logger:   logger,
@@ -170,7 +146,6 @@ func runServer() error {
 		// handleCheckContainerImageUpdate).
 		ImageRegistry:      imageupdate.NewClient(imageupdate.Config{}),
 		FileBrowserEnabled: cfg.FileBrowserEnabled,
-		Notifications:      notificationStore,
 	}
 
 	mux := http.NewServeMux()
