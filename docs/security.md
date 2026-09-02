@@ -339,8 +339,10 @@ stay `'self'` with no exception at all.
   Treat the container's environment configuration with the same care as
   root/admin credentials on the router itself — because, functionally,
   it is one.
-- **Rate limiting exists on login (always) and on config commit/import
-  (per authenticated user)**, but not on every authenticated route.
+- **Rate limiting exists on login (always) and on every route that
+  triggers a real VyOS commit — commit, commit/confirm, import, and
+  rollback (per authenticated user)**, but not on every authenticated
+  route.
   `POST /api/config/save` and the file browser
   (`GET /api/files`, when `FILE_BROWSER_ENABLED=true`) are bounded by
   request/response size caps instead (`maxRequestBodyBytes`,
