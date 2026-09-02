@@ -3,6 +3,7 @@ import { containerNamePath } from '../../lib/containerParse'
 import { buttonClass } from '../../lib/formStyles'
 import { checkContainerImageUpdate, pullContainerImage, type ContainerImageUpdateCheck as CheckResult } from '../../lib/vyosApi'
 import { hasPendingSet, usePendingChangesStore } from '../../store/pendingChanges'
+import { useContainerImageUpdateChecksStore } from '../../store/containerImageUpdateChecks'
 
 /** Per-container "Check for update" button on the Containers page -
  * see docs/architecture.md's "Container image update checks" section.
@@ -17,15 +18,34 @@ import { hasPendingSet, usePendingChangesStore } from '../../store/pendingChange
  * (e.g. on mount or when the Containers page loads) - unlike
  * self-upgrade's single, server-cached GitHub check, this contacts
  * whatever registry the container's own image reference happens to
- * point at, with no caching on this app's side, so an operator with
- * many containers configured shouldn't have all of them checked at
- * once just from visiting the page. */
+ * point at, with no server-side caching, so an operator with many
+ * containers configured shouldn't have all of them checked at once
+ * just from visiting the page.
+ *
+ * The last result IS remembered client-side though
+ * (store/containerImageUpdateChecks.ts, backed by localStorage) so it
+ * survives a reload/browser restart instead of vanishing the instant
+ * this component unmounts - see that store's own doc comment for why
+ * this doesn't conflict with "manual only": nothing here ever
+ * triggers a check on its own, it only stops discarding one the
+ * operator already explicitly asked for. */
 export default function ContainerImageUpdateCheck({ image, containerName }: { image: string; containerName: string }) {
   const add = usePendingChangesStore((s) => s.add)
   const changes = usePendingChangesStore((s) => s.changes)
+  const cached = useContainerImageUpdateChecksStore((s) => s.checks[containerName])
+  const setCachedCheck = useContainerImageUpdateChecksStore((s) => s.setCheck)
+  // A cached entry only counts if it was checked against the image
+  // this container currently has - if the operator edited the image
+  // since (or already accepted this very update), the old result no
+  // longer describes anything real.
+  const cachedForCurrentImage = cached?.image === image ? cached : undefined
 
   const [checking, setChecking] = useState(false)
-  const [result, setResult] = useState<CheckResult | null>(null)
+  // Lazily hydrated from the persisted cache on mount (not on every
+  // render - a later cache change from another instance/tab
+  // shouldn't yank a value out from under an in-progress check).
+  const [result, setResult] = useState<CheckResult | null>(() => cachedForCurrentImage?.result ?? null)
+  const [checkedAt, setCheckedAt] = useState<number | null>(() => cachedForCurrentImage?.checkedAt ?? null)
   const [error, setError] = useState<string | null>(null)
   const [pulling, setPulling] = useState(false)
   const [queued, setQueued] = useState(false)
@@ -43,7 +63,11 @@ export default function ContainerImageUpdateCheck({ image, containerName }: { im
     setResult(null)
     setQueued(false)
     try {
-      setResult(await checkContainerImageUpdate(image))
+      const checkResult = await checkContainerImageUpdate(image)
+      const now = Date.now()
+      setResult(checkResult)
+      setCheckedAt(now)
+      setCachedCheck(containerName, image, checkResult)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to check for updates.')
     } finally {
@@ -76,6 +100,13 @@ export default function ContainerImageUpdateCheck({ image, containerName }: { im
             className={`bg-accent-600 ${buttonClass}`}
           >
             {pulling ? 'Pulling…' : 'Upgrade'}
+          </button>{' '}
+          <button
+            onClick={() => void check()}
+            disabled={checking || pulling}
+            className={`bg-surface-800 ${buttonClass}`}
+          >
+            {checking ? 'Checking…' : 'Re-check'}
           </button>
           <p className="mt-1 text-warning-500">
             Update available: <span className="font-mono">{upgradeInfo.latestTag}</span>
@@ -87,6 +118,10 @@ export default function ContainerImageUpdateCheck({ image, containerName }: { im
             {checking ? 'Checking…' : 'Check for update'}
           </button>
         )
+      )}
+
+      {result && checkedAt && (
+        <p className="mt-1 text-slate-500">Checked at {new Date(checkedAt).toLocaleString()}.</p>
       )}
 
       {error && <p className="mt-1 text-danger-500">{error}</p>}
