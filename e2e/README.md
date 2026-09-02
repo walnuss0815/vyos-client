@@ -137,7 +137,7 @@ older Stream release doesn't get hidden by rolling passing fine.
 
 ### What's actually tested
 
-`tests/specs/` has 19 specs total. Three cover the login/masking/commit
+`tests/specs/` has 18 specs total. Three cover the login/masking/commit
 pipeline itself:
 
 - **`AUTH_MODE=vyos-users` login against a real VyOS-hashed password**
@@ -165,7 +165,7 @@ pipeline itself:
   VM, not just trusting the UI's optimistic state. Restores the
   original hostname afterward.
 
-The remaining 16 cover most other major configuration areas - one spec
+The remaining 15 cover most other major configuration areas - one spec
 per area, each driving that area's own real page/form (not raw Config
 Tree edits), committing against the real VM, and reloading to confirm
 the change genuinely persisted: `interfaces.spec.ts` (eth0 description),
