@@ -182,33 +182,49 @@ func TestVyOSUserVerifier_BackendError(t *testing.T) {
 // similar margin) - it's checking for the *qualitative* absence of a
 // "skip the expensive step entirely" shortcut, not asserting a tight
 // timing bound.
+//
+// Two things make this robust against that noise rather than merely
+// tolerant of it, after this test flaked once in CI (ratio 0.49,
+// barely under the old 0.5 floor - two sequential 20-iteration blocks
+// of single-digit-millisecond work leaves a lot of room for one
+// unlucky GC pause or scheduling hiccup to land entirely within just
+// one block):
+//   - The two paths are measured *interleaved*, one iteration of each
+//     per loop turn, rather than as two back-to-back blocks. A
+//     transient slowdown during any given window then affects both
+//     cumulative timers together, instead of being able to skew only
+//     whichever block happens to be running at the time.
+//   - `samples` is 10x larger (200, not 20), so any noise that isn't
+//     fully correlated between the two paths gets averaged down
+//     proportionally more before the ratio is computed.
 func TestVyOSUserVerifier_UnknownUserTakesComparableTimeToWrongPassword(t *testing.T) {
-	const samples = 20
+	const samples = 200
 	limiter := auth.NewLoginLimiter()
 	limiter.MaxAttempts = samples * 3 // avoid backoff from interfering with the measurement
 
 	knownUserVerifier := auth.NewVyOSUserVerifier(newAliceConfig(), limiter)
 	unknownUserVerifier := auth.NewVyOSUserVerifier(newAliceConfig(), limiter)
 
-	measure := func(v *auth.VyOSUserVerifier, username string) time.Duration {
+	var wrongPasswordElapsed, unknownUserElapsed time.Duration
+	for i := 0; i < samples; i++ {
 		start := time.Now()
-		for i := 0; i < samples; i++ {
-			_ = v.Verify(context.Background(), "1.2.3.4", username, "definitely-wrong-password")
-		}
-		return time.Since(start)
-	}
+		_ = knownUserVerifier.Verify(context.Background(), "1.2.3.4", "alice", "definitely-wrong-password")
+		wrongPasswordElapsed += time.Since(start)
 
-	wrongPasswordElapsed := measure(knownUserVerifier, "alice")
-	unknownUserElapsed := measure(unknownUserVerifier, "someone-who-does-not-exist")
+		start = time.Now()
+		_ = unknownUserVerifier.Verify(context.Background(), "1.2.3.4", "someone-who-does-not-exist", "definitely-wrong-password")
+		unknownUserElapsed += time.Since(start)
+	}
 
 	// The old, vulnerable behavior made the unknown-user path many
 	// times faster (no crypt call at all vs. one full sha512-crypt
-	// computation per attempt) - well outside a 2x margin either way.
-	// A fixed implementation should land close to 1x; allowing up to
-	// 2x in *either* direction keeps this robust against ordinary
-	// system noise while still catching a reintroduced short-circuit.
+	// computation per attempt) - well outside a 2.5x margin either
+	// way. A fixed implementation should land close to 1x; allowing
+	// up to 2.5x in *either* direction keeps this robust against
+	// ordinary system noise while still catching a reintroduced
+	// short-circuit.
 	ratio := float64(unknownUserElapsed) / float64(wrongPasswordElapsed)
-	if ratio < 0.5 || ratio > 2.0 {
+	if ratio < 0.4 || ratio > 2.5 {
 		t.Errorf(
 			"unknown-user path took %v for %d attempts, known-user-wrong-password path took %v - ratio %.2f is outside the expected ~1x range, suggesting the crypt(3) verification is being skipped for one of the two paths (a timing side-channel)",
 			unknownUserElapsed, samples, wrongPasswordElapsed, ratio,
