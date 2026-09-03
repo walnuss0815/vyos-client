@@ -73,6 +73,27 @@ docker compose up vyos-client --no-deps --build
 `.env` is gitignored (`.env.example` is the tracked template) — never
 commit real secrets into it.
 
+### Regenerating the Dashboard screenshot
+
+`docs/images/dashboard.png` (embedded in the root [README](../README.md))
+is produced by a standalone Playwright script against this same
+docker-compose stack, not part of the real-VyOS end-to-end suite in
+[e2e/README.md](../e2e/README.md):
+
+```sh
+cp .env.example .env && docker compose up --build -d
+cd e2e/tests && npm run screenshot
+docker compose down
+```
+
+It logs in as `admin`/`admin`, forces dark mode, and fast-forwards a
+fake clock through a full chart window so the CPU/Memory/Throughput
+sparklines are fully populated rather than showing only a sliver of
+data at the right edge. See
+[screenshot-dashboard.mjs](../e2e/tests/tools/screenshot-dashboard.mjs)
+for override environment variables (e.g. to point it at a different
+stack).
+
 ## Running locally: without Docker
 
 For faster iteration on the Go code or frontend specifically, run them
