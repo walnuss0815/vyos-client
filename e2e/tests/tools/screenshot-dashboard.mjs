@@ -45,14 +45,16 @@ const browser = await chromium.launch()
 try {
   const context = await browser.newContext({
     baseURL,
-    // Tall enough that this app's own scrollable region (an inner
-    // <main overflow-y-auto>, not the document body - `fullPage`
-    // screenshots can't help here, since the top-level page is
-    // always exactly one viewport tall by design) shows the whole
-    // Dashboard - header, stat cards, resource/throughput charts,
-    // and both routing tables - without needing to actually scroll,
-    // given how little data the mock seeds.
-    viewport: { width: 1600, height: 1700 },
+    // 1776x999 - exact 16:9 (both divisible by 111), sized so the
+    // visible cut lands in the blank margin right after the
+    // Interfaces table and before the "IPv4 Routing" heading, rather
+    // than mid-table. Note this app's own scrollable region is an
+    // inner <main overflow-y-auto>, not the document body, so
+    // `fullPage` screenshots can't reach content below the fold
+    // regardless of viewport size - only what fits in this viewport
+    // without scrolling is captured (the IPv4/IPv6 Routing tables
+    // further down are deliberately not shown).
+    viewport: { width: 1776, height: 999 },
     // The backend generates a self-signed cert when no TLS_CERT_FILE
     // is configured (true for the default docker-compose stack) -
     // same reasoning as ../playwright.config.ts's own setting.

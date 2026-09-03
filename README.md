@@ -8,6 +8,8 @@ configuration lives only in VyOS.
 
 [![CI](https://github.com/walnuss0815/vyos-client/actions/workflows/ci.yml/badge.svg)](https://github.com/walnuss0815/vyos-client/actions/workflows/ci.yml)
 
+![Dashboard](docs/images/dashboard.png)
+
 ## Why
 
 VyOS is a powerful router/firewall OS, but its native interfaces are the
