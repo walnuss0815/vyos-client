@@ -44,11 +44,15 @@ func main() {
 func seed(fake *testutil.FakeVyOS, apiKey string) {
 	// Keep GET /info consistent with the seeded `system host-name`
 	// below, rather than NewHandler's generic "vyos-test" default.
-	fake.Info["hostname"] = "vyos-mock"
+	fake.Info["hostname"] = "edge-router1"
 	fake.Info["version"] = "2026.02-rolling"
+	// Most real routers don't have a login banner configured at all -
+	// clear NewHandler's generic "Welcome to VyOS (fake)" default
+	// rather than showing boilerplate that gives away it's a fake.
+	fake.Info["banner"] = ""
 
 	fake.Config["system"] = map[string]any{
-		"host-name": "vyos-mock",
+		"host-name": "edge-router1",
 		"login": map[string]any{
 			"user": map[string]any{
 				// A genuine sha512_crypt hash for the password
@@ -74,11 +78,11 @@ func seed(fake *testutil.FakeVyOS, apiKey string) {
 		"ethernet": map[string]any{
 			"eth0": map[string]any{
 				"address":     []any{"dhcp"},
-				"description": "WAN (mock)",
+				"description": "WAN",
 			},
 			"eth1": map[string]any{
-				"address":     []any{"192.168.1.1/24"},
-				"description": "LAN (mock)",
+				"address":     []any{"192.168.1.1/24", "fd00:1234:5678::1/64"},
+				"description": "LAN",
 			},
 		},
 	}
@@ -207,10 +211,21 @@ func seedShowOutputs(fake *testutil.FakeVyOS) {
 			"mtu":       1500,
 			"operstate": "UP",
 			"address":   "52:54:00:aa:bb:cc",
-			"ifalias":   "WAN (mock)",
+			"ifalias":   "WAN",
 			"flags":     []string{"BROADCAST", "MULTICAST", "UP", "LOWER_UP"},
 			"addr_info": []map[string]any{
 				{"family": "inet", "local": "203.0.113.50", "prefixlen": 24, "scope": "global"},
+			},
+			// Static (not live-incrementing) cumulative counters -
+			// mock-vyos returns the exact same value on every poll,
+			// so the Dashboard's own throughput *rate* (computed
+			// client-side as a delta between successive polls) will
+			// still read ~0 B/s regardless. Seeded anyway so this
+			// field is never nil/absent, matching a real router that
+			// has actually been passing traffic since it booted.
+			"stats64": map[string]any{
+				"rx": map[string]any{"bytes": 48923847162},
+				"tx": map[string]any{"bytes": 12938471625},
 			},
 		},
 		{
@@ -218,10 +233,15 @@ func seedShowOutputs(fake *testutil.FakeVyOS) {
 			"mtu":       1500,
 			"operstate": "UP",
 			"address":   "52:54:00:dd:ee:ff",
-			"ifalias":   "LAN (mock)",
+			"ifalias":   "LAN",
 			"flags":     []string{"BROADCAST", "MULTICAST", "UP", "LOWER_UP"},
 			"addr_info": []map[string]any{
 				{"family": "inet", "local": "192.168.1.1", "prefixlen": 24, "scope": "global"},
+				{"family": "inet6", "local": "fd00:1234:5678::1", "prefixlen": 64, "scope": "global"},
+			},
+			"stats64": map[string]any{
+				"rx": map[string]any{"bytes": 12938471625},
+				"tx": map[string]any{"bytes": 48923847162},
 			},
 		},
 	})
@@ -229,15 +249,23 @@ func seedShowOutputs(fake *testutil.FakeVyOS) {
 	setShowOutputJSON(fake, "ip route json", []map[string]any{
 		{
 			"prefix": "0.0.0.0/0", "protocol": "static", "selected": true, "distance": 1, "metric": 0,
+			"uptime":   "3d02h15m",
 			"nexthops": []map[string]any{{"ip": "203.0.113.1", "interface_name": "eth0", "active": true}},
 		},
 		{
 			"prefix": "192.168.1.0/24", "protocol": "connected", "selected": true, "distance": 0, "metric": 0,
+			"uptime":   "3w2d05h",
 			"nexthops": []map[string]any{{"interface_name": "eth1", "active": true, "directly_connected": true}},
 		},
 	})
 
-	setShowOutputJSON(fake, "ipv6 route json", []map[string]any{})
+	setShowOutputJSON(fake, "ipv6 route json", []map[string]any{
+		{
+			"prefix": "fd00:1234:5678::/64", "protocol": "connected", "selected": true, "distance": 0, "metric": 0,
+			"uptime":   "3w2d05h",
+			"nexthops": []map[string]any{{"interface_name": "eth1", "active": true, "directly_connected": true}},
+		},
+	})
 
 	// `show dhcp server leases` has no JSON output mode at all (see
 	// vyos.ShowDHCPLeases's doc comment) - formatTabulateTable produces
@@ -262,7 +290,7 @@ func seedShowOutputs(fake *testutil.FakeVyOS) {
 		"15 minutes:  5.2%"
 	fake.ShowOutputs["system cpu"] = "CPU socket: 0\n" +
 		"CPU Vendor:       AuthenticAMD\n" +
-		"Model:            AMD EPYC 7302P 16-Core Processor (mock)\n" +
+		"Model:            AMD EPYC 7302P 16-Core Processor\n" +
 		"Cores:            4\n" +
 		"Current MHz:      2994.140"
 	fake.ShowOutputs["system memory"] = "Total: 3.83 GB\nFree:  2.61 GB\nUsed:  1.22 GB"
