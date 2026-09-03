@@ -4,7 +4,8 @@
   "version": "0.0.0",
   "description": "Playwright suite run against a real VyOS instance (see e2e/run.sh) - not part of the frontend's own Vitest suite.",
   "scripts": {
-    "test": "playwright test"
+    "test": "playwright test",
+    "screenshot": "node tools/screenshot-dashboard.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.61.1",
