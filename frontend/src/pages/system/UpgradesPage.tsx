@@ -70,8 +70,10 @@ const markdownComponents = {
  * Deliberately does NOT auto-commit: pulling the image and queuing
  * the config op both happen on "Upgrade", but applying that change
  * still goes through the normal PendingChangesBar review/commit flow
- * (Safe apply available there, same as any other change) - consistent
- * with every other "create/edit" flow in this app, and lets the
+ * (Safe apply is available there, same as any other change, but can't
+ * actually protect this specific commit - see the success message
+ * below for why) - consistent with every other "create/edit" flow in
+ * this app, and lets the
  * operator review before a change that recreates this very container
  * takes effect. */
 export default function UpgradesPage() {
@@ -206,8 +208,13 @@ export default function UpgradesPage() {
       {queuedVersion && !pullError && (
         <p className="text-sm text-success-500">
           Pulled and queued image <span className="font-mono">{status.imageRepo}:{queuedVersion}</span> - review and
-          commit below (with Safe apply strongly recommended: this change recreates this very
-          container, and Safe apply automatically reverts if the new image doesn&apos;t come back up).
+          commit below. Note that Safe apply can&apos;t actually protect this particular commit: it
+          recreates this very container, so nothing can be left running to show the "Keep changes?"
+          confirm panel or click it - the commit-confirm window will always expire unconfirmed and
+          VyOS will revert it after the timer, even if the new image came up perfectly healthy. A
+          plain Commit (or Commit &amp; Save) is what actually keeps an upgrade - if the new image
+          fails to start at all, recovery currently requires the VyOS CLI/console directly, not this
+          app.
         </p>
       )}
       {upgradeAlreadyQueued && !queuedVersion && (
