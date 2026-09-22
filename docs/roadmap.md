@@ -345,6 +345,24 @@ definition.
   vyos-1x's source rather than confirmed against a real router) aren't
   directly asserted on by this suite yet — worth adding once it's
   running reliably on schedule; see `e2e/README.md`'s "Known gaps".
+  - **Follow-up: an egress `qos` policy bound to eth0 broke REST API
+    reachability for the rest of the run.** Every scheduled CI run
+    failed the same way once a spec exercised
+    `qos interface eth0 egress <policy>` (a plain `1gbit` Token Bucket
+    Filter, nowhere near actually restrictive) - VyOS's REST API on
+    that interface became unreachable afterward for the remainder of
+    the run, timing out every subsequent commit-dependent spec
+    regardless of order. The exact mechanism (Linux TBF's interaction
+    with a QEMU/virtio-net link, or something QEMU-specific about
+    replacing a live interface's qdisc) was never conclusively pinned
+    down. **Worked around, not root-caused**: `bootstrap.exp` now boots
+    a second, unconfigured NIC (`eth1`) with no hostfwd port mapping at
+    all, so interface-binding tests that need a "real" interface have
+    one that can't affect the VM's reachability from the host no matter
+    what happens to it; `qos.spec.ts` binds there instead of eth0. If
+    something else ever stresses eth0's own qdisc/traffic-shaping
+    again, the same failure mode could resurface - worth revisiting if
+    it does.
 - **Auth against real VyOS local users**: supersedes a previously
   planned "Multi-account support" idea (a structured env var holding
   several named bcrypt hashes) with something better — VyOS itself is
