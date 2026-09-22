@@ -722,6 +722,26 @@ not a silently-missing gap.
   shell-less container with no docker/podman access of its own; no
   built-in way for the backend to know its own VyOS container name,
   hence the new required `SELF_UPGRADE_CONTAINER_NAME`).
+  - **Known limitation: Safe apply can't actually protect a
+    self-upgrade commit.** VyOS's commit-confirm is a dumb timer, not
+    a health check - it only avoids reverting if something explicitly
+    confirms within the window, which normally means a human clicking
+    "Keep changes" in `PendingChangesBar`. That confirm-cycle state is
+    plain React component state, never persisted anywhere, and gets
+    destroyed along with the old container the instant this specific
+    commit recreates it - the new container has no memory of the
+    pending confirm and no way to resume/re-show it. So the window
+    always expires unconfirmed and VyOS always reverts the image
+    change afterward, *even if the new image came up perfectly
+    healthy* - Safe apply only reliably helps when the new image never
+    comes up at all (nobody could confirm it either way regardless).
+    `UpgradesPage.tsx`'s own UI text now explains this rather than
+    recommending Safe apply, but doesn't fix it. A real fix (e.g. the
+    new container self-confirming once it's verified healthy) would
+    need somewhere durable to remember "a confirm is pending" across
+    the exact restart that wipes everything - this app deliberately
+    has no persistent storage of its own (no database, no config
+    file), so this isn't a small patch; not yet designed or built.
 - **NAT configuration UI**: NAT44 only - source (SNAT/masquerading),
   destination (DNAT/port-forwards, including redirect-to-localhost),
   and static (1-to-1) rules. Picked next per this roadmap's own

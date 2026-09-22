@@ -482,11 +482,23 @@ had, rather than any new privileged access:
 4. Applying that change still goes through the ordinary
    `PendingChangesBar` review/commit flow, same as any other change -
    self-upgrade does not auto-commit. Safe apply (commit-confirm) is
-   available there but not forced; given that this specific commit
-   recreates the very container serving the page, using it is
-   strongly recommended (the UI says so), since VyOS will
-   automatically revert to the previous image if the new one doesn't
-   come back up healthy within the confirm window.
+   available there but not forced - and, notably, can't actually
+   protect this specific commit the way it does everywhere else. VyOS's
+   commit-confirm is a dumb timer, not a health check: it only avoids
+   reverting if something explicitly calls the confirm endpoint within
+   the window (see `configure.go`'s doc comment). But confirming is
+   normally done by a human clicking "Keep changes" in
+   `PendingChangesBar`'s own React state - state that isn't persisted
+   anywhere and is destroyed along with the old container the moment
+   this exact commit recreates it. The new container has no memory of
+   the pending confirm and no mechanism to resume/re-show it, so the
+   window always expires unconfirmed and VyOS always reverts the image
+   change afterward, *regardless of whether the new image came up
+   perfectly healthy* - Safe apply only reliably protects against the
+   new image never coming up at all (nobody could confirm it either
+   way), not against "it worked, but silently got reverted anyway".
+   `UpgradesPage.tsx`'s own success message explains this trade-off
+   rather than recommending Safe apply for this case.
 
 One assumption underlies step 4 that this project could not verify in
 CI (there is no container-lifecycle simulation in
