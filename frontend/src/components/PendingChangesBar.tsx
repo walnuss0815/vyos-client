@@ -113,7 +113,19 @@ export default function PendingChangesBar() {
   const queryClient = useQueryClient()
 
   const [expanded, setExpanded] = useState(false)
-  const [safeApply, setSafeApply] = useState(true)
+  // Defaults off, not on: Safe apply's whole safety property depends
+  // on the operator actually being able to click "Keep changes" (or
+  // the confirm window expiring and VyOS auto-reverting) - but that
+  // confirm-cycle state (confirmState/pendingCommitChanges/
+  // saveAfterConfirm below) is plain component state, not persisted
+  // anywhere, so a page reload while a confirm window is open loses
+  // all track of it. Defaulting to on made that an easy trap to fall
+  // into unintentionally (e.g. an unrelated tab close/reload) for
+  // every commit, not just the rare cases where the safety net is
+  // actually needed - see UpgradesPage.tsx for the one case (self-
+  // upgrade) where Safe apply's mechanism can't work AT ALL, not just
+  // "risks being interrupted".
+  const [safeApply, setSafeApply] = useState(false)
   const [confirmSeconds, setConfirmSeconds] = useState(90)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)

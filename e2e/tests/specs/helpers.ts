@@ -18,12 +18,16 @@ export async function login(page: Page): Promise<void> {
 }
 
 /**
- * Turns off "Safe apply" (so Commit applies immediately, no
+ * Ensures "Safe apply" is off (so Commit applies immediately, no
  * commit-confirm "Keep changes" step to wait through) and commits the
- * currently queued pending changes. "Safe apply" defaults back to
- * checked on every fresh page load (PendingChangesBar.tsx's
- * `useState(true)` isn't persisted), so this needs calling again after
- * each full navigation, not just once per test.
+ * currently queued pending changes. "Safe apply" defaults to
+ * unchecked on every fresh page load already (PendingChangesBar.tsx's
+ * `useState(false)` isn't persisted, but starts in the state this
+ * helper wants) - the explicit `.uncheck()` below is a no-op in that
+ * common case, kept only as a defensive guard against whatever state
+ * it happens to be in (e.g. a spec that deliberately checked it
+ * earlier in the same page, without navigating away, before calling
+ * this helper).
  *
  * Previously duplicated as a near-identical local
  * `safeApplyCommit`/`commitPendingChanges` function (or inlined

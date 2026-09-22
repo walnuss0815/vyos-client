@@ -142,7 +142,10 @@ describe('PendingChangesBar', () => {
   // "Safe apply" checkbox still visibly checked. Given the whole point
   // of this feature is preventing lockout scenarios, that must be
   // impossible to do by accident: an invalid confirmSeconds value must
-  // block committing, not silently degrade to "unsafe".
+  // block committing, not silently degrade to "unsafe". Safe apply
+  // defaults to unchecked (see PendingChangesBar.tsx), so this test
+  // checks it first to construct the "checked" state it's actually
+  // named for.
   it('disables committing when "Safe apply" is checked but confirmSeconds is cleared', async () => {
     usePendingChangesStore
       .getState()
@@ -150,6 +153,7 @@ describe('PendingChangesBar', () => {
     const user = userEvent.setup()
     renderWithProviders(<PendingChangesBar />)
 
+    await user.click(screen.getByRole('checkbox', { name: /safe apply/i }))
     const secondsInput = screen.getByRole('spinbutton')
     await user.clear(secondsInput)
 
@@ -164,6 +168,7 @@ describe('PendingChangesBar', () => {
     const user = userEvent.setup()
     renderWithProviders(<PendingChangesBar />)
 
+    await user.click(screen.getByRole('checkbox', { name: /safe apply/i }))
     const secondsInput = screen.getByRole('spinbutton')
     await user.clear(secondsInput)
     await user.type(secondsInput, '5')
@@ -178,6 +183,7 @@ describe('PendingChangesBar', () => {
     const user = userEvent.setup()
     renderWithProviders(<PendingChangesBar />)
 
+    await user.click(screen.getByRole('checkbox', { name: /safe apply/i }))
     const secondsInput = screen.getByRole('spinbutton')
     await user.clear(secondsInput)
     expect(screen.getByRole('button', { name: /^commit$/i })).toBeDisabled()
@@ -186,7 +192,18 @@ describe('PendingChangesBar', () => {
     expect(screen.getByRole('button', { name: /^commit$/i })).not.toBeDisabled()
   })
 
-  it('does not block committing when "Safe apply" is unchecked, regardless of confirmSeconds', async () => {
+  // Safe apply defaults to unchecked - no interaction needed to reach
+  // the state this test is named for.
+  it('does not block committing when "Safe apply" is unchecked, regardless of confirmSeconds', () => {
+    usePendingChangesStore
+      .getState()
+      .add({ op: { op: 'set', path: ['system', 'host-name'], value: 'r1' }, label: 'set host-name' })
+    renderWithProviders(<PendingChangesBar />)
+
+    expect(screen.getByRole('button', { name: /^commit$/i })).not.toBeDisabled()
+  })
+
+  it('does not block committing when "Safe apply" is checked with a valid confirmSeconds value', async () => {
     usePendingChangesStore
       .getState()
       .add({ op: { op: 'set', path: ['system', 'host-name'], value: 'r1' }, label: 'set host-name' })
@@ -212,7 +229,8 @@ describe('PendingChangesBar', () => {
     const user = userEvent.setup()
     renderWithProviders(<PendingChangesBar />)
 
-    await user.click(screen.getByRole('checkbox', { name: /safe apply/i })) // disable safe apply -> no confirm step
+    // Safe apply defaults to unchecked - no confirm step to click
+    // through here.
     await user.click(screen.getByRole('button', { name: /commit & save/i }))
 
     expect(await screen.findByText(/applied but not saved/i)).toBeInTheDocument()
@@ -222,11 +240,12 @@ describe('PendingChangesBar', () => {
     })
   })
 
-  // Regression test: "Commit & Save" with "Safe apply" checked (the
-  // default state) used to silently drop the "& Save" part entirely -
-  // handleKeep (the confirm-step handler) never called api.save(), so
-  // clicking "Commit & Save" in the single most common configuration
-  // (safe apply defaults to on) never actually saved anything.
+  // Regression test: "Commit & Save" with "Safe apply" checked used to
+  // silently drop the "& Save" part entirely - handleKeep (the
+  // confirm-step handler) never called api.save(), so clicking
+  // "Commit & Save" while Safe apply was on never actually saved
+  // anything. Safe apply defaults to unchecked now, so this test
+  // explicitly checks it to construct the scenario it's named for.
   it('saves after confirming when "Commit & Save" was clicked with Safe apply on', async () => {
     server.use(http.post('/api/config/commit', () => HttpResponse.json({ pendingConfirm: true })))
     const saveSpy = vi.fn(() => new HttpResponse(null, { status: 204 }))
@@ -237,6 +256,7 @@ describe('PendingChangesBar', () => {
     const user = userEvent.setup()
     renderWithProviders(<PendingChangesBar />)
 
+    await user.click(screen.getByRole('checkbox', { name: /safe apply/i }))
     await user.click(screen.getByRole('button', { name: /commit & save/i }))
     await screen.findByText(/keep these changes/i)
     await user.click(screen.getByRole('button', { name: /keep changes/i }))
@@ -384,7 +404,8 @@ describe('PendingChangesBar', () => {
       const user = userEvent.setup()
       renderWithProviders(<PendingChangesBar />)
 
-      await user.click(screen.getByRole('checkbox', { name: /safe apply/i })) // disable safe apply -> no confirm step
+      // Safe apply defaults to unchecked - no confirm step to click
+      // through here.
       await user.click(screen.getByRole('button', { name: /commit & save/i }))
 
       await waitFor(() => {
