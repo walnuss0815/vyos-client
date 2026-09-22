@@ -1,9 +1,10 @@
 import { expect, test } from '@playwright/test'
 import { cardWithText, commitPendingChanges, login } from './helpers'
 
-// A generous, effectively non-limiting ceiling for a QEMU virtio-net
-// link (whose real throughput is nowhere near 1gbit anyway) - proves
-// the bandwidth field round-trips through a real VyOS commit.
+// An arbitrary bandwidth value - eth1 carries no real traffic this
+// suite depends on, so the specific number doesn't matter beyond
+// being valid VyOS syntax; proves the bandwidth field round-trips
+// through a real VyOS commit.
 const BANDWIDTH = '1gbit'
 
 /**
