@@ -16,13 +16,20 @@
 # spec's REST API traffic depends on) - deliberately left unconfigured
 # (no address, no DHCP) here, purely so specs that need to bind
 # something to a "real" interface (e.g. tests/specs/qos.spec.ts's
-# egress rate-control binding) have one to use that isn't eth0. A
-# CI-observed regression (an egress qos policy bound to eth0 reliably
-# broke REST API reachability for the remainder of every run, failing
-# every subsequent commit-dependent spec) is why this exists - eth1
-# has no netdev-level port forwarding at all, so nothing bound to it
-# can affect this VM's reachability from the host no matter what it
-# does.
+# egress rate-control binding) have one to use that isn't eth0, on the
+# principle that nothing bound to it can affect this VM's reachability
+# from the host no matter what happens to it (it has no netdev-level
+# port forwarding at all). NOTE: this was originally added chasing a
+# specific CI-observed pattern (an egress qos policy bound to eth0
+# always preceded a connectivity cascade) that a follow-up validation
+# run then contradicted - the same kind of cascade also showed up
+# starting at an unrelated, earlier test in one run, with no qos
+# policy involved at all yet. So this is kept as reasonable, low-risk
+# defensive practice (avoiding traffic-shaping on the management
+# interface is good hygiene regardless), not as a confirmed fix for
+# the cascade - see docs/roadmap.md's "Real-VyOS VM end-to-end
+# testing" entry for the current, more accurate theory (VM resource
+# exhaustion) and the VYOS_E2E_QEMU_MEM/SMP bump below.
 #
 # Verified interactively against a real VyOS 2026.08.25-0014-rolling
 # live ISO before being scripted here - see the commit message for
@@ -40,8 +47,9 @@
 #   VYOS_E2E_LOGIN_PASSWORD plaintext-password to set for that user
 #   VYOS_E2E_QEMU_PID_FILE  written with the QEMU process's PID once spawned
 # Optional:
-#   VYOS_E2E_QEMU_MEM  (default 2048, MB)
-#   VYOS_E2E_QEMU_SMP  (default 2, vCPUs)
+#   VYOS_E2E_QEMU_MEM  (default 4096, MB - doubled from 2048; see the
+#                       resource-exhaustion theory above)
+#   VYOS_E2E_QEMU_SMP  (default 4, vCPUs - doubled from 2, same reason)
 
 set iso_path $env(VYOS_E2E_ISO_PATH)
 set api_key $env(VYOS_E2E_API_KEY)
@@ -49,8 +57,8 @@ set host_port $env(VYOS_E2E_API_PORT)
 set login_user $env(VYOS_E2E_LOGIN_USER)
 set login_password $env(VYOS_E2E_LOGIN_PASSWORD)
 set pid_file $env(VYOS_E2E_QEMU_PID_FILE)
-set mem [expr {[info exists env(VYOS_E2E_QEMU_MEM)] ? $env(VYOS_E2E_QEMU_MEM) : "2048"}]
-set smp [expr {[info exists env(VYOS_E2E_QEMU_SMP)] ? $env(VYOS_E2E_QEMU_SMP) : "2"}]
+set mem [expr {[info exists env(VYOS_E2E_QEMU_MEM)] ? $env(VYOS_E2E_QEMU_MEM) : "4096"}]
+set smp [expr {[info exists env(VYOS_E2E_QEMU_SMP)] ? $env(VYOS_E2E_QEMU_SMP) : "4"}]
 
 log_user 1
 set timeout 180
