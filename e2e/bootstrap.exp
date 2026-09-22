@@ -11,6 +11,19 @@
 # AUTH_MODE=vyos-users login against a genuinely VyOS-hashed password,
 # not just the fake VyOS server unit/integration tests already cover.
 #
+# Boots with a SECOND NIC (net1/eth1) alongside the management one
+# (net0/eth0, DHCP-configured below, carrying the hostfwd port every
+# spec's REST API traffic depends on) - deliberately left unconfigured
+# (no address, no DHCP) here, purely so specs that need to bind
+# something to a "real" interface (e.g. tests/specs/qos.spec.ts's
+# egress rate-control binding) have one to use that isn't eth0. A
+# CI-observed regression (an egress qos policy bound to eth0 reliably
+# broke REST API reachability for the remainder of every run, failing
+# every subsequent commit-dependent spec) is why this exists - eth1
+# has no netdev-level port forwarding at all, so nothing bound to it
+# can affect this VM's reachability from the host no matter what it
+# does.
+#
 # Verified interactively against a real VyOS 2026.08.25-0014-rolling
 # live ISO before being scripted here - see the commit message for
 # this file for the transcript.
@@ -66,6 +79,8 @@ spawn qemu-system-x86_64 \
     -boot d -display none -serial stdio -monitor none \
     -netdev user,id=net0,hostfwd=tcp::${host_port}-:443 \
     -device virtio-net-pci,netdev=net0 \
+    -netdev user,id=net1 \
+    -device virtio-net-pci,netdev=net1 \
     -no-reboot
 
 set fp [open $pid_file w]
