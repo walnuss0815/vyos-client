@@ -87,11 +87,14 @@ test('sets a BGP system AS and redistribute-connected, and they round-trip throu
   // Not an exact/spaced '▸ protocols' - Row's toggle button renders
   // the ▸/▾ glyph and the segment name as adjacent JSX children with
   // no literal space between them (TreeNode.tsx), so the real
-  // accessible name is the unspaced concatenation "▸protocols". A
-  // bare, unanchored regex on just the segment name sidesteps the
-  // glyph entirely - the same workaround TreeNode.test.tsx's own unit
-  // test uses.
-  await page.getByRole('button', { name: /protocols/ }).click()
+  // accessible name is the unspaced concatenation "▸protocols". An
+  // unanchored /protocols/ (the same workaround TreeNode.test.tsx's
+  // own unit test uses) would technically also match any OTHER
+  // button whose accessible name merely contains "protocols" as a
+  // substring - anchored here (start/end, with the glyph optional)
+  // so this can only ever match the exact root-level "protocols"
+  // segment, not some future node/tooltip that happens to mention it.
+  await page.getByRole('button', { name: /^[▸▾]?protocols$/ }).click()
 
   // TreeNode's Row wrapper for the (non-leaf) `bgp` node - distinct
   // from LeafRow's own wrapper class, so this only matches the one
