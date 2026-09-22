@@ -115,6 +115,16 @@ test('creates a DHCP shared network/subnet and a static mapping inside it, and b
   await page.goto('/dhcp/networks')
   const networkCard = cardWithText(page, NETWORK_NAME)
   await expect(networkCard.getByText(SUBNET_CIDR, { exact: true })).toBeVisible()
+
+  // NetworkCard.tsx collapses everything but the subnet CIDR summary
+  // line behind a "Details"/"Hide details" toggle (its own doc
+  // comment: "everything else... is behind a 'Details' toggle" -
+  // including every subnet's own ranges and static mappings, i.e. both
+  // the range assertion below and the "+ Add mapping" form need this
+  // expanded first). A fresh page load always starts collapsed
+  // (NetworkCard's `expanded` state isn't persisted), so this needs
+  // clicking again after every reload, not just once per test.
+  await networkCard.getByRole('button', { name: 'Details' }).click()
   await expect(networkCard.getByText(`${RANGE_START} – ${RANGE_STOP}`)).toBeVisible()
 
   // --- Step 2: add a static mapping inside that subnet (StaticMappingSection.tsx) ---
@@ -132,6 +142,9 @@ test('creates a DHCP shared network/subnet and a static mapping inside it, and b
   // UI's optimistic state.
   await page.goto('/dhcp/networks')
   await expect(networkCard.getByText(SUBNET_CIDR, { exact: true })).toBeVisible()
+  // Collapsed again after this reload (see the comment above) - the
+  // static mapping fields below are behind "Details" too.
+  await networkCard.getByRole('button', { name: 'Details' }).click()
   await expect(networkCard.getByText(MAPPING_NAME, { exact: true })).toBeVisible()
   await expect(networkCard.getByText(MAPPING_IP, { exact: true })).toBeVisible()
   await expect(networkCard.getByText(MAPPING_MAC, { exact: true })).toBeVisible()
