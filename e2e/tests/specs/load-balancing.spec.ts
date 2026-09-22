@@ -108,7 +108,13 @@ test('creates an HAProxy backend (with a server) and a service (with a port, lin
   // backend's box, linking them. ---
   await serviceCard.getByRole('button', { name: 'Edit' }).click()
   await page.getByRole('checkbox', { name: BACKEND_NAME }).check()
-  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  // Scoped to serviceCard, not a bare page-level query - by this point
+  // in the run there's always a "committed but not saved" pending-
+  // changes bar on screen too (PendingChangesBar.tsx), which has its
+  // own identically-named "Save" button (persisting to disk, an
+  // unrelated action from this form's own "Save" here) - an unscoped
+  // query is a strict-mode violation (matches both).
+  await serviceCard.getByRole('button', { name: 'Save', exact: true }).click()
 
   await commitPendingChanges(page)
 
