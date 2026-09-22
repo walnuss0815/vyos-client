@@ -6,7 +6,7 @@
 # Deliberately no `# syntax=docker/dockerfile:1` pragma - see
 # deploy/Dockerfile's own doc comment for why.
 
-FROM golang:1.25-alpine AS build
+FROM golang:1.27-alpine AS build
 WORKDIR /src/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download

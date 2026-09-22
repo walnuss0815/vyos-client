@@ -32,7 +32,7 @@ COPY shared/ /src/shared/
 RUN npm run build
 
 # ---- backend build ----------------------------------------------------
-FROM golang:1.25-alpine AS backend-build
+FROM golang:1.27-alpine AS backend-build
 WORKDIR /src/backend
 
 # Cache module downloads separately from source changes.
