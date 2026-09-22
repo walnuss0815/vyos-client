@@ -84,7 +84,14 @@ test('sets a BGP system AS and redistribute-connected, and they round-trip throu
   // leaving a bare, harmless-but-pointless config-only daemon for the
   // rest of the shared VM's lifetime.
   await page.goto('/config-tree')
-  await page.getByRole('button', { name: '▸ protocols' }).click()
+  // Not an exact/spaced '▸ protocols' - Row's toggle button renders
+  // the ▸/▾ glyph and the segment name as adjacent JSX children with
+  // no literal space between them (TreeNode.tsx), so the real
+  // accessible name is the unspaced concatenation "▸protocols". A
+  // bare, unanchored regex on just the segment name sidesteps the
+  // glyph entirely - the same workaround TreeNode.test.tsx's own unit
+  // test uses.
+  await page.getByRole('button', { name: /protocols/ }).click()
 
   // TreeNode's Row wrapper for the (non-leaf) `bgp` node - distinct
   // from LeafRow's own wrapper class, so this only matches the one
