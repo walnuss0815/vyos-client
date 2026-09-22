@@ -3,9 +3,7 @@ import { cardWithText, commitPendingChanges, login } from './helpers'
 
 // A generous, effectively non-limiting ceiling for a QEMU virtio-net
 // link (whose real throughput is nowhere near 1gbit anyway) - proves
-// the bandwidth field round-trips through a real VyOS commit without
-// ever meaningfully throttling the tiny amount of REST API traffic
-// this shared VM's other specs depend on.
+// the bandwidth field round-trips through a real VyOS commit.
 const BANDWIDTH = '1gbit'
 
 /**
@@ -37,23 +35,38 @@ const BANDWIDTH = '1gbit'
  * the *second* commit alongside the interface binding, matching the
  * shopping-cart model's actual mechanics rather than fighting them.
  *
- * Safety - why this can't break eth0 reachability for other specs
- * sharing this VM:
+ * Bound to eth1, NOT eth0 - eth0 carries the QEMU hostfwd port mapping
+ * every spec's REST API traffic (and this whole suite) depends on
+ * (see bootstrap.exp), and binding an egress qos policy to it was
+ * observed to reliably break that reachability for the remainder of
+ * the run in CI (every subsequent commit-dependent spec then failed,
+ * timing out waiting on VyOS), regardless of `1gbit` being nowhere
+ * near restrictive for the tiny amount of traffic involved - the
+ * exact mechanism (TBF's interaction with a QEMU/virtio-net link) was
+ * never conclusively pinned down, so the fix is to simply not take
+ * the risk against the management interface at all. eth1 is a second
+ * NIC bootstrap.exp boots purely for cases like this - it has no
+ * netdev-level port forwarding, so nothing bound to it can affect
+ * this VM's reachability from the host.
+ *
+ * Also why this is still a meaningful test of real interface binding
+ * despite not using eth0:
  * - `rate-control` is egress-only in this app's own model
  *   (`QosInterfaceBindingsList.tsx`'s `egressPolicies` list includes
  *   it; `ingressPolicies` only ever includes `limiter` policies - VyOS
  *   itself enforces this at commit time, and the UI pre-filters
  *   accordingly). There is no ingress dropdown option to even
  *   accidentally select here.
- * - `1gbit` is far above what a QEMU virtio-net NIC actually carries,
- *   let alone what this app's tiny REST/API traffic needs - it's a
- *   ceiling, not a restriction, so eth0 stays fully reachable for
- *   every subsequent spec regardless of run order.
+ * - The interface-binding field (`QosInterfaceBindingsList.tsx`) is a
+ *   plain free-text name input, not a dropdown sourced from VyOS's
+ *   known-interfaces list - eth1 doesn't need any config of its own
+ *   (address, DHCP, etc.) for this to exercise the real
+ *   `qos interface eth1 egress <policy>` binding syntax end-to-end.
  * - Nothing is restored afterward (unlike commit.spec.ts's hostname):
  *   no other spec in this suite asserts on the QoS config being
  *   empty, so leaving this policy/binding in place is harmless.
  */
-test('creates a QoS rate-control policy, binds it to eth0 egress, and both round-trip through a real VyOS commit', async ({
+test('creates a QoS rate-control policy, binds it to eth1 egress, and both round-trip through a real VyOS commit', async ({
   page,
 }) => {
   const policyName = `e2e-rc-${Date.now()}`
@@ -75,7 +88,7 @@ test('creates a QoS rate-control policy, binds it to eth0 egress, and both round
   await commitPendingChanges(page)
 
   // --- Step 2: reload so the bare policy is real (server-fetched),
-  // then set its bandwidth and bind it to eth0's egress ---
+  // then set its bandwidth and bind it to eth1's egress ---
   await page.goto('/qos/policies')
   const policyRow = cardWithText(page, policyName)
   await policyRow.getByRole('button', { name: 'Edit' }).click()
@@ -84,10 +97,10 @@ test('creates a QoS rate-control policy, binds it to eth0 egress, and both round
 
   await page.goto('/qos/interfaces')
   await page.getByRole('button', { name: '+ Add interface' }).click()
-  await page.getByPlaceholder('eth0').fill('eth0')
+  await page.getByPlaceholder('eth0').fill('eth1')
 
   // Selecting the option itself is what queues
-  // `set qos interface eth0 egress <policyName>`
+  // `set qos interface eth1 egress <policyName>`
   // (QosInterfaceBindingsList.tsx's BindingRow calls add() straight
   // from the <select>'s onChange) - the "Configure" button next to
   // the name input is just a UI convenience that hides the add panel
@@ -107,8 +120,8 @@ test('creates a QoS rate-control policy, binds it to eth0 egress, and both round
   await expect(cardWithText(page, policyName).getByText(BANDWIDTH)).toBeVisible()
 
   await page.goto('/qos/interfaces')
-  const bindingRow = cardWithText(page, 'eth0')
-  await expect(bindingRow.getByText('eth0', { exact: true })).toBeVisible()
+  const bindingRow = cardWithText(page, 'eth1')
+  await expect(bindingRow.getByText('eth1', { exact: true })).toBeVisible()
   await expect(bindingRow.getByLabel('Egress')).toHaveValue(policyName)
   // Explicit confirmation that ingress was never touched.
   await expect(bindingRow.getByLabel('Ingress (limiter only)')).toHaveValue('')
