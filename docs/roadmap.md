@@ -345,24 +345,58 @@ definition.
   vyos-1x's source rather than confirmed against a real router) aren't
   directly asserted on by this suite yet — worth adding once it's
   running reliably on schedule; see `e2e/README.md`'s "Known gaps".
-  - **Follow-up: an egress `qos` policy bound to eth0 broke REST API
-    reachability for the rest of the run.** Every scheduled CI run
-    failed the same way once a spec exercised
-    `qos interface eth0 egress <policy>` (a plain `1gbit` Token Bucket
-    Filter, nowhere near actually restrictive) - VyOS's REST API on
-    that interface became unreachable afterward for the remainder of
-    the run, timing out every subsequent commit-dependent spec
-    regardless of order. The exact mechanism (Linux TBF's interaction
-    with a QEMU/virtio-net link, or something QEMU-specific about
-    replacing a live interface's qdisc) was never conclusively pinned
-    down. **Worked around, not root-caused**: `bootstrap.exp` now boots
-    a second, unconfigured NIC (`eth1`) with no hostfwd port mapping at
-    all, so interface-binding tests that need a "real" interface have
-    one that can't affect the VM's reachability from the host no matter
-    what happens to it; `qos.spec.ts` binds there instead of eth0. If
-    something else ever stresses eth0's own qdisc/traffic-shaping
-    again, the same failure mode could resurface - worth revisiting if
-    it does.
+  - **Follow-up: a recurring connectivity-cascade failure, investigated
+    across several rounds - partially mitigated, not fully solved.**
+    Every scheduled CI run originally failed the same way: at some
+    point mid-run, VyOS's REST API became unreachable
+    (`connection refused`) for the remainder of the run, timing out
+    every subsequent commit-dependent spec regardless of order. Three
+    rounds of investigation, each tested via a real `workflow_dispatch`
+    run (not just theorized):
+    1. First hypothesis - specific to `qos interface eth0 egress
+       <policy>` (the cascade's apparent starting point in 4/4 early
+       samples). Worked around by giving `bootstrap.exp` a second,
+       unconfigured NIC (`eth1`, no hostfwd port mapping) for
+       interface-binding tests to use instead of the management
+       interface - kept as reasonable defensive practice regardless of
+       what follows, but a validation run showed the cascade persists
+       and its starting point isn't tied to the QoS test at all (one
+       run cascaded from the *second* test, before any QoS config
+       existed).
+    2. Second hypothesis - general resource exhaustion. `bootstrap.exp`
+       boots the VM from a live ISO with **no persistent disk at all**
+       (no `-drive`/`-hda`), so the VM's entire root filesystem and
+       every daemon this suite starts against it (FRR, Kea, HAProxy,
+       podman containers, ...) all live in the VM's own RAM for the
+       whole run, growing monotonically. Doubling the default
+       allocation (2048MB/2 vCPUs -> 4096MB/4 vCPUs - GitHub's
+       public-repo `ubuntu-latest` runners provide 4 vCPUs/16GB RAM,
+       comfortable headroom) measurably helped: in a follow-up
+       validation run, 4 of 5 matrix jobs got substantially further
+       (one completed cleanly except for two already-tracked,
+       unrelated pre-existing bugs) before any cascade, versus 0 of 5
+       previously.
+    3. Residual, unexplained failures don't fit the gradual-exhaustion
+       pattern - one job's cascade started at the *second* test again,
+       immediately, with a hard `connection refused` rather than
+       degraded performance. A plausible contributing factor: this
+       suite runs QEMU+KVM *nested* inside GitHub's own hosted runner
+       (itself a VM) - GitHub's own docs explicitly describe nested
+       virtualization as "not officially supported... experimental...
+       no guarantees regarding stability, performance, or
+       compatibility." Some residual flakiness may simply be inherent
+       to that, not something further tuning on this repo's side can
+       fully eliminate.
+
+    Current state: kept both the eth1 NIC and the doubled VM resources
+    as net-positive, low-risk changes - CI reliability is materially
+    better, not perfectly solved. Further escalation (even more RAM,
+    or switching to a real persistent-disk VyOS install instead of a
+    live-ISO boot - a much larger change to `bootstrap.exp`/`run.sh`)
+    is a possible future avenue if this keeps being disruptive, not
+    pursued further here given diminishing returns per experiment
+    (each validation round-trip costs a real `workflow_dispatch` run
+    across a 5-job matrix).
 - **Auth against real VyOS local users**: supersedes a previously
   planned "Multi-account support" idea (a structured env var holding
   several named bcrypt hashes) with something better — VyOS itself is
