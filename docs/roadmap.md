@@ -397,6 +397,20 @@ definition.
     pursued further here given diminishing returns per experiment
     (each validation round-trip costs a real `workflow_dispatch` run
     across a 5-job matrix).
+  - **Known issue: `PendingChangesBar`'s global "Save" button name
+    collides with per-form "Save" buttons.** Once any change is
+    committed-but-unsaved (true for nearly the whole suite after its
+    first commit), the sidebar's persist-to-disk "Save" button and
+    many individual forms' own "Save" buttons share the exact same
+    accessible name - any unscoped `getByRole('button', { name: 'Save'
+    })` query becomes ambiguous (a Playwright strict-mode violation).
+    One instance of this broke `load-balancing.spec.ts` in CI (fixed
+    by scoping the query to the specific form/card instead); other
+    similarly-unscoped queries elsewhere in this suite, or added in
+    the future, could hit the same issue without warning. Not yet
+    fixed at the source (e.g. renaming the global button to something
+    more specific like "Save configuration") - tracked here as a
+    known naming collision to watch for.
 - **Auth against real VyOS local users**: supersedes a previously
   planned "Multi-account support" idea (a structured env var holding
   several named bcrypt hashes) with something better — VyOS itself is
