@@ -23,7 +23,7 @@
 # newer syntax feature.
 
 # ---- frontend build -------------------------------------------------
-FROM node:22-alpine AS frontend-build
+FROM node:24-alpine AS frontend-build
 WORKDIR /src/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
