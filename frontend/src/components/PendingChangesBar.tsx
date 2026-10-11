@@ -1,5 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { useConfirmCountdown } from '../hooks/useConfirmCountdown'
 import { ApiError } from '../lib/api'
 import * as api from '../lib/vyosApi'
 import { maskValue } from '../lib/masking'
@@ -7,7 +8,8 @@ import { usePendingChangesStore, type PendingChange } from '../store/pendingChan
 import { useUnsavedCommitStore } from '../store/unsavedCommit'
 import type { ConfigOp } from '../lib/vyosApi'
 
-type ConfirmState = { active: true; secondsLeft: number } | { active: false }
+// endsAt is a Date.now() timestamp: when VyOS will auto-revert unless confirmed.
+type ConfirmState = { active: true; endsAt: number } | { active: false }
 
 // Which action started the current commit-confirm cycle - both
 // commit and rollback share the exact same VyOS-side mechanism (see
@@ -106,6 +108,7 @@ export default function PendingChangesBar() {
   const changes = usePendingChangesStore((s) => s.changes)
   const remove = usePendingChangesStore((s) => s.remove)
   const clear = usePendingChangesStore((s) => s.clear)
+  const removeMany = usePendingChangesStore((s) => s.removeMany)
   const committedChanges = useUnsavedCommitStore((s) => s.committedChanges)
   const markCommitted = useUnsavedCommitStore((s) => s.markCommitted)
   const markSaved = useUnsavedCommitStore((s) => s.markSaved)
@@ -145,6 +148,22 @@ export default function PendingChangesBar() {
   // default) - api.save() was only ever called from the no-confirm
   // path in runCommit, never after a later confirm.
   const [saveAfterConfirm, setSaveAfterConfirm] = useState(false)
+
+  // VyOS reverts on its own once the commit-confirm window ends, so
+  // the UI must stop offering "Keep" then. A reverted commit's changes
+  // were never removed from the pending list, so they simply show up
+  // as pending again; a reverted rollback leaves the committed list as
+  // it was.
+  const secondsLeft = useConfirmCountdown(confirmState.active ? confirmState.endsAt : null, () => {
+    setConfirmState({ active: false })
+    setSaveAfterConfirm(false)
+    void queryClient.invalidateQueries({ queryKey: ['config-tree'] })
+    setError(
+      pendingAction === 'rollback'
+        ? 'The confirm window ran out, so VyOS reverted the rollback and your committed changes are live again.'
+        : 'The confirm window ran out, so VyOS reverted the commit. Your changes are still pending.',
+    )
+  })
 
   // Also stay mounted (rather than disappearing) when there's an error
   // to show, even once changes is empty - e.g. a commit succeeded
@@ -216,10 +235,12 @@ export default function PendingChangesBar() {
         setPendingAction('commit')
         setPendingCommitChanges(committing)
         setSaveAfterConfirm(alsoSave)
-        setConfirmState({ active: true, secondsLeft: confirmSeconds })
+        setConfirmState({ active: true, endsAt: Date.now() + confirmSeconds * 1000 })
         return
       }
-      clear()
+      // Only what was committed - edits queued while the request was in
+      // flight stay pending.
+      removeMany(committing.map((c) => c.id))
       invalidateConfigQueries()
       // Unconditionally, before knowing whether alsoSave's own save
       // succeeds - a commit always means "committed, not yet confirmed
@@ -257,7 +278,7 @@ export default function PendingChangesBar() {
       if (pendingAction === 'rollback') {
         markSaved()
       } else {
-        clear()
+        removeMany(pendingCommitChanges.map((c) => c.id))
         markCommitted(pendingCommitChanges) // see runCommit's identical call for why this is unconditional
         if (saveAfterConfirm) {
           await saveAfterSuccessfulCommit()
@@ -319,7 +340,7 @@ export default function PendingChangesBar() {
       const result = await api.rollback(rollbackConfirmSeconds)
       if (result.pendingConfirm) {
         setPendingAction('rollback')
-        setConfirmState({ active: true, secondsLeft: rollbackConfirmSeconds })
+        setConfirmState({ active: true, endsAt: Date.now() + rollbackConfirmSeconds * 1000 })
         return
       }
       invalidateConfigQueries()
@@ -342,7 +363,7 @@ export default function PendingChangesBar() {
             </p>
             <p className="text-sm text-slate-400">
               VyOS will automatically {isRollback ? 'restore your committed changes' : 'revert to the previous configuration'} if
-              you don't confirm within the commit-confirm window.
+              you don't confirm within the commit-confirm window. ({secondsLeft}s left)
             </p>
           </div>
           <div className="flex gap-2">

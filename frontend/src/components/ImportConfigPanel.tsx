@@ -1,3 +1,4 @@
+import { useConfirmCountdown } from '../hooks/useConfirmCountdown'
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { ApiError } from '../lib/api'
@@ -12,7 +13,8 @@ import type { ImportMode } from '../lib/vyosApi'
 const MIN_CONFIRM_SECONDS = 10
 const MAX_CONFIRM_SECONDS = 600
 
-type ConfirmState = { active: true; secondsLeft: number } | { active: false }
+// endsAt is a Date.now() timestamp: when VyOS will auto-revert unless confirmed.
+type ConfirmState = { active: true; endsAt: number } | { active: false }
 
 /**
  * Uploads a configuration file and applies it via VyOS's own
@@ -40,6 +42,13 @@ export default function ImportConfigPanel() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const [confirmState, setConfirmState] = useState<ConfirmState>({ active: false })
+
+  // VyOS reverts the import on its own once the confirm window ends.
+  const secondsLeft = useConfirmCountdown(confirmState.active ? confirmState.endsAt : null, () => {
+    setConfirmState({ active: false })
+    void queryClient.invalidateQueries({ queryKey: ['config-tree'] })
+    setError('The confirm window ran out, so VyOS reverted the import.')
+  })
 
   const confirmSecondsValid =
     !safeApply || (confirmSeconds >= MIN_CONFIRM_SECONDS && confirmSeconds <= MAX_CONFIRM_SECONDS)
@@ -70,7 +79,7 @@ export default function ImportConfigPanel() {
     try {
       const result = await api.importConfig(content, mode, safeApply ? confirmSeconds : undefined)
       if (result.pendingConfirm) {
-        setConfirmState({ active: true, secondsLeft: confirmSeconds })
+        setConfirmState({ active: true, endsAt: Date.now() + confirmSeconds * 1000 })
         return
       }
       setSuccess(true)
@@ -103,7 +112,7 @@ export default function ImportConfigPanel() {
         <p className="font-medium text-warning-500">Keep this imported configuration?</p>
         <p className="mt-1 text-sm text-slate-400">
           VyOS will automatically revert to the previous configuration if you don't confirm within
-          the commit-confirm window.
+          the commit-confirm window. ({secondsLeft}s left)
         </p>
         <button
           onClick={handleKeep}

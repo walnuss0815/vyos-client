@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -90,6 +90,54 @@ describe('PendingChangesBar', () => {
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['config-tree'] })
     })
+  })
+
+  it('keeps changes queued during the confirm window when the commit is kept', async () => {
+    server.use(http.post('/api/config/commit', () => HttpResponse.json({ pendingConfirm: true })))
+    const store = usePendingChangesStore.getState()
+    store.add({ op: { op: 'set', path: ['system', 'host-name'], value: 'r1' }, label: 'set host-name' })
+    const user = userEvent.setup()
+    renderWithProviders(<PendingChangesBar />)
+
+    await user.click(screen.getByRole('button', { name: /^commit$/i }))
+    await screen.findByText(/keep these changes/i)
+
+    // Queued from another page while the confirm window is open.
+    store.add({ op: { op: 'set', path: ['system', 'domain-name'], value: 'example.net' }, label: 'set domain-name' })
+    await user.click(screen.getByRole('button', { name: /keep changes/i }))
+
+    await waitFor(() => {
+      expect(screen.queryByText(/keep these changes/i)).not.toBeInTheDocument()
+    })
+    const remaining = usePendingChangesStore.getState().changes
+    expect(remaining).toHaveLength(1)
+    expect(remaining[0].op.path).toEqual(['system', 'domain-name'])
+  })
+
+  it('leaves the confirm panel once the window runs out, keeping the reverted changes pending', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      server.use(http.post('/api/config/commit', () => HttpResponse.json({ pendingConfirm: true })))
+      usePendingChangesStore
+        .getState()
+        .add({ op: { op: 'set', path: ['system', 'host-name'], value: 'r1' }, label: 'set host-name' })
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+      renderWithProviders(<PendingChangesBar />)
+
+      await user.click(screen.getByRole('button', { name: /^commit$/i }))
+      await screen.findByText(/keep these changes/i)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(91_000)
+      })
+
+      expect(screen.queryByText(/keep these changes/i)).not.toBeInTheDocument()
+      expect(screen.getByText(/confirm window ran out/i)).toBeInTheDocument()
+      expect(screen.getByText(/1 pending change/i)).toBeInTheDocument()
+      expect(usePendingChangesStore.getState().changes).toHaveLength(1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('shows the keep/revert confirm panel when commit-confirm is pending', async () => {
