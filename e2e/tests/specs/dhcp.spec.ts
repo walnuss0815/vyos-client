@@ -4,7 +4,9 @@ import { cardWithText, commitPendingChanges, login, resetConfig } from './helper
 // Leave nothing behind on the shared VM (see resetConfig).
 test.afterEach(() =>
   resetConfig([
-    ['service', 'dhcp-server', 'shared-network-name', 'E2ETEST'],
+    // The whole service, not just the shared network: newer VyOS builds
+    // reject a commit that leaves dhcp-server without any network.
+    ['service', 'dhcp-server'],
     ['interfaces', 'ethernet', 'eth1', 'address', '192.0.2.1/24'],
   ]),
 )
