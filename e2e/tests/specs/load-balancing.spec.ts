@@ -107,14 +107,21 @@ test('creates an HAProxy backend (with a server) and a service (with a port, lin
   // --- Commit 2: edit the now-real service to check the now-real
   // backend's box, linking them. ---
   await serviceCard.getByRole('button', { name: 'Edit' }).click()
-  await page.getByRole('checkbox', { name: BACKEND_NAME }).check()
-  // Scoped to serviceCard, not a bare page-level query - by this point
+  // In edit mode the card swaps to HaproxyServiceFormPanel, which no
+  // longer renders the service's name (its name input only exists when
+  // creating) - so `serviceCard` (matched by that name) matches nothing
+  // from here on. Identify the card by what only the open edit form
+  // contains instead: the checkbox for this backend.
+  const backendCheckbox = page.getByRole('checkbox', { name: BACKEND_NAME })
+  await backendCheckbox.check()
+  const editingServiceCard = cardWithText(page, /.*/).filter({ has: backendCheckbox })
+  // Scoped to the card, not a bare page-level query - by this point
   // in the run there's always a "committed but not saved" pending-
   // changes bar on screen too (PendingChangesBar.tsx), which has its
   // own identically-named "Save" button (persisting to disk, an
   // unrelated action from this form's own "Save" here) - an unscoped
   // query is a strict-mode violation (matches both).
-  await serviceCard.getByRole('button', { name: 'Save', exact: true }).click()
+  await editingServiceCard.getByRole('button', { name: 'Save', exact: true }).click()
 
   await commitPendingChanges(page)
 
