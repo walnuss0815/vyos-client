@@ -1,7 +1,7 @@
-import { screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../test/mocks/server'
 import { renderWithProviders } from '../test/testUtils'
 import ImportConfigPanel from './ImportConfigPanel'
@@ -40,6 +40,30 @@ describe('ImportConfigPanel', () => {
 
     expect(await screen.findByText(/imported successfully/i)).toBeInTheDocument()
     expect(receivedBody).toMatchObject({ mode: 'merge', content: "set system host-name 'r1'\n" })
+  })
+
+  it('leaves the confirm panel once the window runs out', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      server.use(http.post('/api/config/import', () => HttpResponse.json({ pendingConfirm: true })))
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+      renderWithProviders(<ImportConfigPanel />)
+
+      await user.upload(screen.getByLabelText(/configuration file/i), makeFile("set system host-name 'r1'\n"))
+      const importButton = screen.getByRole('button', { name: /import configuration/i })
+      await waitFor(() => expect(importButton).not.toBeDisabled())
+      await user.click(importButton)
+      await screen.findByText(/keep this imported configuration/i)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(91_000)
+      })
+
+      expect(screen.queryByText(/keep this imported configuration/i)).not.toBeInTheDocument()
+      expect(screen.getByText(/reverted the import/i)).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('requires acknowledgment before a full-replace (load) import is enabled', async () => {

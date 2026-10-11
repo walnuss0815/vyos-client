@@ -16,6 +16,8 @@ interface PendingChangesState {
   changes: PendingChange[]
   add: (change: Omit<PendingChange, 'id'>) => void
   remove: (id: string) => void
+  /** Drops just these changes, leaving anything queued since untouched. */
+  removeMany: (ids: string[]) => void
   clear: () => void
 }
 
@@ -113,6 +115,8 @@ export const usePendingChangesStore = create<PendingChangesState>()(
           changes: [...state.changes, { ...change, id: crypto.randomUUID() }],
         })),
       remove: (id) => set((state) => ({ changes: state.changes.filter((c) => c.id !== id) })),
+      removeMany: (ids) =>
+        set((state) => ({ changes: state.changes.filter((c) => !ids.includes(c.id)) })),
       clear: () => set({ changes: [] }),
     }),
     {
