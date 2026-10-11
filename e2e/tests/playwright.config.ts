@@ -11,6 +11,10 @@ export default defineConfig({
   testDir: './specs',
   fullyParallel: false, // shares one live VyOS instance - avoid racing commits
   retries: 1,
+  // Real commits against a nested-virtualization VM routinely take
+  // several seconds each, and most specs commit twice.
+  timeout: 180_000,
+  expect: { timeout: 15_000 },
   workers: 1,
   reporter: [['list'], ['html', { open: 'never', outputFolder: 'playwright-report' }]],
   use: {
