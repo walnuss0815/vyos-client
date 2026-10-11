@@ -1,5 +1,10 @@
 import { expect, test } from '@playwright/test'
-import { cardWithText, commitPendingChanges, login } from './helpers'
+import { cardWithText, commitPendingChanges, login, resetConfig } from './helpers'
+
+// Leave nothing behind on the shared VM (see resetConfig).
+test.afterEach(() =>
+  resetConfig([['policy', 'prefix-list', 'E2E-TEST-PLIST']]),
+)
 
 // VyOS prefix-list names follow the same identifier rules as firewall
 // custom chains/zones/groups (frontend/src/lib/vyosIdentifier.ts) -

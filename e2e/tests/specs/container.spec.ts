@@ -1,5 +1,10 @@
 import { expect, test } from '@playwright/test'
-import { cardWithText, commitPendingChanges, login } from './helpers'
+import { cardWithText, commitPendingChanges, login, resetConfig } from './helpers'
+
+// Leave nothing behind on the shared VM (see resetConfig).
+test.afterEach(() =>
+  resetConfig([['container', 'network', 'E2ETESTNET']]),
+)
 
 // VyOS caps container network names at 11 characters
 // (NetworkForm.tsx's own `tooLong` check, confirmed against vyos-1x's

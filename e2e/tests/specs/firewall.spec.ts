@@ -1,5 +1,10 @@
 import { expect, test } from '@playwright/test'
-import { commitPendingChanges, login } from './helpers'
+import { commitPendingChanges, login, resetConfig } from './helpers'
+
+// Leave nothing behind on the shared VM (see resetConfig).
+test.afterEach(() =>
+  resetConfig([['firewall', 'ipv4', 'name', 'E2ETEST']]),
+)
 
 // VyOS custom firewall chain names follow the same identifier rules as
 // zones/groups (frontend/src/lib/vyosIdentifier.ts) - alphanumeric plus

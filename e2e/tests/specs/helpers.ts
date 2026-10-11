@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page } from '@playwright/test'
+import { expect, request, type Locator, type Page } from '@playwright/test'
 
 /** Logs in with the credentials run.sh configured
  * (E2E_UI_ADMIN_USER/E2E_UI_ADMIN_PASSWORD - a real `system login
@@ -55,4 +55,45 @@ export async function commitPendingChanges(page: Page): Promise<void> {
  */
 export function cardWithText(page: Page, text: string | RegExp): Locator {
   return page.locator('.rounded-xl.border.border-surface-border.bg-surface-900.p-4').filter({ hasText: text })
+}
+
+/**
+ * Deletes the given config paths (each an array of path words, e.g.
+ * `['firewall', 'ipv4', 'name', 'E2ETEST']`) straight through VyOS's
+ * REST API, skipping any that don't exist, in a single commit. Meant
+ * for `test.afterEach`: specs share one live VM, so whatever a spec
+ * leaves behind would otherwise collide with a retry (fixed names
+ * already exist) or with later specs (shared addresses/ports). Runs
+ * after failed attempts too, which is exactly when it matters.
+ */
+export async function resetConfig(paths: string[][]): Promise<void> {
+  const baseUrl = process.env.VYOS_API_URL
+  const key = process.env.E2E_VYOS_API_KEY
+  if (!baseUrl || !key) {
+    throw new Error('VYOS_API_URL and E2E_VYOS_API_KEY must be set (run.sh exports both)')
+  }
+
+  const api = await request.newContext({ baseURL: baseUrl, ignoreHTTPSErrors: true })
+  try {
+    const call = async (endpoint: string, payload: unknown) => {
+      const response = await api.post(endpoint, { multipart: { data: JSON.stringify(payload), key } })
+      const body = (await response.json()) as { success: boolean; data?: unknown; error?: string }
+      if (!body.success) {
+        throw new Error(`VyOS ${endpoint} failed: ${body.error ?? response.status()}`)
+      }
+      return body.data
+    }
+
+    const ops: { op: 'delete'; path: string[] }[] = []
+    for (const path of paths) {
+      if (await call('/retrieve', { op: 'exists', path })) {
+        ops.push({ op: 'delete', path })
+      }
+    }
+    if (ops.length > 0) {
+      await call('/configure', ops)
+    }
+  } finally {
+    await api.dispose()
+  }
 }
