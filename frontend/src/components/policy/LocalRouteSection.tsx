@@ -60,7 +60,7 @@ export default function LocalRouteSection({
 
       {editing && (
         <div className="mb-4">
-          <RuleForm
+          <RuleForm key={editingRule}
             family={family}
             rule={editing}
             existingNumbers={existingNumbers}

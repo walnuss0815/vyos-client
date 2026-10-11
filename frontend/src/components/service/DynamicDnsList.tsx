@@ -55,7 +55,7 @@ export default function DynamicDnsList({ config }: { config: DynamicDNSConfig })
         )}
         {editing && (
           <div className="mb-3">
-            <EntryForm
+            <EntryForm key={editingName}
               entry={editing}
               existingNames={config.entries.map((e) => e.name)}
               onDone={() => setEditingName(null)}

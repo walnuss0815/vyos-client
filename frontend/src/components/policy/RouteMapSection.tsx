@@ -196,7 +196,7 @@ function RulesSection({ map }: { map: RouteMap }) {
 
       {editing && (
         <div className="my-2">
-          <RouteMapRuleForm
+          <RouteMapRuleForm key={editingRule}
             mapName={map.name}
             rule={editing}
             existingNumbers={existingNumbers}

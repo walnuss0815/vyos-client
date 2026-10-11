@@ -63,7 +63,7 @@ export default function ContainerList({
 
       {editing && (
         <div className="mb-3">
-          <ContainerForm
+          <ContainerForm key={editingName}
             container={editing}
             existingNames={containers.map((c) => c.name)}
             networks={networks}

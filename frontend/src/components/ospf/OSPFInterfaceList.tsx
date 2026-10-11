@@ -55,7 +55,7 @@ export default function OSPFInterfaceList({ protocol, interfaces, isLoading }: O
 
       {editing && (
         <div className="mb-3">
-          <OSPFInterfaceForm
+          <OSPFInterfaceForm key={editingName}
             protocol={protocol}
             iface={editing}
             existingNames={interfaces.map((i) => i.name)}

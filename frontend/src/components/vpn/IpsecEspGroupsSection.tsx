@@ -48,7 +48,7 @@ export default function IpsecEspGroupsSection({ config }: { config: IPsecConfig 
       )}
       {editing && (
         <div className="mb-3">
-          <IpsecEspGroupForm group={editing} existingNames={config.espGroups.map((g) => g.name)} onDone={() => setEditingName(null)} />
+          <IpsecEspGroupForm key={editingName} group={editing} existingNames={config.espGroups.map((g) => g.name)} onDone={() => setEditingName(null)} />
         </div>
       )}
 

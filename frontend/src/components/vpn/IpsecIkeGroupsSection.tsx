@@ -48,7 +48,7 @@ export default function IpsecIkeGroupsSection({ config }: { config: IPsecConfig 
       )}
       {editing && (
         <div className="mb-3">
-          <IpsecIkeGroupForm group={editing} existingNames={config.ikeGroups.map((g) => g.name)} onDone={() => setEditingName(null)} />
+          <IpsecIkeGroupForm key={editingName} group={editing} existingNames={config.ikeGroups.map((g) => g.name)} onDone={() => setEditingName(null)} />
         </div>
       )}
 

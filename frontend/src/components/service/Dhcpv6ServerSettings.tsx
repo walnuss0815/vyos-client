@@ -164,7 +164,7 @@ function SharedNetworkList({ config }: { config: DHCPv6ServerConfig }) {
       )}
       {editing && (
         <div className="mb-3">
-          <SharedNetworkForm
+          <SharedNetworkForm key={editingName}
             network={editing}
             existingNames={config.sharedNetworks.map((n) => n.name)}
             onDone={() => setEditingName(null)}

@@ -50,7 +50,7 @@ export default function CAList({ cas, isLoading }: { cas: PKICertificateAuthorit
 
       {editing && (
         <div className="mb-4">
-          <CAForm ca={editing} existingNames={cas.map((c) => c.name)} onDone={() => setEditingName(null)} />
+          <CAForm key={editingName} ca={editing} existingNames={cas.map((c) => c.name)} onDone={() => setEditingName(null)} />
         </div>
       )}
 

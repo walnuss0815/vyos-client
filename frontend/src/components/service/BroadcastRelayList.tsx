@@ -99,7 +99,7 @@ function BroadcastRelayEnabled({ config }: { config: BroadcastRelayConfig }) {
         )}
         {editing && (
           <div className="mb-3">
-            <InstanceForm
+            <InstanceForm key={editingId}
               instance={editing}
               existingIds={config.instances.map((i) => i.id)}
               onDone={() => setEditingId(null)}

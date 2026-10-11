@@ -70,7 +70,7 @@ export default function VlanSection({
         />
       )}
       {editing && (
-        <VlanFormFields
+        <VlanFormFields key={editingVlanId}
           parentPath={parentPath}
           parentPathLabel={parentPathLabel}
           vrfOptions={vrfOptions}

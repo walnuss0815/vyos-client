@@ -86,7 +86,7 @@ function EventHandlerEnabled({ config }: { config: EventHandlerConfig }) {
       )}
       {editing && (
         <div className="mb-3">
-          <EventForm
+          <EventForm key={editingName}
             event={editing}
             existingNames={config.events.map((e) => e.name)}
             onDone={() => setEditingName(null)}

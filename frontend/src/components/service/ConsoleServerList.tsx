@@ -86,7 +86,7 @@ function ConsoleServerEnabled({ config }: { config: ConsoleServerConfig }) {
       )}
       {editing && (
         <div className="mb-3">
-          <DeviceForm
+          <DeviceForm key={editingName}
             device={editing}
             existingNames={config.devices.map((d) => d.name)}
             onDone={() => setEditingName(null)}

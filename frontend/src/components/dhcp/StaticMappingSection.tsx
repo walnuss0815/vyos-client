@@ -80,7 +80,7 @@ export default function StaticMappingSection({
         />
       )}
       {editing && (
-        <MappingFormFields
+        <MappingFormFields key={editingName}
           networkName={networkName}
           cidr={cidr}
           mapping={editing}

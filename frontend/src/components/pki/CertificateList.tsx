@@ -59,7 +59,7 @@ export default function CertificateList({
 
       {editing && (
         <div className="mb-4">
-          <CertificateForm
+          <CertificateForm key={editingName}
             certificate={editing}
             existingNames={certificates.map((c) => c.name)}
             onDone={() => setEditingName(null)}
