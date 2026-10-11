@@ -66,6 +66,16 @@ func TestRedactSetCommands_MultipleQuotedPathSegments(t *testing.T) {
 			want: `set container name 'vyos-ui' environment 'SESSION_SECRET' value '` + mask.MaskPlaceholder + `'`,
 		},
 		{
+			name: "unquoted tag node identifier that looks sensitive, generic value leaf",
+			line: `set container name vyos-ui environment VYOS_API_KEY value 'abc123'`,
+			want: `set container name vyos-ui environment VYOS_API_KEY value '` + mask.MaskPlaceholder + `'`,
+		},
+		{
+			name: "unquoted tag node identifier that does not look sensitive, generic value leaf",
+			line: `set container name vyos-ui environment TZ value 'UTC'`,
+			want: `set container name vyos-ui environment TZ value 'UTC'`,
+		},
+		{
 			name: "tag node identifier that does not look sensitive, generic value leaf",
 			line: `set container name 'vyos-ui' environment 'TZ' value 'UTC'`,
 			want: `set container name 'vyos-ui' environment 'TZ' value 'UTC'`,
