@@ -1,3 +1,4 @@
+import { useBaselineState } from '../../hooks/useBaselineState'
 import { useState } from 'react'
 import ChipList from '../ChipList'
 import { generalFormToOps, generalToFormValues, type SystemGeneralFormValues } from '../../lib/systemGeneralForm'
@@ -17,7 +18,7 @@ import InfoTooltip from '../InfoTooltip'
  * flow-accounting, sFlow, acceleration, system proxy, ...) stays
  * Config-Tree-only - see docs/roadmap.md. */
 export default function SystemGeneralSettings({ settings }: { settings: SystemGeneralSettingsData }) {
-  const [values, setValues] = useState<SystemGeneralFormValues>(() => generalToFormValues(settings))
+  const [values, setValues] = useBaselineState(generalToFormValues(settings))
   const [dirty, setDirty] = useState(false)
   const add = usePendingChangesStore((s) => s.add)
 

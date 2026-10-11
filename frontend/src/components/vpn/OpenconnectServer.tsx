@@ -1,3 +1,4 @@
+import { useBaselineState } from '../../hooks/useBaselineState'
 import { useState } from 'react'
 import ChipList from '../ChipList'
 import { openconnectNetworkSettingsPath } from '../../lib/vpnOpenconnectParse'
@@ -69,7 +70,7 @@ export default function OpenconnectServer({ config }: { config: OpenconnectConfi
 }
 
 function SettingsSection({ config }: { config: OpenconnectConfig }) {
-  const [values, setValues] = useState<OpenconnectSettingsFormValues>(() => openconnectConfigToSettingsFormValues(config))
+  const [values, setValues] = useBaselineState(openconnectConfigToSettingsFormValues(config))
   const add = usePendingChangesStore((s) => s.add)
 
   function update<K extends keyof OpenconnectSettingsFormValues>(key: K, value: OpenconnectSettingsFormValues[K]) {
@@ -175,7 +176,7 @@ function SettingsSection({ config }: { config: OpenconnectConfig }) {
 }
 
 function AuthenticationSection({ config }: { config: OpenconnectConfig }) {
-  const [values, setValues] = useState<OpenconnectSettingsFormValues>(() => openconnectConfigToSettingsFormValues(config))
+  const [values, setValues] = useBaselineState(openconnectConfigToSettingsFormValues(config))
   const add = usePendingChangesStore((s) => s.add)
   const { authentication } = config
 

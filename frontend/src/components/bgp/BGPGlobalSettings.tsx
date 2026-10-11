@@ -1,3 +1,4 @@
+import { useBaselineState } from '../../hooks/useBaselineState'
 import { useState } from 'react'
 import { blankGlobalFormValues, globalFormToOps, globalToFormValues } from '../../lib/bgpGlobalForm'
 import type { BGPConfig } from '../../lib/bgpTypes'
@@ -11,7 +12,7 @@ import FieldLabel from '../FieldLabel'
  * under `protocols bgp parameters` (dozens of process-wide tuning
  * knobs - see bgpTypes.ts's doc comment) stays Config-Tree-only. */
 export default function BGPGlobalSettings({ bgp }: { bgp: BGPConfig }) {
-  const [values, setValues] = useState(() => globalToFormValues(bgp))
+  const [values, setValues] = useBaselineState(globalToFormValues(bgp))
   const [dirty, setDirty] = useState(false)
   const add = usePendingChangesStore((s) => s.add)
 

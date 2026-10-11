@@ -1,3 +1,4 @@
+import { useBaselineState } from '../../hooks/useBaselineState'
 import { useState } from 'react'
 import ChipList from '../ChipList'
 import { dynamicDnsEntryPath } from '../../lib/serviceDnsDynamicParse'
@@ -335,7 +336,7 @@ function EntryForm({
 }
 
 function GlobalSettings({ config }: { config: DynamicDNSConfig }) {
-  const [values, setValues] = useState(() => dynamicDNSGlobalToFormValues(config))
+  const [values, setValues] = useBaselineState(dynamicDNSGlobalToFormValues(config))
   const add = usePendingChangesStore((s) => s.add)
 
   function update<K extends keyof ReturnType<typeof blankDynamicDNSGlobalFormValues>>(key: K, value: string) {

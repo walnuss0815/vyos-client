@@ -1,3 +1,4 @@
+import { useBaselineState } from '../../hooks/useBaselineState'
 import { useState } from 'react'
 import {
   addTFTPListenAddressOps,
@@ -39,7 +40,7 @@ export default function TftpSettings({ config }: { config: TFTPServerConfig }) {
 }
 
 function TftpSettingsForm({ config }: { config: TFTPServerConfig }) {
-  const [values, setValues] = useState(() => tftpConfigToFormValues(config))
+  const [values, setValues] = useBaselineState(tftpConfigToFormValues(config))
   const add = usePendingChangesStore((s) => s.add)
 
   function update<K extends keyof ReturnType<typeof blankTFTPServerFormValues>>(

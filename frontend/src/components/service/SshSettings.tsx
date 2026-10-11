@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useBaselineState } from '../../hooks/useBaselineState'
 import ChipList from '../ChipList'
 import { sshAllowPath, sshDenyPath, sshDynamicProtectionPath, sshPath } from '../../lib/serviceSshParse'
 import {
@@ -39,7 +39,7 @@ export default function SshSettings({ config }: { config: SSHConfig }) {
 }
 
 function SshSettingsForm({ config }: { config: SSHConfig }) {
-  const [values, setValues] = useState(() => sshConfigToFormValues(config))
+  const [values, setValues] = useBaselineState(sshConfigToFormValues(config))
   const add = usePendingChangesStore((s) => s.add)
 
   function update<K extends keyof ReturnType<typeof blankSSHFormValues>>(

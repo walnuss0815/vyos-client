@@ -1,3 +1,4 @@
+import { useBaselineState } from '../../hooks/useBaselineState'
 import { useState } from 'react'
 import {
   addNDPProxyPrefixOps,
@@ -44,7 +45,7 @@ export default function NdpProxyList({ config }: { config: NDPProxyConfig }) {
 function NdpProxyEnabled({ config }: { config: NDPProxyConfig }) {
   const [showCreate, setShowCreate] = useState(false)
   const [editingName, setEditingName] = useState<string | null>(null)
-  const [globalValues, setGlobalValues] = useState(() => ({ routeRefresh: config.routeRefresh ?? '' }))
+  const [globalValues, setGlobalValues] = useBaselineState({ routeRefresh: config.routeRefresh ?? '' })
   const add = usePendingChangesStore((s) => s.add)
 
   function saveGlobal() {

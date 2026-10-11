@@ -1,3 +1,4 @@
+import { useBaselineState } from '../../hooks/useBaselineState'
 import { useState } from 'react'
 import ChipList from '../ChipList'
 import Dhcpv6SubnetDetails from './Dhcpv6SubnetDetails'
@@ -50,7 +51,7 @@ export default function Dhcpv6ServerSettings({ config }: { config: DHCPv6ServerC
 }
 
 function Dhcpv6ServerSettingsForm({ config }: { config: DHCPv6ServerConfig }) {
-  const [values, setValues] = useState(() => dhcpv6ConfigToGlobalFormValues(config))
+  const [values, setValues] = useBaselineState(dhcpv6ConfigToGlobalFormValues(config))
   const add = usePendingChangesStore((s) => s.add)
 
   function update<K extends keyof ReturnType<typeof blankDHCPv6GlobalFormValues>>(

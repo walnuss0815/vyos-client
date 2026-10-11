@@ -1,3 +1,4 @@
+import { useBaselineState } from '../../hooks/useBaselineState'
 import { useState } from 'react'
 import { globalFormToOps, globalToFormValues, type OSPFGlobalFormValues } from '../../lib/ospfGlobalForm'
 import type { OSPFGlobalSettings as OSPFGlobalSettingsData, OSPFProtocol } from '../../lib/ospfTypes'
@@ -20,7 +21,7 @@ export default function OSPFGlobalSettings({
   protocol: OSPFProtocol
   settings: OSPFGlobalSettingsData
 }) {
-  const [values, setValues] = useState<OSPFGlobalFormValues>(() => globalToFormValues(settings))
+  const [values, setValues] = useBaselineState(globalToFormValues(settings))
   const [dirty, setDirty] = useState(false)
   const add = usePendingChangesStore((s) => s.add)
 

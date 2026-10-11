@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useBaselineState } from '../../hooks/useBaselineState'
 import { toggleHADisableOp, toggleVrrpSnmpTrapOp, vrrpGlobalFormToOps, type VRRPGlobalFormValues } from '../../lib/haVrrpForm'
 import type { HAConfig } from '../../lib/haTypes'
 import { buttonClass, inputClass, labelClass } from '../../lib/formStyles'
@@ -25,7 +25,7 @@ function toFormValues(ha: HAConfig): VRRPGlobalFormValues {
 export default function VrrpGlobalSettings({ ha }: { ha: HAConfig }) {
   const add = usePendingChangesStore((s) => s.add)
   const before = toFormValues(ha)
-  const [values, setValues] = useState<VRRPGlobalFormValues>(before)
+  const [values, setValues] = useBaselineState(before)
 
   function update<K extends keyof VRRPGlobalFormValues>(key: K, value: VRRPGlobalFormValues[K]) {
     setValues((v) => ({ ...v, [key]: value }))

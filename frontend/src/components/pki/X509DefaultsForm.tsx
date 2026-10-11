@@ -1,3 +1,4 @@
+import { useBaselineState } from '../../hooks/useBaselineState'
 import { useState } from 'react'
 import {
   x509DefaultsFormToOps,
@@ -16,7 +17,7 @@ import FieldLabel from '../FieldLabel'
  * pkiTypes.ts's doc comment), but a small flat form, cheap to
  * include for anyone who still runs `generate` from the CLI. */
 export default function X509DefaultsForm({ defaults }: { defaults: PKIX509Defaults }) {
-  const [values, setValues] = useState<PKIX509DefaultsFormValues>(() => x509DefaultsToFormValues(defaults))
+  const [values, setValues] = useBaselineState(x509DefaultsToFormValues(defaults))
   const [dirty, setDirty] = useState(false)
   const add = usePendingChangesStore((s) => s.add)
 

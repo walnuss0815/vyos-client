@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useBaselineState } from '../../hooks/useBaselineState'
 import ChipList from '../ChipList'
 import { mdnsRepeaterPath } from '../../lib/serviceMdnsParse'
 import {
@@ -39,7 +39,7 @@ export default function MdnsSettings({ config }: { config: MdnsRepeaterConfig })
 }
 
 function MdnsSettingsForm({ config }: { config: MdnsRepeaterConfig }) {
-  const [values, setValues] = useState(() => mdnsConfigToFormValues(config))
+  const [values, setValues] = useBaselineState(mdnsConfigToFormValues(config))
   const add = usePendingChangesStore((s) => s.add)
 
   function update<K extends keyof ReturnType<typeof blankMdnsRepeaterFormValues>>(

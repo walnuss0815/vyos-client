@@ -1,3 +1,4 @@
+import { useBaselineState } from '../../hooks/useBaselineState'
 import { useState } from 'react'
 import {
   haproxyGlobalParametersFormToOps,
@@ -41,8 +42,8 @@ export default function HaproxyGlobalSettings({
   const beforeParams = haproxyGlobalParametersToFormValues(globalParameters)
   const beforeTimeout = haproxyGlobalTimeoutToFormValues(globalTimeout)
 
-  const [params, setParams] = useState<HAProxyGlobalParametersFormValues>(beforeParams)
-  const [timeout, setTimeoutValues] = useState<HAProxyGlobalTimeoutFormValues>(beforeTimeout)
+  const [params, setParams] = useBaselineState(beforeParams)
+  const [timeout, setTimeoutValues] = useBaselineState(beforeTimeout)
   const [vrfValue, setVrfValue] = useState(vrf ?? '')
 
   function updateParams<K extends keyof HAProxyGlobalParametersFormValues>(

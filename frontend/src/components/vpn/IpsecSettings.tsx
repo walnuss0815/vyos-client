@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useBaselineState } from '../../hooks/useBaselineState'
 import {
   blankOptionsFormValues,
   disableIPsecOp,
@@ -38,7 +38,7 @@ export default function IpsecSettings({ config }: { config: IPsecConfig }) {
 }
 
 function IpsecSettingsForm({ config }: { config: IPsecConfig }) {
-  const [values, setValues] = useState(() => optionsToFormValues(config.options))
+  const [values, setValues] = useBaselineState(optionsToFormValues(config.options))
   const add = usePendingChangesStore((s) => s.add)
 
   function update<K extends keyof ReturnType<typeof blankOptionsFormValues>>(

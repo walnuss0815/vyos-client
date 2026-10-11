@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useBaselineState } from '../../hooks/useBaselineState'
 import ChipList from '../ChipList'
 import { accelPppBasePath } from '../../lib/vpnAccelPppParse'
 import { accelPppConfigToSettingsFormValues, accelPppSettingsFormToOps, type AccelPppSettingsFormValues } from '../../lib/vpnAccelPppForm'
@@ -13,7 +13,7 @@ import { usePendingChangesStore } from '../../store/pendingChanges'
  * several sections, extracted into its own file for size (see
  * AccelPppServer.tsx's own doc comment for why it's split this way). */
 export default function AccelPppSettingsSection({ kind, config }: { kind: AccelPppKind; config: AccelPppConfig }) {
-  const [values, setValues] = useState<AccelPppSettingsFormValues>(() => accelPppConfigToSettingsFormValues(config))
+  const [values, setValues] = useBaselineState(accelPppConfigToSettingsFormValues(config))
   const add = usePendingChangesStore((s) => s.add)
 
   function update<K extends keyof AccelPppSettingsFormValues>(key: K, value: AccelPppSettingsFormValues[K]) {
