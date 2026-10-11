@@ -12,7 +12,7 @@ nix develop
 ```
 
 If you don't use Nix, install Go (see `backend/go.mod` for the version)
-and Node.js 22+ yourself; everything else in the flake is optional
+and Node.js 24+ yourself; everything else in the flake is optional
 tooling. Either way, `oxlint` isn't part of the flake at all - it's a
 regular `frontend/package.json` devDependency, so `npm install` in
 `frontend/` (needed regardless of Nix) is what actually provides it.
