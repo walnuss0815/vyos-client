@@ -57,6 +57,10 @@ cleanup() {
     echo "--- vyos-client log (last 100 lines) ---"
     tail -n 100 "$vyos_client_log" 2>/dev/null || true
   fi
+  # Keep both logs next to the Playwright results so CI uploads them -
+  # the only record of what the VM and the backend did around a failure.
+  mkdir -p "$script_dir/tests/logs"
+  cp "$bootstrap_log" "$vyos_client_log" "$script_dir/tests/logs/" 2>/dev/null || true
   rm -rf "$work_dir"
   exit "$status"
 }
