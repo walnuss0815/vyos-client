@@ -1,6 +1,6 @@
 module github.com/walnuss0815/vyos-client/backend
 
-go 1.26.0
+go 1.27.0
 
 require (
 	github.com/GehirnInc/crypt v0.0.0-20230320061759-8cc1b52080c5

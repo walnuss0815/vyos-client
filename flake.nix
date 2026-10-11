@@ -17,14 +17,14 @@
 
           packages = with pkgs; [
             # --- Go backend ---
-            go_1_25
+            go_1_27
             gopls
             golangci-lint
             gotools
             delve
 
             # --- Frontend ---
-            nodejs_22
+            nodejs_24
             typescript-language-server
 
             # --- Containers ---
