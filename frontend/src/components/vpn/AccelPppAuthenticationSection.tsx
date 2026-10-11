@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { accelPppConfigToSettingsFormValues, accelPppSettingsFormToOps, type AccelPppSettingsFormValues } from '../../lib/vpnAccelPppForm'
+import { useBaselineState } from '../../hooks/useBaselineState'
+import { accelPppConfigToSettingsFormValues, accelPppSettingsFormToOps } from '../../lib/vpnAccelPppForm'
 import { ACCEL_PPP_AUTH_MODES, ACCEL_PPP_PROTOCOLS, type AccelPppConfig, type AccelPppKind } from '../../lib/vpnAccelPppTypes'
 import FieldLabel from '../FieldLabel'
 import InfoTooltip from '../InfoTooltip'
@@ -15,7 +15,7 @@ import AccelPppRadiusServersSubsection from './AccelPppRadiusServersSubsection'
  * way). Includes its own two subsections (local users, RADIUS
  * servers), each further extracted into their own files. */
 export default function AccelPppAuthenticationSection({ kind, config }: { kind: AccelPppKind; config: AccelPppConfig }) {
-  const [values, setValues] = useState<AccelPppSettingsFormValues>(() => accelPppConfigToSettingsFormValues(config))
+  const [values, setValues] = useBaselineState(accelPppConfigToSettingsFormValues(config))
   const add = usePendingChangesStore((s) => s.add)
   const { authentication } = config
 

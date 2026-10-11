@@ -1,3 +1,4 @@
+import { useBaselineState } from '../../hooks/useBaselineState'
 import { useState } from 'react'
 import ChipList from '../ChipList'
 import {
@@ -71,7 +72,7 @@ export default function MonitoringSettings({ config }: { config: MonitoringConfi
 function NodeExporterSection({ config }: { config: MonitoringConfig }) {
   const nodeExporter = config.prometheusNodeExporter
   const add = usePendingChangesStore((s) => s.add)
-  const [values, setValues] = useState(() => nodeExporterConfigToFormValues(nodeExporter))
+  const [values, setValues] = useBaselineState(nodeExporterConfigToFormValues(nodeExporter))
 
   if (!nodeExporter.enabled) {
     return (
@@ -141,7 +142,7 @@ function NodeExporterSection({ config }: { config: MonitoringConfig }) {
 function FrrExporterSection({ config }: { config: MonitoringConfig }) {
   const frrExporter = config.prometheusFrrExporter
   const add = usePendingChangesStore((s) => s.add)
-  const [values, setValues] = useState(() => frrExporterConfigToFormValues(frrExporter))
+  const [values, setValues] = useBaselineState(frrExporterConfigToFormValues(frrExporter))
 
   if (!frrExporter.enabled) {
     return (
@@ -289,7 +290,7 @@ function ZabbixAgentSection({ config }: { config: MonitoringConfig }) {
 }
 
 function ZabbixAgentForm({ zabbix }: { zabbix: MonitoringConfig['zabbixAgent'] }) {
-  const [values, setValues] = useState(() => zabbixAgentConfigToFormValues(zabbix))
+  const [values, setValues] = useBaselineState(zabbixAgentConfigToFormValues(zabbix))
   const add = usePendingChangesStore((s) => s.add)
 
   function update<K extends keyof ReturnType<typeof blankZabbixAgentFormValues>>(
@@ -480,7 +481,7 @@ function NetworkEventSection({ config }: { config: MonitoringConfig }) {
 }
 
 function NetworkEventForm({ networkEvent }: { networkEvent: MonitoringConfig['networkEvent'] }) {
-  const [values, setValues] = useState(() => networkEventConfigToFormValues(networkEvent))
+  const [values, setValues] = useBaselineState(networkEventConfigToFormValues(networkEvent))
   const add = usePendingChangesStore((s) => s.add)
 
   function update<K extends keyof ReturnType<typeof blankNetworkEventFormValues>>(

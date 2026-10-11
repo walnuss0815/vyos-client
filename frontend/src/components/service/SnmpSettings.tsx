@@ -1,3 +1,4 @@
+import { useBaselineState } from '../../hooks/useBaselineState'
 import { useState } from 'react'
 import ChipList from '../ChipList'
 import Snmpv3Section from './Snmpv3Section'
@@ -46,7 +47,7 @@ export default function SnmpSettings({ config }: { config: SNMPConfig }) {
 }
 
 function SnmpSettingsForm({ config }: { config: SNMPConfig }) {
-  const [values, setValues] = useState(() => snmpConfigToFormValues(config))
+  const [values, setValues] = useBaselineState(snmpConfigToFormValues(config))
   const add = usePendingChangesStore((s) => s.add)
 
   function update<K extends keyof ReturnType<typeof blankSNMPSettingsFormValues>>(key: K, value: string) {

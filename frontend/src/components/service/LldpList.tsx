@@ -1,3 +1,4 @@
+import { useBaselineState } from '../../hooks/useBaselineState'
 import { useState } from 'react'
 import ChipList from '../ChipList'
 import { lldpPath } from '../../lib/serviceLldpParse'
@@ -46,7 +47,7 @@ export default function LldpList({ config }: { config: LLDPConfig }) {
 function LldpEnabled({ config }: { config: LLDPConfig }) {
   const [showCreate, setShowCreate] = useState(false)
   const [editingName, setEditingName] = useState<string | null>(null)
-  const [values, setValues] = useState(() => lldpConfigToGeneralFormValues(config))
+  const [values, setValues] = useBaselineState(lldpConfigToGeneralFormValues(config))
   const add = usePendingChangesStore((s) => s.add)
 
   function update<K extends keyof ReturnType<typeof blankLLDPGeneralFormValues>>(key: K, value: boolean) {

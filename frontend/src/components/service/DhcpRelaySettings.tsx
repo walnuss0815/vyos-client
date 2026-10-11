@@ -1,3 +1,4 @@
+import { useBaselineState } from '../../hooks/useBaselineState'
 import { useState } from 'react'
 import ChipList from '../ChipList'
 import { dhcpRelayPath, dhcpv6RelayUpstreamInterfacePath } from '../../lib/serviceDhcpRelayParse'
@@ -42,7 +43,7 @@ export default function DhcpRelaySettings({
 }
 
 function V4Settings({ config }: { config: DHCPRelayConfig }) {
-  const [values, setValues] = useState(() => dhcpRelayConfigToFormValues(config))
+  const [values, setValues] = useBaselineState(dhcpRelayConfigToFormValues(config))
   const add = usePendingChangesStore((s) => s.add)
 
   function update<K extends keyof ReturnType<typeof blankDHCPRelaySettingsFormValues>>(
@@ -159,7 +160,7 @@ function V4Settings({ config }: { config: DHCPRelayConfig }) {
 }
 
 function V6Settings({ config }: { config: DHCPv6RelayConfig }) {
-  const [values, setValues] = useState(() => dhcpv6RelayConfigToFormValues(config))
+  const [values, setValues] = useBaselineState(dhcpv6RelayConfigToFormValues(config))
   const add = usePendingChangesStore((s) => s.add)
 
   function update<K extends keyof ReturnType<typeof blankDHCPv6RelaySettingsFormValues>>(

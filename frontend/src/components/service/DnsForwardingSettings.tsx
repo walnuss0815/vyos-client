@@ -1,3 +1,4 @@
+import { useBaselineState } from '../../hooks/useBaselineState'
 import { useState } from 'react'
 import ChipList from '../ChipList'
 import { dnsForwardingDomainPath, dnsForwardingPath } from '../../lib/serviceDnsForwardingParse'
@@ -47,7 +48,7 @@ export default function DnsForwardingSettings({ config }: { config: DNSForwardin
 }
 
 function DnsForwardingSettingsForm({ config }: { config: DNSForwardingConfig }) {
-  const [values, setValues] = useState(() => dnsForwardingConfigToFormValues(config))
+  const [values, setValues] = useBaselineState(dnsForwardingConfigToFormValues(config))
   const add = usePendingChangesStore((s) => s.add)
 
   function update<K extends keyof ReturnType<typeof blankDNSForwardingSettingsFormValues>>(

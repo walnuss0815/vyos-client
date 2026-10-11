@@ -1,3 +1,4 @@
+import { useBaselineState } from '../../hooks/useBaselineState'
 import { useState } from 'react'
 import ChipList from '../ChipList'
 import { ntpAllowClientPath, ntpPath } from '../../lib/serviceNtpParse'
@@ -132,7 +133,7 @@ function ServersSection({ config }: { config: NTPConfig }) {
 }
 
 function GeneralSettings({ config }: { config: NTPConfig }) {
-  const [values, setValues] = useState(() => ntpConfigToGeneralFormValues(config))
+  const [values, setValues] = useBaselineState(ntpConfigToGeneralFormValues(config))
   const add = usePendingChangesStore((s) => s.add)
 
   function update<K extends keyof ReturnType<typeof blankNTPGeneralFormValues>>(key: K, value: string) {

@@ -1,3 +1,4 @@
+import { useBaselineState } from '../../hooks/useBaselineState'
 import { useState } from 'react'
 import ChipList from '../ChipList'
 import { httpsAllowClientPath, httpsGraphqlCorsPath, httpsPath } from '../../lib/serviceHttpsParse'
@@ -45,7 +46,7 @@ export default function HttpsSettings({ config }: { config: HTTPSConfig }) {
 }
 
 function HttpsSettingsForm({ config }: { config: HTTPSConfig }) {
-  const [values, setValues] = useState(() => httpsConfigToFormValues(config))
+  const [values, setValues] = useBaselineState(httpsConfigToFormValues(config))
   const add = usePendingChangesStore((s) => s.add)
 
   function update<K extends keyof ReturnType<typeof blankHTTPSFormValues>>(

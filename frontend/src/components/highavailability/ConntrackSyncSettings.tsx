@@ -1,3 +1,4 @@
+import { useBaselineState } from '../../hooks/useBaselineState'
 import { useState } from 'react'
 import {
   addConntrackSyncInterfaceOps,
@@ -31,7 +32,7 @@ export default function ConntrackSyncSettings({
 }) {
   const add = usePendingChangesStore((s) => s.add)
   const before = conntrackSyncToFormValues(config)
-  const [values, setValues] = useState<ConntrackSyncFormValues>(before)
+  const [values, setValues] = useBaselineState(before)
 
   function update<K extends keyof ConntrackSyncFormValues>(key: K, value: ConntrackSyncFormValues[K]) {
     setValues((v) => ({ ...v, [key]: value }))
