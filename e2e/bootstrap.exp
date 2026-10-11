@@ -154,5 +154,9 @@ puts "===VYOS_E2E_BOOTSTRAP_READY==="
 # Block here (rather than exiting) so this process - and the QEMU
 # child it's still attached to - stays alive for the test suite to run
 # against. Returns once QEMU exits (killed by run.sh's cleanup, or a
-# crash).
+# crash). The 180s default timeout above must not apply here: when it
+# fires, `expect eof` returns, this script ends, its pty closes and
+# QEMU dies with it, taking the VM (and its forwarded API port) away
+# mid-suite.
+set timeout -1
 expect eof

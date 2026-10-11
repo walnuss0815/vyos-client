@@ -47,6 +47,10 @@ cleanup() {
       kill "$qemu_pid" 2>/dev/null || true
     fi
   fi
+  if [ -n "${bootstrap_job:-}" ]; then
+    kill "$bootstrap_job" 2>/dev/null || true
+    wait "$bootstrap_job" 2>/dev/null || true
+  fi
   if [ "$status" -ne 0 ]; then
     echo "--- bootstrap log (last 100 lines) ---"
     tail -n 100 "$bootstrap_log" 2>/dev/null || true
@@ -143,4 +147,11 @@ else
   # OS-level dependencies via apt.
   npx playwright install --with-deps chromium
 fi
-npx playwright test
+suite_status=0
+npx playwright test || suite_status=$?
+# A VM that died mid-run looks like a pile of unrelated test failures
+# (connection refused / login 503), so say so explicitly.
+if ! kill -0 "$(cat "$qemu_pid_file")" 2>/dev/null; then
+  echo "WARNING: the VyOS VM (QEMU) is no longer running - test failures after it died are not real"
+fi
+exit "$suite_status"
