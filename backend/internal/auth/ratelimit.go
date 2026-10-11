@@ -79,12 +79,59 @@ func (l *LoginLimiter) Allow(key string) (bool, time.Duration) {
 	return true, 0
 }
 
+// Reserve is Allow plus an up-front count of the attempt as a failure,
+// done atomically under one lock. Verifiers use it instead of Allow +
+// a later RecordFailure: the credential check is slow (bcrypt /
+// sha512-crypt), and with a check-then-record split every request
+// that arrives while earlier ones are still hashing passes Allow, so
+// N parallel requests get N guesses regardless of the backoff.
+// RecordSuccess clears the reserved attempt, Refund gives it back when
+// the attempt never got to verify anything.
+func (l *LoginLimiter) Reserve(key string) (bool, time.Duration) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if s, ok := l.attempts[key]; ok {
+		if time.Since(s.lastAttempt) > l.Window {
+			delete(l.attempts, key)
+		} else if wait := time.Until(s.blockedTill); wait > 0 {
+			return false, wait
+		}
+	}
+	l.recordFailureLocked(key)
+	return true, 0
+}
+
+// Refund undoes one Reserve for key, for attempts that failed through
+// no fault of the caller (e.g. VyOS's API being unreachable).
+func (l *LoginLimiter) Refund(key string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	s, ok := l.attempts[key]
+	if !ok {
+		return
+	}
+	s.failures--
+	if s.failures <= 0 {
+		delete(l.attempts, key)
+		return
+	}
+	if s.failures < l.MaxAttempts {
+		s.blockedTill = time.Time{}
+	}
+}
+
 // RecordFailure registers a failed login attempt from key and updates
 // its backoff state.
 func (l *LoginLimiter) RecordFailure(key string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.recordFailureLocked(key)
+}
 
+// recordFailureLocked is RecordFailure's body; l.mu must be held.
+func (l *LoginLimiter) recordFailureLocked(key string) {
 	// Sweep before growing the map further, not after: this is the
 	// only method that ever adds a new key, so checking here (rather
 	// than in a separate background goroutine/ticker, which would

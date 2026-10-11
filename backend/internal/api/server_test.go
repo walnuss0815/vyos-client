@@ -2912,3 +2912,21 @@ func TestDeleteSystemImage_PropagatesVyOSError(t *testing.T) {
 		t.Fatalf("status=%d body=%s, want 422", resp.StatusCode, b)
 	}
 }
+
+func TestLogin_RejectsOversizedCredentials(t *testing.T) {
+	e := newTestEnv(t)
+	for name, creds := range map[string]map[string]string{
+		"password": {"username": "admin", "password": strings.Repeat("x", 1025)},
+		"username": {"username": strings.Repeat("x", 257), "password": "pw"},
+	} {
+		body, _ := json.Marshal(creds)
+		resp, err := e.client.Post(e.server.URL+"/api/auth/login", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatalf("%s: login request: %v", name, err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("%s: status = %d, want 400", name, resp.StatusCode)
+		}
+	}
+}

@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -544,5 +546,49 @@ func TestSetAndClearSessionCookies(t *testing.T) {
 	}
 	if found != 2 {
 		t.Errorf("expected both cookies to be cleared, found %d", found)
+	}
+}
+
+// Reserve must count the attempt before the (slow) credential check
+// runs, so parallel requests can't all slip through Allow before the
+// first failure is recorded.
+func TestLoginLimiter_ReserveCountsAttemptsUpFront(t *testing.T) {
+	l := auth.NewLoginLimiter()
+	l.MaxAttempts = 3
+	l.BaseDelay = time.Hour
+
+	const parallel = 50
+	var wg sync.WaitGroup
+	var granted atomic.Int32
+	for i := 0; i < parallel; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if ok, _ := l.Reserve("1.2.3.4"); ok {
+				granted.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+
+	if got := granted.Load(); got != 3 {
+		t.Fatalf("granted %d parallel reservations, want exactly MaxAttempts (3)", got)
+	}
+}
+
+func TestLoginLimiter_RefundGivesBackAReservation(t *testing.T) {
+	l := auth.NewLoginLimiter()
+	l.MaxAttempts = 1
+	l.BaseDelay = time.Hour
+
+	if ok, _ := l.Reserve("1.2.3.4"); !ok {
+		t.Fatal("first reservation should be granted")
+	}
+	if ok, _ := l.Reserve("1.2.3.4"); ok {
+		t.Fatal("second reservation should be blocked")
+	}
+	l.Refund("1.2.3.4")
+	if ok, _ := l.Reserve("1.2.3.4"); !ok {
+		t.Fatal("reservation should be granted again after a refund")
 	}
 }
