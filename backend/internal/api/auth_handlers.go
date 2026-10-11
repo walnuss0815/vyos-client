@@ -14,6 +14,13 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
+// Upper bounds on login input, far above any real account's
+// credentials (bcrypt itself only looks at the first 72 bytes).
+const (
+	maxLoginUsernameBytes = 256
+	maxLoginPasswordBytes = 1024
+)
+
 type loginResponse struct {
 	User string `json:"user"`
 }
@@ -39,6 +46,13 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Username == "" || req.Password == "" {
 		writeError(w, http.StatusBadRequest, "username and password are required")
+		return
+	}
+	// sha512-crypt's cost grows linearly with the password length, and
+	// the check runs even for usernames that don't exist, so without a
+	// bound a single unauthenticated request could burn seconds of CPU.
+	if len(req.Username) > maxLoginUsernameBytes || len(req.Password) > maxLoginPasswordBytes {
+		writeError(w, http.StatusBadRequest, "username or password too long")
 		return
 	}
 

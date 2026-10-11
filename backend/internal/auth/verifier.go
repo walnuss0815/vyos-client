@@ -48,7 +48,7 @@ func NewStaticVerifier(adminUser, adminHash string, limiter *LoginLimiter) *Stat
 // verifier never makes a network call) but required to satisfy
 // CredentialVerifier.
 func (v *StaticVerifier) Verify(_ context.Context, sourceKey, username, password string) error {
-	if allowed, _ := v.limiter.Allow(sourceKey); !allowed {
+	if allowed, _ := v.limiter.Reserve(sourceKey); !allowed {
 		return ErrInvalidCredentials
 	}
 
@@ -61,7 +61,7 @@ func (v *StaticVerifier) Verify(_ context.Context, sourceKey, username, password
 	passOK := VerifyPassword(v.adminHash, password)
 
 	if !userOK || !passOK {
-		v.limiter.RecordFailure(sourceKey)
+		// Already counted as a failure by Reserve.
 		return ErrInvalidCredentials
 	}
 

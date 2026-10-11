@@ -50,20 +50,21 @@ func NewVyOSUserVerifier(config ConfigReader, limiter *LoginLimiter) *VyOSUserVe
 // Verify checks username/password against VyOS's system login user
 // tree, honoring per-source rate limiting exactly like StaticVerifier.
 func (v *VyOSUserVerifier) Verify(ctx context.Context, sourceKey, username, password string) error {
-	if allowed, _ := v.limiter.Allow(sourceKey); !allowed {
+	if allowed, _ := v.limiter.Reserve(sourceKey); !allowed {
 		return ErrInvalidCredentials
 	}
 
 	ok, err := v.check(ctx, username, password)
 	if err != nil {
-		// Deliberately not recorded as a failed attempt: it isn't the
+		// Refunded rather than counted as a failed attempt: it isn't the
 		// caller's fault their attempt didn't verify, and counting it
 		// would let VyOS API flakiness alone burn through a
 		// legitimate user's rate-limit budget.
+		v.limiter.Refund(sourceKey)
 		return err
 	}
 	if !ok {
-		v.limiter.RecordFailure(sourceKey)
+		// Already counted as a failure by Reserve.
 		return ErrInvalidCredentials
 	}
 
