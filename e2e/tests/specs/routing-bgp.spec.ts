@@ -84,17 +84,17 @@ test('sets a BGP system AS and redistribute-connected, and they round-trip throu
   // leaving a bare, harmless-but-pointless config-only daemon for the
   // rest of the shared VM's lifetime.
   await page.goto('/config-tree')
-  // Not an exact/spaced '▸ protocols' - Row's toggle button renders
-  // the ▸/▾ glyph and the segment name as adjacent JSX children with
-  // no literal space between them (TreeNode.tsx), so the real
-  // accessible name is the unspaced concatenation "▸protocols". An
-  // unanchored /protocols/ (the same workaround TreeNode.test.tsx's
+  // The toggle button's accessible name is the ▸/▾ glyph and the
+  // segment name separated by a space ("▸ protocols" - the glyph span
+  // is a flex item inside the button, see commit.spec.ts which relies
+  // on the same thing), so allow optional whitespace after the glyph.
+  // An unanchored /protocols/ (the same workaround TreeNode.test.tsx's
   // own unit test uses) would technically also match any OTHER
   // button whose accessible name merely contains "protocols" as a
   // substring - anchored here (start/end, with the glyph optional)
   // so this can only ever match the exact root-level "protocols"
   // segment, not some future node/tooltip that happens to mention it.
-  await page.getByRole('button', { name: /^[▸▾]?protocols$/ }).click()
+  await page.getByRole('button', { name: /^[▸▾]?\s*protocols$/ }).click()
 
   // TreeNode's Row wrapper for the (non-leaf) `bgp` node - distinct
   // from LeafRow's own wrapper class, so this only matches the one
