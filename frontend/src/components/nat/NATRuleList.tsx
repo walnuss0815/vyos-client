@@ -56,7 +56,7 @@ export default function NATRuleList({ kind, rules, isLoading }: NATRuleListProps
 
       {editing && (
         <div className="mb-4">
-          <NATRuleForm
+          <NATRuleForm key={editingRule}
             kind={kind}
             rule={editing}
             existingNumbers={existingNumbers}

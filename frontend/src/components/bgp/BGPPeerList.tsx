@@ -62,7 +62,7 @@ export default function BGPPeerList({ kind, peers, peerGroupNames, isLoading }: 
 
       {editing && (
         <div className="mb-3">
-          <BGPPeerForm
+          <BGPPeerForm key={editingId}
             kind={kind}
             peer={editing}
             existingIdentifiers={peers.map((p) => p.identifier)}

@@ -53,7 +53,7 @@ export default function UserList({ users, isLoading }: { users: SystemUser[]; is
 
       {editing && (
         <div className="mb-3">
-          <UserForm user={editing} existingUsernames={users.map((u) => u.username)} onDone={() => setEditingUsername(null)} />
+          <UserForm key={editingUsername} user={editing} existingUsernames={users.map((u) => u.username)} onDone={() => setEditingUsername(null)} />
         </div>
       )}
 

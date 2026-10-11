@@ -54,7 +54,7 @@ export default function RegistryList({
 
       {editing && (
         <div className="mb-3">
-          <RegistryForm
+          <RegistryForm key={editingName}
             registry={editing}
             existingNames={registries.map((r) => r.name)}
             onDone={() => setEditingName(null)}

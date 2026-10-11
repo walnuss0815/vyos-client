@@ -65,7 +65,7 @@ export default function IpsecSiteToSite({ config }: { config: IPsecConfig }) {
       )}
       {editing && (
         <div className="mb-3">
-          <PeerForm peer={editing} existingNames={config.siteToSitePeers.map((p) => p.name)} espGroups={config.espGroups.map((g) => g.name)} ikeGroups={config.ikeGroups.map((g) => g.name)} onDone={() => setEditingName(null)} />
+          <PeerForm key={editingName} peer={editing} existingNames={config.siteToSitePeers.map((p) => p.name)} espGroups={config.espGroups.map((g) => g.name)} ikeGroups={config.ikeGroups.map((g) => g.name)} onDone={() => setEditingName(null)} />
         </div>
       )}
 

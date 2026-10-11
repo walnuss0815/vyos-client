@@ -51,7 +51,7 @@ export default function NATStaticRuleList({
 
       {editing && (
         <div className="mb-4">
-          <NATStaticRuleForm rule={editing} existingNumbers={existingNumbers} onDone={() => setEditingRule(null)} />
+          <NATStaticRuleForm key={editingRule} rule={editing} existingNumbers={existingNumbers} onDone={() => setEditingRule(null)} />
         </div>
       )}
 

@@ -51,7 +51,7 @@ export default function Dhcpv6SubnetDetails({ network }: { network: DHCPv6Shared
       )}
       {editing && (
         <div className="mb-2">
-          <SubnetForm
+          <SubnetForm key={editingCidr}
             networkName={network.name}
             subnet={editing}
             existingCidrs={network.subnets.map((s) => s.cidr)}

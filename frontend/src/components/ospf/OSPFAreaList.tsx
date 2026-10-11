@@ -60,7 +60,7 @@ export default function OSPFAreaList({ protocol, areas, isLoading }: OSPFAreaLis
 
       {editing && (
         <div className="mb-3">
-          <OSPFAreaForm
+          <OSPFAreaForm key={editingId}
             protocol={protocol}
             area={editing}
             existingIds={areas.map((a) => a.id)}

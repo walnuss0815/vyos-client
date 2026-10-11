@@ -68,7 +68,7 @@ export default function RouterAdvertList({ config }: { config: RouterAdvertConfi
       )}
       {editing && (
         <div className="mb-3">
-          <InterfaceForm
+          <InterfaceForm key={editingName}
             iface={editing}
             existingNames={config.interfaces.map((i) => i.interfaceName)}
             onDone={() => setEditingName(null)}

@@ -166,7 +166,7 @@ export default function RulesetDetailPage() {
 
       {editing && (
         <div className="mb-4">
-          <RuleForm
+          <RuleForm key={editingRule}
             rulesetRef={ref}
             rule={editing}
             existingNumbers={existingNumbers}

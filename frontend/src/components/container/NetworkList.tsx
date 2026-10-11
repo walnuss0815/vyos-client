@@ -49,7 +49,7 @@ export default function NetworkList({ networks, isLoading }: { networks: Contain
 
       {editing && (
         <div className="mb-3">
-          <NetworkForm
+          <NetworkForm key={editingName}
             network={editing}
             existingNames={networks.map((n) => n.name)}
             onDone={() => setEditingName(null)}

@@ -77,7 +77,7 @@ function ConnectionsSection({ config }: { config: IPsecConfig }) {
       )}
       {editing && (
         <div className="mb-3">
-          <ConnectionForm connection={editing} existingNames={connections.map((c) => c.name)} espGroups={config.espGroups.map((g) => g.name)} ikeGroups={config.ikeGroups.map((g) => g.name)} onDone={() => setEditingName(null)} />
+          <ConnectionForm key={editingName} connection={editing} existingNames={connections.map((c) => c.name)} espGroups={config.espGroups.map((g) => g.name)} ikeGroups={config.ikeGroups.map((g) => g.name)} onDone={() => setEditingName(null)} />
         </div>
       )}
 
