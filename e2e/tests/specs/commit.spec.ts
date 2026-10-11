@@ -1,5 +1,10 @@
 import { expect, test, type Page } from '@playwright/test'
-import { commitPendingChanges, login } from './helpers'
+import { commitPendingChanges, login, resetConfig } from './helpers'
+
+// Leave nothing behind on the shared VM (see resetConfig).
+test.afterEach(() =>
+  resetConfig([['system', 'host-name']]),
+)
 
 const ORIGINAL_HOSTNAME = 'vyos' // the live-ISO default
 

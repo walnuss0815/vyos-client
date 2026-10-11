@@ -107,6 +107,11 @@ expect_or_die {vyos@vyos# } "the configure-mode prompt"
 send "set interfaces ethernet eth0 address dhcp\r"
 expect_or_die {vyos@vyos# } "after configuring DHCP on eth0"
 
+# Make the spare NIC part of the config so it shows up in the UI's
+# interface list (specs bind test config to eth1, never to eth0).
+send "set interfaces ethernet eth1 description e2e-spare\r"
+expect_or_die {vyos@vyos# } "after configuring eth1"
+
 send "set service https api rest\r"
 expect_or_die {vyos@vyos# } "after enabling the REST API"
 

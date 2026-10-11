@@ -1,5 +1,10 @@
 import { expect, test } from '@playwright/test'
-import { cardWithText, commitPendingChanges, login } from './helpers'
+import { cardWithText, commitPendingChanges, login, resetConfig } from './helpers'
+
+// Leave nothing behind on the shared VM (see resetConfig).
+test.afterEach(() =>
+  resetConfig([['load-balancing', 'haproxy']]),
+)
 
 // Distinct from run.sh's own API_PORT/UI_PORT defaults (18443/18080)
 // and untouched by any other spec in this suite - a purely declarative

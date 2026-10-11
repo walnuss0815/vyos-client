@@ -1,5 +1,10 @@
 import { expect, test } from '@playwright/test'
-import { commitPendingChanges, login } from './helpers'
+import { commitPendingChanges, login, resetConfig } from './helpers'
+
+// Leave nothing behind on the shared VM (see resetConfig).
+test.afterEach(() =>
+  resetConfig([['service', 'snmp']]),
+)
 
 /**
  * Cross-validates this session's data-driven `snmp-weak-community-{name}`

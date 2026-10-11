@@ -1,5 +1,10 @@
 import { expect, test } from '@playwright/test'
-import { cardWithText, commitPendingChanges, login } from './helpers'
+import { cardWithText, commitPendingChanges, login, resetConfig } from './helpers'
+
+// Leave nothing behind on the shared VM (see resetConfig).
+test.afterEach(() =>
+  resetConfig([['qos']]),
+)
 
 // An arbitrary bandwidth value - eth1 carries no real traffic this
 // suite depends on, so the specific number doesn't matter beyond

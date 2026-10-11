@@ -1,5 +1,10 @@
 import { expect, test } from '@playwright/test'
-import { commitPendingChanges, login } from './helpers'
+import { commitPendingChanges, login, resetConfig } from './helpers'
+
+// Leave nothing behind on the shared VM (see resetConfig).
+test.afterEach(() =>
+  resetConfig([['protocols', 'static', 'route', '203.0.113.0/24']]),
+)
 
 /**
  * A real round-trip through `protocols static route` against the

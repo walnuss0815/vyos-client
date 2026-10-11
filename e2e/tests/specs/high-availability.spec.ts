@@ -1,5 +1,10 @@
 import { expect, test } from '@playwright/test'
-import { cardWithText, commitPendingChanges, login } from './helpers'
+import { cardWithText, commitPendingChanges, login, resetConfig } from './helpers'
+
+// Leave nothing behind on the shared VM (see resetConfig).
+test.afterEach(() =>
+  resetConfig([['high-availability']]),
+)
 
 // RFC 5737 TEST-NET-1 - reserved for documentation/testing, never a
 // real allocation, and structurally distinct from the QEMU
@@ -12,13 +17,13 @@ import { cardWithText, commitPendingChanges, login } from './helpers'
 // VRID 1 with the plain default priority (100) is the least
 // interesting possible choice, and not used by any other spec.
 const GROUP_NAME = 'E2ETEST'
-const INTERFACE = 'eth0'
+const INTERFACE = 'eth1'
 const VRID = '1'
 const PRIORITY = '100'
 const VIRTUAL_ADDRESS = '192.0.2.1/24'
 
 /**
- * Creates a new `high-availability vrrp group` bound to eth0 with a
+ * Creates a new `high-availability vrrp group` bound to eth1 (the spare NIC - never the eth0 management interface) with a
  * test-only virtual address, committing against the real VyOS VM, then
  * reloads and confirms it landed for real - a genuine round-trip
  * through VyOS's *VRRP* schema, which no other spec in this suite
@@ -55,7 +60,7 @@ const VIRTUAL_ADDRESS = '192.0.2.1/24'
  * address with no peer to negotiate against or fail over to - a
  * harmless, self-contained, real VRRP/keepalived run, not a mock.
  */
-test('creates a VRRP group with a virtual address on eth0, and it round-trips through a real VyOS commit', async ({
+test('creates a VRRP group with a virtual address on eth1, and it round-trips through a real VyOS commit', async ({
   page,
 }) => {
   await login(page)
@@ -114,7 +119,7 @@ test('creates a VRRP group with a virtual address on eth0, and it round-trips th
   // state are genuinely present in VyOS's running config - a second,
   // independent fetch from the real VM, not just trusting the UI's
   // optimistic state. keepalived is now actually running this group on
-  // eth0 (see this test's own doc comment for why that's safe).
+  // eth1 (see this test's own doc comment for why that's safe).
   await page.goto('/high-availability/vrrp')
   await expect(page.getByRole('checkbox', { name: /disable high availability entirely/i })).not.toBeChecked()
   await expect(groupCard.getByText(VIRTUAL_ADDRESS, { exact: true })).toBeVisible()

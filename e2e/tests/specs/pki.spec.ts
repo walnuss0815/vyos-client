@@ -3,7 +3,12 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
-import { commitPendingChanges, login } from './helpers'
+import { commitPendingChanges, login, resetConfig } from './helpers'
+
+// Leave nothing behind on the shared VM (see resetConfig).
+test.afterEach(() =>
+  resetConfig([['pki', 'certificate', 'e2e-test-cert']]),
+)
 
 const CERT_NAME = 'e2e-test-cert'
 const CERT_VALIDITY_DAYS = 3650

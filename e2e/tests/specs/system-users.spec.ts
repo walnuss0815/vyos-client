@@ -1,5 +1,10 @@
 import { expect, test } from '@playwright/test'
-import { commitPendingChanges, login } from './helpers'
+import { commitPendingChanges, login, resetConfig } from './helpers'
+
+// Leave nothing behind on the shared VM (see resetConfig).
+test.afterEach(() =>
+  resetConfig([['system', 'login', 'user', 'e2etestuser']]),
+)
 
 const NEW_USERNAME = 'e2etestuser'
 const NEW_FULL_NAME = 'E2E Test User'

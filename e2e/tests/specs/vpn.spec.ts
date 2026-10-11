@@ -1,5 +1,10 @@
 import { expect, test } from '@playwright/test'
-import { cardWithText, commitPendingChanges, login } from './helpers'
+import { cardWithText, commitPendingChanges, login, resetConfig } from './helpers'
+
+// Leave nothing behind on the shared VM (see resetConfig).
+test.afterEach(() =>
+  resetConfig([['vpn', 'ipsec', 'esp-group', 'E2E-TEST-ESP']]),
+)
 
 // Deliberately test-only, unambiguous name - won't collide with
 // anything a real deployment would name a crypto proposal set.

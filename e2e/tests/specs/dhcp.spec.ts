@@ -1,5 +1,13 @@
 import { expect, test } from '@playwright/test'
-import { cardWithText, commitPendingChanges, login } from './helpers'
+import { cardWithText, commitPendingChanges, login, resetConfig } from './helpers'
+
+// Leave nothing behind on the shared VM (see resetConfig).
+test.afterEach(() =>
+  resetConfig([
+    ['service', 'dhcp-server', 'shared-network-name', 'E2ETEST'],
+    ['interfaces', 'ethernet', 'eth1', 'address', '192.0.2.1/24'],
+  ]),
+)
 
 // RFC 5737 TEST-NET-1 - reserved for documentation/testing, never a
 // real allocation, and structurally can't overlap the QEMU
@@ -55,7 +63,8 @@ const MAPPING_MAC = '52:54:00:12:34:56'
  * create form's own optional range fields exist specifically to avoid
  * (see NetworksPage.tsx's CreateNetworkForm and docs/roadmap.md).
  *
- * Step 0 gives eth0 a SECONDARY static address in the same test
+ * Step 0 gives eth1 (the spare NIC - never eth0, which carries the
+ * REST API's port forward) a static address in the same test
  * subnet (192.0.2.1/24, via AddressChips - see interfaces.spec.ts for
  * the same component) - another real, this-suite-discovered VyOS
  * requirement: `service dhcp-server` also rejects a subnet that
@@ -82,16 +91,16 @@ test('creates a DHCP shared network/subnet and a static mapping inside it, and b
 }) => {
   await login(page)
 
-  // --- Step 0: give eth0 a secondary address in the test subnet (AddressChips) ---
+  // --- Step 0: give eth1 an address in the test subnet (AddressChips) ---
   // Queued immediately (AddressChips doesn't batch behind its own
   // submit button - see its own doc comment), so it rides along with
-  // step 1's ops in the same first commit below. Scoped to eth0's own
-  // card (same locator interfaces.spec.ts uses) since VlanSection right
+  // step 1's ops in the same first commit below. Scoped to eth1's own
+  // card (same kind of locator interfaces.spec.ts uses) since VlanSection right
   // below AddressChips on the same card has its own "Add" button too.
   await page.goto('/interfaces/ethernet')
-  const eth0Card = cardWithText(page, 'eth0')
-  await eth0Card.getByPlaceholder('192.0.2.1/24').fill('192.0.2.1/24')
-  await eth0Card.getByRole('button', { name: 'Add', exact: true }).click()
+  const eth1Card = cardWithText(page, 'eth1')
+  await eth1Card.getByPlaceholder('192.0.2.1/24').fill('192.0.2.1/24')
+  await eth1Card.getByRole('button', { name: 'Add', exact: true }).click()
 
   // --- Step 1: create the shared network + its first subnet (NetworksPage.tsx) ---
   await page.goto('/dhcp/networks')
