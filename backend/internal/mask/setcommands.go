@@ -57,19 +57,21 @@ func redactSetLine(line string) string {
 	}
 	leaf := tokens[len(tokens)-2]
 	// Reconstructs just the last two semantic path segments for
-	// IsMaskedPath - the leaf name, and (when present and itself
-	// quoted, i.e. a genuine tag-node identifier rather than a bare
-	// schema keyword like "authentication") the identifier
-	// immediately before it. This is enough for IsMaskedPath to catch
-	// both the ordinary exact-leaf-name case (e.g. ... 'x' key
-	// '<value>') and the generic "<identifier> value '<value>'" shape
-	// (e.g. container/event-handler environment variables) - see that
-	// function's own doc comment. tokens has at least 3 entries here
-	// (checked above), so tokens[len(tokens)-3] never panics.
-	path := []string{leaf.text}
-	if identifier := tokens[len(tokens)-3]; identifier.quoted {
-		path = []string{identifier.text, leaf.text}
-	}
+	// IsMaskedPath - the leaf name, and the token immediately before
+	// it, which for a tag node is its identifier (e.g. an environment
+	// variable's name). That is enough for IsMaskedPath to catch both
+	// the ordinary exact-leaf-name case (e.g. ... 'x' key '<value>')
+	// and the generic "<identifier> value '<value>'" shape (e.g.
+	// container/event-handler environment variables) - see that
+	// function's own doc comment. The identifier is used whether or
+	// not it is quoted: VyOS only quotes names that need it, so
+	// `environment DB_PASSWORD value 'x'` is as real as
+	// `environment 'DB_PASSWORD' value 'x'`. Using a bare schema
+	// keyword here (e.g. "authentication") is harmless, since the
+	// identifier only matters when the leaf is the generic "value".
+	// tokens has at least 3 entries here (checked above), so
+	// tokens[len(tokens)-3] never panics.
+	path := []string{tokens[len(tokens)-3].text, leaf.text}
 	if !IsMaskedPath(path) {
 		return line
 	}
