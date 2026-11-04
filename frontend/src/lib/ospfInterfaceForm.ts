@@ -84,6 +84,25 @@ const FLAG_FIELDS: FlagField[] = [
   { get: (v) => v.bfd, segment: 'bfd' },
 ]
 
+/** Whether a mode or md5 key-id change would be queued without the
+ * secret it needs (the old node is deleted first, so a blank secret
+ * would silently drop authentication). Blank still means "keep" when
+ * neither changed. */
+export function authSecretMissing(
+  protocol: OSPFProtocol,
+  before: OSPFInterface | undefined,
+  values: OSPFInterfaceFormValues,
+): boolean {
+  if (protocol !== 'ospf') return false
+  const beforeValues = before ? interfaceToFormValues(before) : blankInterfaceFormValues()
+  const modeChanged = beforeValues.authMode !== values.authMode
+  const keyIdChanged = values.authMode === 'md5' && beforeValues.md5KeyId !== values.md5KeyId
+  if (!modeChanged && !keyIdChanged) return false
+  if (values.authMode === 'plaintext-password') return values.plaintextPassword.trim() === ''
+  if (values.authMode === 'md5') return values.md5KeyId.trim() === '' || values.md5Key.trim() === ''
+  return false
+}
+
 /**
  * Diffs `before` against `values`, same set-or-delete-per-field
  * approach as bgpPeerForm.ts's peerFormToOps. Authentication

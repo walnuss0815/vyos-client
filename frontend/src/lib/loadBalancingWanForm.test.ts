@@ -165,6 +165,30 @@ describe('WAN rule form', () => {
     expect(ops).toEqual([{ op: 'delete', path: ['load-balancing', 'wan', 'rule', '10', 'limit'] }])
   })
 
+  it('deletes the old limit before re-setting it so a cleared sub-field falls back to its default', () => {
+    const before: WANRule = {
+      id: '10',
+      source: {},
+      destination: {},
+      exclude: false,
+      failover: false,
+      interfaces: [],
+      perPacketBalancing: false,
+      protocol: 'all',
+      limit: { rate: 10, period: 'minute', burst: 20, threshold: 'below' },
+    }
+    const values = wanRuleToFormValues(before)
+    values.limitPeriod = ''
+    values.limitThreshold = ''
+    const limitPath = ['load-balancing', 'wan', 'rule', '10', 'limit']
+    expect(wanRuleFormToOps('10', before, values)).toEqual([
+      { op: 'delete', path: limitPath },
+      { op: 'set', path: limitPath },
+      { op: 'set', path: [...limitPath, 'rate'], value: '10' },
+      { op: 'set', path: [...limitPath, 'burst'], value: '20' },
+    ])
+  })
+
   it('emits nothing when editing with no actual changes', () => {
     const before: WANRule = {
       id: '10',
