@@ -123,7 +123,8 @@ export interface SelfUpgradeRelease {
    * matching image - see docs/architecture.md's "Self-upgrade"
    * section. UpgradesPage.tsx disables "Upgrade" when this is false,
    * rather than only discovering a missing image when the pull
-   * itself fails. */
+   * itself fails. Only the newest release is checked: every older one
+   * is always false, meaning "not checked", not "missing". */
   imageExists: boolean
 }
 

@@ -201,6 +201,29 @@ describe('UpgradesPage', () => {
     expect(screen.getByText(/isn't available on ghcr.io yet/i)).toBeInTheDocument()
   })
 
+  it('only checks and offers the newest release, leaving older ones with a neutral hint', async () => {
+    const TWO_RELEASES_STATUS = {
+      ...UPDATE_AVAILABLE_STATUS,
+      releases: [
+        UPDATE_AVAILABLE_STATUS.releases[0],
+        {
+          ...UPDATE_AVAILABLE_STATUS.releases[0],
+          version: '1.2.5',
+          name: '1.2.5',
+          htmlUrl: 'https://github.com/walnuss0815/vyos-client/releases/tag/v1.2.5',
+          imageExists: false,
+        },
+      ],
+    }
+    server.use(http.get('/api/system/self-upgrade', () => HttpResponse.json(TWO_RELEASES_STATUS)))
+    renderWithProviders(<UpgradesPage />)
+
+    expect(await screen.findByRole('button', { name: 'Upgrade to 1.3.0' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'Upgrade to 1.2.5' })).not.toBeInTheDocument()
+    expect(screen.getByText(/upgrade to the latest release first/i)).toBeInTheDocument()
+    expect(screen.queryByText(/isn't available on ghcr.io yet/i)).not.toBeInTheDocument()
+  })
+
   // Regression guard for the explicit requirement that whatever's
   // already cached/known must show up on mount, with zero user
   // interaction - not just after clicking Refresh. This is already
