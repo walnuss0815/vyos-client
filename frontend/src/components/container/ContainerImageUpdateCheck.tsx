@@ -111,6 +111,11 @@ export default function ContainerImageUpdateCheck({ image, containerName }: { im
           <p className="mt-1 text-warning-500">
             Update available: <span className="font-mono">{upgradeInfo.latestTag}</span>
           </p>
+          {upgradeInfo.majorUpdate && (
+            <p className="mt-1 text-warning-500">
+              Major version change: check the upgrade notes before updating.
+            </p>
+          )}
         </>
       ) : (
         !queued && (

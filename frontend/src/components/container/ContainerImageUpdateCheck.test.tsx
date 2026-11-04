@@ -81,6 +81,29 @@ describe('ContainerImageUpdateCheck', () => {
     expect(await screen.findByText('unreachable')).toBeInTheDocument()
   })
 
+  it('warns about a major version change only when the backend flags it', async () => {
+    server.use(
+      http.post('/api/container/images/check-update', () =>
+        HttpResponse.json({ ...UPDATE_AVAILABLE, latestTag: '2.0.0', newImageRef: 'nginx:2.0.0', majorUpdate: true }),
+      ),
+    )
+    const user = userEvent.setup()
+    renderWithProviders(<ContainerImageUpdateCheck image="nginx:1.25.3" containerName="web" />)
+
+    await user.click(screen.getByRole('button', { name: 'Check for update' }))
+    expect(await screen.findByText(/major version change/i)).toBeInTheDocument()
+  })
+
+  it('shows no major version warning for an ordinary update', async () => {
+    server.use(http.post('/api/container/images/check-update', () => HttpResponse.json(UPDATE_AVAILABLE)))
+    const user = userEvent.setup()
+    renderWithProviders(<ContainerImageUpdateCheck image="nginx:1.25.3" containerName="web" />)
+
+    await user.click(screen.getByRole('button', { name: 'Check for update' }))
+    await screen.findByText(/update available/i)
+    expect(screen.queryByText(/major version change/i)).not.toBeInTheDocument()
+  })
+
   it('offers an upgrade and queues the image change when accepted', async () => {
     server.use(
       http.post('/api/container/images/check-update', () => HttpResponse.json(UPDATE_AVAILABLE)),
