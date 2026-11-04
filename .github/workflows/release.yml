@@ -5,14 +5,19 @@ on:
     branches:
       - main
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 jobs:
   release:
     name: Compute version and publish GitHub release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
       new_release_published: ${{ steps.semantic.outputs.new_release_published }}
       new_release_version: ${{ steps.semantic.outputs.new_release_version }}
@@ -33,7 +38,7 @@ jobs:
       # semantic-release itself - it's the separate package backing
       # .releaserc.json's `"preset": "conventionalcommits"` (needed for
       # the custom type-to-section mapping, e.g. the "security" type),
-      # so it must be explicitly installed here. Pinned to major 9, not
+      # so it must be explicitly installed here. Pinned to 9.3.1 (major 9), not
       # the latest (10): v10 added a runtime check requiring
       # conventional-changelog-writer@9+, but @semantic-release/release-
       # notes-generator@25 still bundles writer@^8, so v10 fails with
@@ -46,7 +51,7 @@ jobs:
         with:
           semantic_version: 25
           extra_plugins: |
-            conventional-changelog-conventionalcommits@9
+            conventional-changelog-conventionalcommits@9.3.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -61,6 +66,9 @@ jobs:
     needs: release
     if: needs.release.outputs.new_release_published == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
