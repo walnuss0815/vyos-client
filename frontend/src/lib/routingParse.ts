@@ -5,35 +5,7 @@ import {
   type StaticRouteNextHop,
   type StaticRouteRejectOrBlackhole,
 } from './routingTypes'
-
-// --- generic VyOS JSON-tree helpers -------------------------------------
-// (deliberately duplicated, not shared, matching firewallParse.ts/
-// dhcpConfigParse.ts/interfaceParse.ts's existing precedent of keeping
-// each parse module self-contained.)
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v)
-}
-
-function asArray(v: unknown): string[] {
-  if (v === undefined || v === null) return []
-  if (Array.isArray(v)) return v.map(String)
-  return [String(v)]
-}
-
-function asString(v: unknown): string | undefined {
-  if (v === undefined || v === null) return undefined
-  return String(v)
-}
-
-function child(node: unknown, key: string): unknown {
-  if (!isRecord(node)) return undefined
-  return node[key]
-}
-
-function isFlagPresent(node: unknown, key: string): boolean {
-  return isRecord(node) && key in node
-}
+import { isRecord, asString, asArray, child, isFlagPresent } from './configTree'
 
 // --- static routes -----------------------------------------------------
 

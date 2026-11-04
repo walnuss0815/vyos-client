@@ -7,28 +7,7 @@ import {
   type BGPPeerKind,
   type BGPRedistribution,
 } from './bgpTypes'
-
-// --- generic VyOS JSON-tree helpers -------------------------------------
-// (deliberately duplicated, not shared - see routingParse.ts's own copy
-// of this comment for why this matches the rest of the codebase.)
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v)
-}
-
-function asString(v: unknown): string | undefined {
-  if (v === undefined || v === null) return undefined
-  return String(v)
-}
-
-function child(node: unknown, key: string): unknown {
-  if (!isRecord(node)) return undefined
-  return node[key]
-}
-
-function isFlagPresent(node: unknown, key: string): boolean {
-  return isRecord(node) && key in node
-}
+import { isRecord, asString, child, isFlagPresent } from './configTree'
 
 // --- neighbors / peer-groups ---------------------------------------------
 

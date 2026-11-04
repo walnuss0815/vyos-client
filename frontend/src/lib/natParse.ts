@@ -1,27 +1,5 @@
 import type { NATConfig, NATMatch, NATRule, NATRuleKind, NATStaticRule } from './natTypes'
-
-// --- generic VyOS JSON-tree helpers -------------------------------------
-// (deliberately duplicated, not shared - see bgpParse.ts's/ospfParse.ts's/
-// systemParse.ts's own copy of this comment for why this matches the
-// rest of the codebase.)
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v)
-}
-
-function asString(v: unknown): string | undefined {
-  if (v === undefined || v === null) return undefined
-  return String(v)
-}
-
-function child(node: unknown, key: string): unknown {
-  if (!isRecord(node)) return undefined
-  return node[key]
-}
-
-function isFlagPresent(node: unknown, key: string): boolean {
-  return isRecord(node) && key in node
-}
+import { isRecord, asString, child, isFlagPresent } from './configTree'
 
 // --- rule matching (shared by source/destination NAT and, within a
 // rule, by the rule's own source/destination match blocks) -------------

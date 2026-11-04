@@ -11,34 +11,7 @@ import {
   type ZabbixAgentConfig,
   type ZabbixServerActive,
 } from './serviceMonitoringTypes'
-
-// --- generic VyOS JSON-tree helpers -------------------------------------
-// (deliberately duplicated, not shared - see bgpParse.ts's/containerParse.ts's
-// own copy of this comment for why this matches the rest of the codebase.)
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v)
-}
-
-function asString(v: unknown): string | undefined {
-  if (v === undefined || v === null) return undefined
-  return String(v)
-}
-
-function child(node: unknown, key: string): unknown {
-  if (!isRecord(node)) return undefined
-  return node[key]
-}
-
-function isFlagPresent(node: unknown, key: string): boolean {
-  return isRecord(node) && key in node
-}
-
-function asStringArray(v: unknown): string[] {
-  if (Array.isArray(v)) return v.map((x) => String(x))
-  if (typeof v === 'string') return [v]
-  return []
-}
+import { isRecord, asString, asStringArray, child, isFlagPresent } from './configTree'
 
 function entries(node: unknown): [string, unknown][] {
   return isRecord(node) ? Object.entries(node) : []

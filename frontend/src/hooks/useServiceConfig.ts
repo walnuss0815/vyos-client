@@ -25,6 +25,7 @@ import { parseSSHConfig, sshPath } from '../lib/serviceSshParse'
 import { parseTFTPServerConfig, tftpServerPath } from '../lib/serviceTftpParse'
 import { getConfigTree } from '../lib/vyosApi'
 import { usePendingChangesStore, withPendingEnable } from '../store/pendingChanges'
+import { child } from '../lib/configTree'
 
 /**
  * Shared data source for every Service sub-area page (NTP, SSH, HTTPS
@@ -186,9 +187,4 @@ export function useServiceConfig() {
     consoleServer,
     monitoring,
   }
-}
-
-function child(node: unknown, key: string): unknown {
-  if (typeof node !== 'object' || node === null || Array.isArray(node)) return undefined
-  return (node as Record<string, unknown>)[key]
 }
