@@ -18,6 +18,7 @@ type checkContainerImageUpdateOut struct {
 	LatestTag       string `json:"latestTag"`
 	UpdateAvailable bool   `json:"updateAvailable"`
 	NewImageRef     string `json:"newImageRef"`
+	MajorUpdate     bool   `json:"majorUpdate"`
 }
 
 // newTestRegistryServer starts a TLS test registry serving tags for
@@ -273,5 +274,33 @@ func TestCheckContainerImageUpdate_RegistryErrorReturnsBadGateway(t *testing.T) 
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadGateway {
 		t.Errorf("status = %d, want 502", resp.StatusCode)
+	}
+}
+
+func TestCheckContainerImageUpdate_MajorUpdate(t *testing.T) {
+	for _, tc := range []struct {
+		current, tags string
+		want          bool
+	}{
+		{"16.4", `"16.4","17.0"`, true},
+		{"16.4", `"16.4","16.5"`, false},
+	} {
+		e := newTestEnv(t)
+		e.apiServer.ContainerUpdateChecksEnabled = true
+		registry := newTestRegistryServer(t, e, tc.tags)
+		e.login(t)
+
+		image := registryHost(registry) + "/library/nginx:" + tc.current
+		resp := e.doJSON(t, http.MethodPost, "/api/container/images/check-update", map[string]string{"image": image})
+		var out checkContainerImageUpdateOut
+		err := json.NewDecoder(resp.Body).Decode(&out)
+		_ = resp.Body.Close()
+		if err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if !out.UpdateAvailable || out.MajorUpdate != tc.want {
+			t.Errorf("%s with tags %s: updateAvailable=%v majorUpdate=%v, want true/%v",
+				tc.current, tc.tags, out.UpdateAvailable, out.MajorUpdate, tc.want)
+		}
 	}
 }
