@@ -126,12 +126,22 @@ func (s *Server) handlePullContainerImage(w http.ResponseWriter, r *http.Request
 // chance to produce a clear error of its own.
 const containerImagePullWriteDeadline = 11 * time.Minute
 
+// containerImageDeleteWriteDeadline is set past
+// vyos.DeleteContainerImage's 2-minute client timeout, for the same
+// reason as containerImagePullWriteDeadline.
+const containerImageDeleteWriteDeadline = 3 * time.Minute
+
 // handleDeleteContainerImage serves DELETE
 // /api/container/images?name=... - a query parameter rather than a
 // path segment, since image references routinely contain "/" and ":"
 // (e.g. "docker.io/library/nginx:latest"), which would be ambiguous
 // or need extra encoding as a path segment.
 func (s *Server) handleDeleteContainerImage(w http.ResponseWriter, r *http.Request) {
+	rc := http.NewResponseController(w)
+	if err := rc.SetWriteDeadline(time.Now().Add(containerImageDeleteWriteDeadline)); err != nil {
+		s.Logger.Warn("could not extend write deadline for container image delete", "error", err)
+	}
+
 	name := r.URL.Query().Get("name")
 	if !validateContainerImageName(name) {
 		writeError(w, http.StatusBadRequest, "invalid or missing image name")

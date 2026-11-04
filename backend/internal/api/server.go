@@ -231,3 +231,7 @@ func (r *statusRecorder) WriteHeader(code int) {
 	r.status = code
 	r.ResponseWriter.WriteHeader(code)
 }
+
+// Unwrap lets http.NewResponseController reach the underlying writer,
+// so handlers can extend their write deadline through this wrapper.
+func (r *statusRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }

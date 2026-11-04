@@ -2981,3 +2981,28 @@ func TestLogin_RejectsOversizedCredentials(t *testing.T) {
 		}
 	}
 }
+
+// TestLongRunningHandlers_CanExtendWriteDeadline guards the logging
+// wrapper's Unwrap: without it http.NewResponseController can't reach
+// the real connection and the extended write deadlines silently don't
+// apply. Needs a real server - httptest.ResponseRecorder has no
+// deadlines.
+func TestLongRunningHandlers_CanExtendWriteDeadline(t *testing.T) {
+	e := newTestEnv(t)
+	e.login(t)
+	var logs bytes.Buffer
+	e.apiServer.Logger = slog.New(slog.NewTextHandler(&logs, nil))
+
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodPost, "/api/container/images"},
+		{http.MethodDelete, "/api/container/images?name=abc123"},
+		{http.MethodPost, "/api/system/images"},
+		{http.MethodDelete, "/api/system/images?name=1.4.0"},
+	} {
+		resp := e.doJSON(t, tc.method, tc.path, map[string]string{})
+		_ = resp.Body.Close()
+	}
+	if strings.Contains(logs.String(), "could not extend write deadline") {
+		t.Errorf("write deadline not extendable through the handler chain:\n%s", logs.String())
+	}
+}
