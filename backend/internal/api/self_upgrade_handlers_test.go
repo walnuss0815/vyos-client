@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/walnuss0815/vyos-client/backend/internal/imageupdate"
@@ -265,11 +266,12 @@ func newTestGHCRServer(t *testing.T, e *testEnv, existingVersions ...string) *ht
 	return server
 }
 
-// TestSelfUpgradeStatus_ImageExists verifies each newer release's
-// ImageExists independently, guarding the real gap this check exists
-// for: .github/workflows/release.yml publishes the GitHub Release and
-// the GHCR image as two separate jobs, so a release can legitimately
-// exist without (yet, or ever) having a matching image.
+// TestSelfUpgradeStatus_ImageExists verifies the newest release's
+// ImageExists, guarding the real gap this check exists for:
+// .github/workflows/release.yml publishes the GitHub Release and the
+// GHCR image as two separate jobs, so a release can legitimately exist
+// without (yet, or ever) having a matching image. Older releases are
+// never checked, so they report false regardless.
 func TestSelfUpgradeStatus_ImageExists(t *testing.T) {
 	github := newTestGitHubReleasesServer(t, `[
 		{"tag_name": "v2.0.0", "name": "2.0.0", "body": "", "draft": false, "prerelease": false, "published_at": "2026-02-01T00:00:00Z", "html_url": "https://example.com/2.0.0"},
@@ -285,9 +287,7 @@ func TestSelfUpgradeStatus_ImageExists(t *testing.T) {
 	e.apiServer.SelfUpgradeContainerName = "vyos-client"
 	e.apiServer.SelfUpgradeGitHub = ghClient
 	e.apiServer.Version = "1.0.0"
-	// Only 1.5.0's image actually exists - 2.0.0's release was
-	// published but its image build hasn't finished (or failed).
-	newTestGHCRServer(t, e, "1.5.0")
+	newTestGHCRServer(t, e, "2.0.0", "1.5.0")
 	e.login(t)
 
 	resp := e.doJSON(t, http.MethodGet, "/api/system/self-upgrade", nil)
@@ -306,14 +306,65 @@ func TestSelfUpgradeStatus_ImageExists(t *testing.T) {
 	for _, rel := range out.Releases {
 		switch rel.Version {
 		case "2.0.0":
-			if rel.ImageExists {
-				t.Error("expected imageExists=false for 2.0.0 (no matching image on the fake registry)")
+			if !rel.ImageExists {
+				t.Error("expected imageExists=true for 2.0.0 (newest, matching image exists on the fake registry)")
 			}
 		case "1.5.0":
-			if !rel.ImageExists {
-				t.Error("expected imageExists=true for 1.5.0 (matching image exists on the fake registry)")
+			if rel.ImageExists {
+				t.Error("expected imageExists=false for 1.5.0 (older releases are not checked)")
 			}
 		}
+	}
+}
+
+func TestSelfUpgradeStatus_ChecksOnlyNewestReleaseImage(t *testing.T) {
+	github := newTestGitHubReleasesServer(t, `[
+		{"tag_name": "v3.0.0", "name": "3.0.0", "body": "", "draft": false, "prerelease": false, "published_at": "2026-03-01T00:00:00Z", "html_url": "https://example.com/3.0.0"},
+		{"tag_name": "v2.0.0", "name": "2.0.0", "body": "", "draft": false, "prerelease": false, "published_at": "2026-02-01T00:00:00Z", "html_url": "https://example.com/2.0.0"},
+		{"tag_name": "v1.5.0", "name": "1.5.0", "body": "", "draft": false, "prerelease": false, "published_at": "2026-01-15T00:00:00Z", "html_url": "https://example.com/1.5.0"}
+	]`)
+	ghClient, err := selfupgrade.New(selfupgrade.Config{Repo: "example/repo", BaseURL: github.URL, HTTPClient: github.Client()})
+	if err != nil {
+		t.Fatalf("selfupgrade.New: %v", err)
+	}
+
+	var checked []string
+	var mu sync.Mutex
+	registry := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		checked = append(checked, strings.TrimPrefix(r.URL.Path, "/v2/example/repo/manifests/"))
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(registry.Close)
+
+	e := newTestEnv(t)
+	e.apiServer.SelfUpgradeEnabled = true
+	e.apiServer.SelfUpgradeContainerName = "vyos-client"
+	e.apiServer.SelfUpgradeGitHub = ghClient
+	e.apiServer.Version = "1.0.0"
+	e.apiServer.ImageRegistry = imageupdate.NewClient(imageupdate.Config{HTTPClient: registry.Client()})
+	e.apiServer.SelfUpgradeGHCRHost = strings.TrimPrefix(registry.URL, "https://")
+	e.login(t)
+
+	resp := e.doJSON(t, http.MethodGet, "/api/system/self-upgrade", nil)
+	defer func() { _ = resp.Body.Close() }()
+	var out selfUpgradeStatusOut
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(out.Releases) != 3 {
+		t.Fatalf("expected 3 releases, got %d", len(out.Releases))
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(checked) != 1 || checked[0] != "3.0.0" {
+		t.Errorf("registry checks = %v, want exactly [3.0.0]", checked)
+	}
+	if !out.Releases[0].ImageExists || out.Releases[1].ImageExists || out.Releases[2].ImageExists {
+		t.Errorf("imageExists = %v/%v/%v, want true/false/false",
+			out.Releases[0].ImageExists, out.Releases[1].ImageExists, out.Releases[2].ImageExists)
 	}
 }
 
