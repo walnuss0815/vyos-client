@@ -1,9 +1,11 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import Modal from '../../components/Modal'
 import { useCommitConfirm } from '../../hooks/useSafeApply'
 import { useSystemInfo } from '../../hooks/useSystemInfo'
 import { buttonClass, inputClass, labelClass } from '../../lib/formStyles'
+import { invalidateConfigQueries } from '../../lib/invalidateConfigQueries'
 import { confirmCommit, poweroffSystem, rebootSystem, rollback, save } from '../../lib/vyosApi'
 import { useUnsavedCommitStore } from '../../store/unsavedCommit'
 
@@ -126,12 +128,14 @@ function SaveSection() {
  * the rollback.
  */
 function RollbackSection() {
+  const queryClient = useQueryClient()
   const markSaved = useUnsavedCommitStore((s) => s.markSaved)
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
   const confirm = useCommitConfirm(() => {
+    invalidateConfigQueries(queryClient)
     setError('The confirm window ran out, so VyOS reverted the rollback and your committed changes are live again.')
   })
 
@@ -150,6 +154,7 @@ function RollbackSection() {
         confirm.start(result, ROLLBACK_CONFIRM_SECONDS)
       } else {
         markSaved()
+        invalidateConfigQueries(queryClient)
         setDone(true)
       }
     } catch (err) {
@@ -168,6 +173,7 @@ function RollbackSection() {
       // regardless of which endpoint started it.
       await confirmCommit()
       markSaved()
+      invalidateConfigQueries(queryClient)
       confirm.stop()
       setDone(true)
     } catch (err) {

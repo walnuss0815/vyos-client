@@ -13,10 +13,11 @@ import { getSystemInfo } from '../lib/vyosApi'
  * backend/internal/api/system_handlers.go's handleSystemInfo doc
  * comment.
  *
- * Deliberately not auto-refreshing: hostname/version can't change
- * without a commit and reboot, so polling this adds no value (unlike
+ * Deliberately not auto-refreshing: the hostname changes only through
+ * a config commit (it applies on commit, no reboot) and the version
+ * only through an image upgrade, so polling this adds no value (unlike
  * useInterfaces/useRoutes, which reflect state that changes on its
- * own).
+ * own). invalidateConfigQueries refetches it after a config change.
  */
 export function useSystemInfo() {
   return useQuery({

@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useSystemInfo } from '../hooks/useSystemInfo'
@@ -49,6 +50,7 @@ export { DEFAULT_DOCUMENT_TITLE }
 export default function Layout() {
   const user = useSessionStore((s) => s.user)
   const logout = useSessionStore((s) => s.logout)
+  const queryClient = useQueryClient()
   const systemInfoQuery = useSystemInfo()
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -156,7 +158,7 @@ export default function Layout() {
           <p className="truncate text-sm text-slate-200">{user}</p>
           <div className="mt-2 flex items-center justify-between">
             <button
-              onClick={() => void logout()}
+              onClick={() => void logout().finally(() => queryClient.clear())}
               className="text-xs font-medium text-slate-400 hover:text-white"
             >
               Sign out

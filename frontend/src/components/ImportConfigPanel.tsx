@@ -2,9 +2,11 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useCommitConfirm, useSafeApplyInput } from '../hooks/useSafeApply'
 import { ApiError } from '../lib/api'
+import { invalidateConfigQueries } from '../lib/invalidateConfigQueries'
 import { buttonClass, labelClass } from '../lib/formStyles'
 import * as api from '../lib/vyosApi'
 import type { ImportMode } from '../lib/vyosApi'
+import { usePendingChangesStore } from '../store/pendingChanges'
 import { useUnsavedCommitStore } from '../store/unsavedCommit'
 import SafeApplyField, { SAFE_APPLY_RANGE_MESSAGE } from './SafeApplyField'
 
@@ -31,13 +33,14 @@ export default function ImportConfigPanel() {
   const safeApplyInput = useSafeApplyInput(true)
   const { enabled: safeApply, seconds: confirmSeconds, valid: confirmSecondsValid } = safeApplyInput
   const markCommitted = useUnsavedCommitStore((s) => s.markCommitted)
+  const queuedChanges = usePendingChangesStore((s) => s.changes.length)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
   // VyOS reverts the import on its own once the confirm window ends.
   const confirm = useCommitConfirm(() => {
-    void queryClient.invalidateQueries({ queryKey: ['config-tree'] })
+    invalidateConfigQueries(queryClient)
     setError('The confirm window ran out, so VyOS reverted the import.')
   })
 
@@ -54,10 +57,6 @@ export default function ImportConfigPanel() {
       setContent(typeof reader.result === 'string' ? reader.result : '')
     }
     reader.readAsText(file)
-  }
-
-  function invalidateConfigQueries() {
-    void queryClient.invalidateQueries({ queryKey: ['config-tree'] })
   }
 
   // The import is a standalone VyOS operation, so there are no queued
@@ -81,7 +80,7 @@ export default function ImportConfigPanel() {
       }
       setSuccess(true)
       markImported()
-      invalidateConfigQueries()
+      invalidateConfigQueries(queryClient)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to import configuration.')
     } finally {
@@ -97,7 +96,7 @@ export default function ImportConfigPanel() {
       confirm.stop()
       setSuccess(true)
       markImported()
-      invalidateConfigQueries()
+      invalidateConfigQueries(queryClient)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to confirm the import.')
     } finally {
@@ -174,6 +173,13 @@ export default function ImportConfigPanel() {
             locked out of this app entirely. Safe apply (below) is strongly recommended so VyOS can
             automatically revert if that happens.
           </p>
+          {queuedChanges > 0 && (
+            <p className="mt-2 text-sm text-warning-500">
+              {queuedChanges} queued change{queuedChanges === 1 ? ' was' : 's were'} made against the
+              current configuration; review or discard {queuedChanges === 1 ? 'it' : 'them'} after
+              importing.
+            </p>
+          )}
           <label className="mt-2 flex items-center gap-2 text-xs text-slate-300">
             <input
               type="checkbox"
