@@ -1,17 +1,13 @@
 import { useConfirmCountdown } from '../hooks/useConfirmCountdown'
+import { useDefaultConfirmSeconds } from '../hooks/useSystemInfo'
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { ApiError } from '../lib/api'
 import { buttonClass, inputClass, labelClass } from '../lib/formStyles'
 import { noExtensionInputProps } from '../lib/inputProtection'
+import { MAX_CONFIRM_SECONDS, MIN_CONFIRM_SECONDS } from '../lib/safeApply'
 import * as api from '../lib/vyosApi'
 import type { ImportMode } from '../lib/vyosApi'
-
-// Matches the confirmSeconds bounds enforced server-side in
-// handleImportConfig (backend/internal/api/config_handlers.go), same
-// as PendingChangesBar's commit-confirm window.
-const MIN_CONFIRM_SECONDS = 10
-const MAX_CONFIRM_SECONDS = 600
 
 // endsAt is a Date.now() timestamp: when VyOS will auto-revert unless confirmed.
 type ConfirmState = { active: true; endsAt: number } | { active: false }
@@ -37,7 +33,9 @@ export default function ImportConfigPanel() {
   const [mode, setMode] = useState<ImportMode>('merge')
   const [acknowledged, setAcknowledged] = useState(false)
   const [safeApply, setSafeApply] = useState(true)
-  const [confirmSeconds, setConfirmSeconds] = useState(90)
+  const defaultConfirmSeconds = useDefaultConfirmSeconds()
+  const [confirmSecondsInput, setConfirmSeconds] = useState<number | null>(null)
+  const confirmSeconds = confirmSecondsInput ?? defaultConfirmSeconds
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
@@ -79,7 +77,7 @@ export default function ImportConfigPanel() {
     try {
       const result = await api.importConfig(content, mode, safeApply ? confirmSeconds : undefined)
       if (result.pendingConfirm) {
-        setConfirmState({ active: true, endsAt: Date.now() + confirmSeconds * 1000 })
+        setConfirmState({ active: true, endsAt: Date.now() + (result.confirmSeconds ?? confirmSeconds) * 1000 })
         return
       }
       setSuccess(true)

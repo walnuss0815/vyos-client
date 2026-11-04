@@ -78,6 +78,8 @@ export interface SystemInfo {
    * /api/files* endpoints themselves (see FileBrowserRootsResponse/
    * FileBrowserResult) - this is purely a UI hint. */
   fileBrowserEnabled: boolean
+  /** The backend's default for the "Safe apply" seconds input. */
+  safeApplyDefaultSeconds?: number
 }
 
 /** Live system identity (hostname + VyOS version), sourced from VyOS's
@@ -423,6 +425,11 @@ export interface ConfigOp {
 
 export interface CommitResponse {
   pendingConfirm: boolean
+  /** The commit-confirm window VyOS really uses (it rounds the
+   * requested seconds up to whole minutes). Only present while a
+   * confirm is pending - the countdown must follow this, not the
+   * seconds that were requested. */
+  confirmSeconds?: number
 }
 
 /** Applies a batch of set/delete/comment operations as a single atomic

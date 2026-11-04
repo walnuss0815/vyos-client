@@ -140,6 +140,68 @@ describe('PendingChangesBar', () => {
     }
   })
 
+  it('counts down the window VyOS reports, not the requested seconds', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      server.use(
+        http.post('/api/config/commit', () => HttpResponse.json({ pendingConfirm: true, confirmSeconds: 120 })),
+      )
+      usePendingChangesStore
+        .getState()
+        .add({ op: { op: 'set', path: ['system', 'host-name'], value: 'r1' }, label: 'set host-name' })
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+      renderWithProviders(<PendingChangesBar />)
+
+      await user.click(screen.getByRole('checkbox', { name: /safe apply/i }))
+      await user.click(screen.getByRole('button', { name: /^commit$/i }))
+      await screen.findByText(/keep these changes/i)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100_000)
+      })
+      expect(screen.getByText(/keep these changes/i)).toBeInTheDocument()
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(21_000)
+      })
+      expect(screen.queryByText(/keep these changes/i)).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('starts the Safe apply seconds from the system info default, clamped to the allowed range', async () => {
+    server.use(
+      http.get('/api/system/info', () =>
+        HttpResponse.json({ hostname: 'r', version: '1', loginBanner: '', safeApplyDefaultSeconds: 45 }),
+      ),
+    )
+    usePendingChangesStore
+      .getState()
+      .add({ op: { op: 'set', path: ['system', 'host-name'], value: 'r1' }, label: 'set host-name' })
+    const user = userEvent.setup()
+    renderWithProviders(<PendingChangesBar />)
+
+    await user.click(screen.getByRole('checkbox', { name: /safe apply/i }))
+    await waitFor(() => expect(screen.getByRole('spinbutton')).toHaveValue(45))
+  })
+
+  it('clamps an out-of-range system info default into the allowed range', async () => {
+    server.use(
+      http.get('/api/system/info', () =>
+        HttpResponse.json({ hostname: 'r', version: '1', loginBanner: '', safeApplyDefaultSeconds: 5000 }),
+      ),
+    )
+    usePendingChangesStore
+      .getState()
+      .add({ op: { op: 'set', path: ['system', 'host-name'], value: 'r1' }, label: 'set host-name' })
+    const user = userEvent.setup()
+    renderWithProviders(<PendingChangesBar />)
+
+    await user.click(screen.getByRole('checkbox', { name: /safe apply/i }))
+    await waitFor(() => expect(screen.getByRole('spinbutton')).toHaveValue(600))
+  })
+
   it('shows the keep/revert confirm panel when commit-confirm is pending', async () => {
     server.use(
       http.post('/api/config/commit', () => HttpResponse.json({ pendingConfirm: true })),

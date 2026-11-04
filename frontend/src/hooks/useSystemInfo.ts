@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { clampConfirmSeconds, DEFAULT_CONFIRM_SECONDS } from '../lib/safeApply'
 import { getSystemInfo } from '../lib/vyosApi'
 
 /**
@@ -22,4 +23,11 @@ export function useSystemInfo() {
     queryKey: ['system-info'],
     queryFn: getSystemInfo,
   })
+}
+
+/** Initial value for the "Safe apply" seconds inputs: the backend's
+ * configured default, kept within the range the backend accepts. */
+export function useDefaultConfirmSeconds(): number {
+  const { data } = useSystemInfo()
+  return clampConfirmSeconds(data?.safeApplyDefaultSeconds ?? DEFAULT_CONFIRM_SECONDS)
 }

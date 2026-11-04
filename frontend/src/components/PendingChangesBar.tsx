@@ -1,9 +1,11 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useConfirmCountdown } from '../hooks/useConfirmCountdown'
+import { useDefaultConfirmSeconds } from '../hooks/useSystemInfo'
 import { ApiError } from '../lib/api'
 import * as api from '../lib/vyosApi'
 import { maskValue } from '../lib/masking'
+import { MAX_CONFIRM_SECONDS, MIN_CONFIRM_SECONDS } from '../lib/safeApply'
 import { usePendingChangesStore, type PendingChange } from '../store/pendingChanges'
 import { useUnsavedCommitStore } from '../store/unsavedCommit'
 import type { ConfigOp } from '../lib/vyosApi'
@@ -16,11 +18,6 @@ type ConfirmState = { active: true; endsAt: number } | { active: false }
 // handleKeep below), but need different copy in the confirm panel and
 // different post-confirm bookkeeping.
 type PendingAction = 'commit' | 'rollback'
-
-// Matches the confirmSeconds bounds enforced server-side in
-// handleCommit (backend/internal/api/config_handlers.go).
-const MIN_CONFIRM_SECONDS = 10
-const MAX_CONFIRM_SECONDS = 600
 
 // Builds a masked, human-readable description of an op for display
 // (both the visible list text and the discard button's aria-label).
@@ -129,7 +126,9 @@ export default function PendingChangesBar() {
   // upgrade) where Safe apply's mechanism can't work AT ALL, not just
   // "risks being interrupted".
   const [safeApply, setSafeApply] = useState(false)
-  const [confirmSeconds, setConfirmSeconds] = useState(90)
+  const defaultConfirmSeconds = useDefaultConfirmSeconds()
+  const [confirmSecondsInput, setConfirmSeconds] = useState<number | null>(null)
+  const confirmSeconds = confirmSecondsInput ?? defaultConfirmSeconds
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [confirmState, setConfirmState] = useState<ConfirmState>({ active: false })
@@ -235,7 +234,7 @@ export default function PendingChangesBar() {
         setPendingAction('commit')
         setPendingCommitChanges(committing)
         setSaveAfterConfirm(alsoSave)
-        setConfirmState({ active: true, endsAt: Date.now() + confirmSeconds * 1000 })
+        setConfirmState({ active: true, endsAt: Date.now() + (result.confirmSeconds ?? confirmSeconds) * 1000 })
         return
       }
       // Only what was committed - edits queued while the request was in
@@ -327,7 +326,7 @@ export default function PendingChangesBar() {
   // branch of the bar never renders the confirmSeconds <input> (it
   // only exists in the main, changes.length > 0 bar below), so there's
   // no way for the operator to have left it at an invalid value on
-  // purpose here either - falls back to the same 90s default the
+  // purpose here either - falls back to the same default the
   // field itself starts at if it's somehow out of bounds, rather than
   // risking an unconfirmed (unsafe) rollback the way sending an
   // invalid value straight through would.
@@ -336,11 +335,16 @@ export default function PendingChangesBar() {
     setError(null)
     try {
       const rollbackConfirmSeconds =
-        confirmSeconds >= MIN_CONFIRM_SECONDS && confirmSeconds <= MAX_CONFIRM_SECONDS ? confirmSeconds : 90
+        confirmSeconds >= MIN_CONFIRM_SECONDS && confirmSeconds <= MAX_CONFIRM_SECONDS
+          ? confirmSeconds
+          : defaultConfirmSeconds
       const result = await api.rollback(rollbackConfirmSeconds)
       if (result.pendingConfirm) {
         setPendingAction('rollback')
-        setConfirmState({ active: true, endsAt: Date.now() + rollbackConfirmSeconds * 1000 })
+        setConfirmState({
+          active: true,
+          endsAt: Date.now() + (result.confirmSeconds ?? rollbackConfirmSeconds) * 1000,
+        })
         return
       }
       invalidateConfigQueries()
