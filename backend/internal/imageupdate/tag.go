@@ -1,6 +1,7 @@
 package imageupdate
 
 import (
+	"cmp"
 	"regexp"
 	"strconv"
 )
@@ -74,26 +75,15 @@ func ParseTag(raw string) (t ParsedTag, ok bool) {
 // sameFlavor) - NewestMatching never compares across flavors.
 func (a ParsedTag) compare(b ParsedTag) int {
 	if a.Major != b.Major {
-		return cmpInt(a.Major, b.Major)
+		return cmp.Compare(a.Major, b.Major)
 	}
 	if a.Minor != b.Minor {
-		return cmpInt(a.Minor, b.Minor)
+		return cmp.Compare(a.Minor, b.Minor)
 	}
 	if a.HasPatch && b.HasPatch {
-		return cmpInt(a.Patch, b.Patch)
+		return cmp.Compare(a.Patch, b.Patch)
 	}
 	return 0
-}
-
-func cmpInt(x, y int) int {
-	switch {
-	case x < y:
-		return -1
-	case x > y:
-		return 1
-	default:
-		return 0
-	}
 }
 
 // sameFlavor reports whether a and b use the same tagging convention:

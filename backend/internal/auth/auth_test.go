@@ -166,12 +166,15 @@ func TestSessionManager_RenewIssuesFreshTokenSameSubject(t *testing.T) {
 	// inherently racy wall-clock timing.
 	time.Sleep(2 * time.Millisecond)
 
-	renewed, newExp, err := sm.Renew(token)
+	renewed, newExp, subject, err := sm.Renew(token)
 	if err != nil {
 		t.Fatalf("Renew: %v", err)
 	}
 	if renewed == token {
 		t.Error("expected Renew to mint a different token string than the original")
+	}
+	if subject != "admin" {
+		t.Errorf("Renew subject = %q, want admin", subject)
 	}
 	if !newExp.After(exp.Add(-time.Second)) {
 		t.Errorf("expected renewed expiry (%v) to be at least as far out as the original (%v)", newExp, exp)
@@ -193,7 +196,7 @@ func TestSessionManager_RenewRejectsTamperedToken(t *testing.T) {
 		t.Fatalf("Issue: %v", err)
 	}
 	tampered := tamperToken(token)
-	if _, _, err := sm.Renew(tampered); err == nil {
+	if _, _, _, err := sm.Renew(tampered); err == nil {
 		t.Fatal("expected Renew to reject a tampered token")
 	}
 }
@@ -205,7 +208,7 @@ func TestSessionManager_RenewRejectsWrongSecret(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Issue: %v", err)
 	}
-	if _, _, err := sm2.Renew(token); err == nil {
+	if _, _, _, err := sm2.Renew(token); err == nil {
 		t.Fatal("expected Renew to reject a token signed with a different secret")
 	}
 }
@@ -247,11 +250,9 @@ func TestLoginLimiter_BlocksAfterMaxAttempts(t *testing.T) {
 	l.BaseDelay = time.Hour // never expires within the test
 
 	for i := 0; i < 2; i++ {
-		allowed, _ := l.Allow("1.2.3.4")
-		if !allowed {
+		if allowed, _ := l.Reserve("1.2.3.4"); !allowed {
 			t.Fatalf("attempt %d: expected to be allowed before hitting MaxAttempts", i)
 		}
-		l.RecordFailure("1.2.3.4")
 	}
 
 	allowed, wait := l.Allow("1.2.3.4")
@@ -268,8 +269,7 @@ func TestLoginLimiter_SuccessClearsHistory(t *testing.T) {
 	l.MaxAttempts = 1
 	l.BaseDelay = time.Hour
 
-	l.RecordFailure("1.2.3.4")
-	l.RecordFailure("1.2.3.4")
+	l.Reserve("1.2.3.4")
 	if allowed, _ := l.Allow("1.2.3.4"); allowed {
 		t.Fatal("expected to be blocked")
 	}
@@ -285,7 +285,7 @@ func TestLoginLimiter_SuccessClearsHistory(t *testing.T) {
 // source key that fails once and never returns (a one-off scanner
 // hitting a different IP next) used to sit in the map forever, since
 // Allow/RecordSuccess only ever clean up a key when *that* key is
-// looked up again. Confirms RecordFailure itself sweeps out anything
+// looked up again. Confirms Reserve itself sweeps out anything
 // past its Window once the map has grown to MaxTrackedSources,
 // keeping it bounded without needing a background goroutine.
 func TestLoginLimiter_EvictsExpiredSourcesOnceMaxTrackedSourcesReached(t *testing.T) {
@@ -294,7 +294,7 @@ func TestLoginLimiter_EvictsExpiredSourcesOnceMaxTrackedSourcesReached(t *testin
 	l.Window = 10 * time.Millisecond
 
 	for i := range 3 {
-		l.RecordFailure(fmt.Sprintf("203.0.113.%d", i))
+		l.Reserve(fmt.Sprintf("203.0.113.%d", i))
 	}
 	if got := l.TrackedSourceCount(); got != 3 {
 		t.Fatalf("TrackedSourceCount() = %d, want 3 before eviction", got)
@@ -302,11 +302,11 @@ func TestLoginLimiter_EvictsExpiredSourcesOnceMaxTrackedSourcesReached(t *testin
 
 	time.Sleep(20 * time.Millisecond) // past Window - all 3 are now stale
 
-	// This 4th, distinct key's RecordFailure is what triggers the
+	// This 4th, distinct key's Reserve is what triggers the
 	// sweep (len(attempts) == MaxTrackedSources at the time it's
 	// called) - the three stale entries should be evicted, leaving
 	// only this new one.
-	l.RecordFailure("203.0.113.99")
+	l.Reserve("203.0.113.99")
 
 	if got := l.TrackedSourceCount(); got != 1 {
 		t.Fatalf("TrackedSourceCount() = %d, want 1 after evicting 3 stale sources", got)
@@ -323,10 +323,10 @@ func TestLoginLimiter_DoesNotEvictStillActiveSources(t *testing.T) {
 	l.Window = time.Hour // won't expire during this test
 
 	for i := range 4 {
-		l.RecordFailure(fmt.Sprintf("203.0.113.%d", i))
+		l.Reserve(fmt.Sprintf("203.0.113.%d", i))
 	}
 
-	// The 4th RecordFailure triggered a sweep attempt (map size 3 ==
+	// The 4th Reserve triggered a sweep attempt (map size 3 ==
 	// MaxTrackedSources at that point), but none of the first three
 	// were stale yet, so all four sources should still be tracked.
 	if got := l.TrackedSourceCount(); got != 4 {

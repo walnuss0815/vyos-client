@@ -1,6 +1,7 @@
 package selfupgrade
 
 import (
+	"cmp"
 	"regexp"
 	"strconv"
 	"strings"
@@ -43,23 +44,12 @@ func parseSemver(raw string) (v semver, ok bool) {
 // than other.
 func (v semver) compare(other semver) int {
 	if v.major != other.major {
-		return cmpInt(v.major, other.major)
+		return cmp.Compare(v.major, other.major)
 	}
 	if v.minor != other.minor {
-		return cmpInt(v.minor, other.minor)
+		return cmp.Compare(v.minor, other.minor)
 	}
-	return cmpInt(v.patch, other.patch)
-}
-
-func cmpInt(a, b int) int {
-	switch {
-	case a < b:
-		return -1
-	case a > b:
-		return 1
-	default:
-		return 0
-	}
+	return cmp.Compare(v.patch, other.patch)
 }
 
 // normalizeVersion strips a leading "v" from a raw git tag, returning

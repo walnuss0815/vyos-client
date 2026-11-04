@@ -121,15 +121,16 @@ func (m *SessionManager) Verify(token string) (string, error) {
 // originalIssuedAt + MaxAbsoluteSessionTTL, so sliding renewal can't
 // extend a session forever. Returns ErrExpiredToken both for an
 // already-expired token and for one that has hit its absolute cap
-// (indistinguishable to the caller, same as Verify).
-func (m *SessionManager) Renew(token string) (string, time.Time, error) {
+// (indistinguishable to the caller, same as Verify). The returned
+// subject is the one the token was issued for.
+func (m *SessionManager) Renew(token string) (string, time.Time, string, error) {
 	c, err := m.decodeAndVerify(token)
 	if err != nil {
-		return "", time.Time{}, err
+		return "", time.Time{}, "", err
 	}
 	now := time.Now()
 	if now.UnixMilli() > c.ExpiresAt {
-		return "", time.Time{}, ErrExpiredToken
+		return "", time.Time{}, "", ErrExpiredToken
 	}
 
 	absoluteCap := time.UnixMilli(c.IssuedAt).Add(MaxAbsoluteSessionTTL)
@@ -138,15 +139,15 @@ func (m *SessionManager) Renew(token string) (string, time.Time, error) {
 		newExp = absoluteCap
 	}
 	if !newExp.After(now) {
-		return "", time.Time{}, ErrExpiredToken
+		return "", time.Time{}, "", ErrExpiredToken
 	}
 
 	newClaims := claims{Subject: c.Subject, IssuedAt: c.IssuedAt, ExpiresAt: newExp.UnixMilli()}
 	token, err = m.encode(newClaims)
 	if err != nil {
-		return "", time.Time{}, err
+		return "", time.Time{}, "", err
 	}
-	return token, newExp, nil
+	return token, newExp, c.Subject, nil
 }
 
 // decodeAndVerify checks a token's signature and structure (but not

@@ -19,7 +19,7 @@ func TestSessionManager_RenewCapsExpiryAtAbsoluteTTL(t *testing.T) {
 		t.Fatalf("encode: %v", err)
 	}
 
-	renewed, newExp, err := sm.Renew(token)
+	renewed, newExp, _, err := sm.Renew(token)
 	if err != nil {
 		t.Fatalf("Renew: %v", err)
 	}
@@ -48,7 +48,7 @@ func TestSessionManager_RenewRejectsPastAbsoluteTTL(t *testing.T) {
 		t.Fatalf("encode: %v", err)
 	}
 
-	if _, _, err := sm.Renew(token); !errors.Is(err, ErrExpiredToken) {
+	if _, _, _, err := sm.Renew(token); !errors.Is(err, ErrExpiredToken) {
 		t.Errorf("Renew past the absolute cap: err = %v, want ErrExpiredToken", err)
 	}
 }
@@ -65,7 +65,7 @@ func TestSessionManager_RenewRejectsExpiredToken(t *testing.T) {
 		t.Fatalf("encode: %v", err)
 	}
 
-	if _, _, err := sm.Renew(token); !errors.Is(err, ErrExpiredToken) {
+	if _, _, _, err := sm.Renew(token); !errors.Is(err, ErrExpiredToken) {
 		t.Errorf("Renew of an expired token: err = %v, want ErrExpiredToken", err)
 	}
 }
