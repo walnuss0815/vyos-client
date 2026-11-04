@@ -12,6 +12,8 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
+
 	"github.com/walnuss0815/vyos-client/backend/internal/api"
 	"github.com/walnuss0815/vyos-client/backend/internal/auth"
 	"github.com/walnuss0815/vyos-client/backend/internal/config"
@@ -37,6 +39,7 @@ func runServer() error {
 			"dev against the mock-vyos fixture, but a real VyOS API only serves HTTPS - if this "+
 			"is pointed at a real router, requests will fail.", "vyos_api_url", cfg.VyOSAPIURL)
 	}
+	warnInvalidAdminHash(cfg, logger)
 	if cfg.UIAdminVarsIgnored {
 		logger.Warn("UI_ADMIN_USER/UI_ADMIN_PASSWORD_HASH are set but ignored because AUTH_MODE=" +
 			config.AuthModeVyOSUsers + "; unset them, or set AUTH_MODE=" + config.AuthModeStatic +
@@ -226,6 +229,19 @@ func runServer() error {
 	return nil
 }
 
+// warnInvalidAdminHash only warns, never fails startup, so an existing
+// deployment keeps starting; every login then fails until it is fixed.
+func warnInvalidAdminHash(cfg *config.Config, logger *slog.Logger) {
+	if cfg.AuthMode != config.AuthModeStatic {
+		return
+	}
+	if _, err := bcrypt.Cost([]byte(cfg.UIAdminPasswordHash)); err != nil {
+		logger.Warn("UI_ADMIN_PASSWORD_HASH is not a valid bcrypt hash, so every login will fail. " +
+			"Generate one with `vyos-client hash-password`; in a Docker Compose .env file every " +
+			"`$` in the hash must be written as `$$`.")
+	}
+}
+
 func buildTLSConfig(cfg *config.Config, logger *slog.Logger) (*tls.Config, error) {
 	if cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {
 		cert, err := tls.LoadX509KeyPair(cfg.TLSCertFile, cfg.TLSKeyFile)
@@ -233,6 +249,10 @@ func buildTLSConfig(cfg *config.Config, logger *slog.Logger) (*tls.Config, error
 			return nil, fmt.Errorf("loading TLS certificate: %w", err)
 		}
 		return &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}, nil
+	}
+	if cfg.TLSCertFile != "" || cfg.TLSKeyFile != "" {
+		logger.Warn("only one of TLS_CERT_FILE/TLS_KEY_FILE is set; both are required to use your " +
+			"own certificate, so a self-signed certificate is used instead.")
 	}
 
 	logger.Warn("no TLS_CERT_FILE/TLS_KEY_FILE configured; generating a self-signed certificate. " +

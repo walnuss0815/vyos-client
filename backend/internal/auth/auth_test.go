@@ -210,13 +210,9 @@ func TestSessionManager_RenewRejectsWrongSecret(t *testing.T) {
 	}
 }
 
-// Note: like TestSessionManager_RejectsExpiredToken above, exercising
-// the "already expired" and "past MaxAbsoluteSessionTTL" branches of
-// Renew would require either waiting out a real 30-minute/12-hour
-// window or a clock-injection seam this package doesn't have -
-// covered instead by RequireSession's integration-level behavior
-// (TestRequireSession_ReissuesSessionCookieOnSuccess) and the e2e
-// suite for real end-to-end timing.
+// The "already expired" and "past MaxAbsoluteSessionTTL" branches of
+// Renew are covered in session_internal_test.go, which crafts tokens
+// with back-dated claims.
 
 func TestStaticVerifier_CorrectCredentials(t *testing.T) {
 	hash, _ := auth.HashPassword("s3cret")
@@ -454,6 +450,12 @@ func TestRequireCSRF_RejectsMissingToken(t *testing.T) {
 
 	if rec.Code != http.StatusForbidden {
 		t.Errorf("status = %d, want 403", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+	if got := strings.TrimSpace(rec.Body.String()); got != `{"error":"missing csrf token"}` {
+		t.Errorf("body = %q, want the JSON error", got)
 	}
 }
 
