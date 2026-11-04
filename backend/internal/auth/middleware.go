@@ -96,16 +96,8 @@ func RequireSession(sessions *SessionManager, secure bool) func(http.Handler) ht
 				writeJSONError(w, http.StatusUnauthorized, `{"error":"not authenticated"}`)
 				return
 			}
-			newToken, newExp, err := sessions.Renew(cookie.Value)
+			newToken, newExp, user, err := sessions.Renew(cookie.Value)
 			if err != nil {
-				writeJSONError(w, http.StatusUnauthorized, `{"error":"not authenticated"}`)
-				return
-			}
-			user, err := sessions.Verify(newToken)
-			if err != nil {
-				// Renew just minted this token; a failure here would be
-				// a logic bug, not an untrusted-input problem, but fail
-				// closed the same way rather than trusting it blindly.
 				writeJSONError(w, http.StatusUnauthorized, `{"error":"not authenticated"}`)
 				return
 			}

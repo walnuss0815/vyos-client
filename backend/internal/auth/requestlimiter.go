@@ -47,7 +47,7 @@ func NewRequestLimiter(max int, window time.Duration) *RequestLimiter {
 
 // Allow reports whether a request for key is currently permitted
 // under the rolling window, and if so, records it against key's
-// quota. Unlike LoginLimiter's Allow/RecordFailure split, whether a
+// quota. Unlike LoginLimiter's Allow/Reserve split, whether a
 // request happened and whether it counts against the limit are the
 // same question here - there's no separate "success doesn't count"
 // case to model.
