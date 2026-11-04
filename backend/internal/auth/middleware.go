@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
+	"io"
 	"net/http"
 	"time"
 )
@@ -92,12 +93,12 @@ func RequireSession(sessions *SessionManager, secure bool) func(http.Handler) ht
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			cookie, err := r.Cookie(SessionCookieName)
 			if err != nil {
-				http.Error(w, `{"error":"not authenticated"}`, http.StatusUnauthorized)
+				writeJSONError(w, http.StatusUnauthorized, `{"error":"not authenticated"}`)
 				return
 			}
 			newToken, newExp, err := sessions.Renew(cookie.Value)
 			if err != nil {
-				http.Error(w, `{"error":"not authenticated"}`, http.StatusUnauthorized)
+				writeJSONError(w, http.StatusUnauthorized, `{"error":"not authenticated"}`)
 				return
 			}
 			user, err := sessions.Verify(newToken)
@@ -105,7 +106,7 @@ func RequireSession(sessions *SessionManager, secure bool) func(http.Handler) ht
 				// Renew just minted this token; a failure here would be
 				// a logic bug, not an untrusted-input problem, but fail
 				// closed the same way rather than trusting it blindly.
-				http.Error(w, `{"error":"not authenticated"}`, http.StatusUnauthorized)
+				writeJSONError(w, http.StatusUnauthorized, `{"error":"not authenticated"}`)
 				return
 			}
 			http.SetCookie(w, &http.Cookie{
@@ -157,12 +158,12 @@ func RequireCSRF(next http.Handler) http.Handler {
 
 		cookie, err := r.Cookie(CSRFCookieName)
 		if err != nil || cookie.Value == "" {
-			http.Error(w, `{"error":"missing csrf token"}`, http.StatusForbidden)
+			writeJSONError(w, http.StatusForbidden, `{"error":"missing csrf token"}`)
 			return
 		}
 		header := r.Header.Get(CSRFHeaderName)
 		if header == "" || subtle.ConstantTimeCompare([]byte(header), []byte(cookie.Value)) != 1 {
-			http.Error(w, `{"error":"invalid csrf token"}`, http.StatusForbidden)
+			writeJSONError(w, http.StatusForbidden, `{"error":"invalid csrf token"}`)
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -175,4 +176,13 @@ func randomToken(n int) (string, error) {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+// writeJSONError replaces http.Error, which forces text/plain, so the
+// frontend (which only reads JSON error bodies) can show the message.
+func writeJSONError(w http.ResponseWriter, status int, body string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(status)
+	_, _ = io.WriteString(w, body)
 }
