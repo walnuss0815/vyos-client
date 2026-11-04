@@ -131,11 +131,21 @@ func (s *Server) handleAddSystemImage(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, systemImageActionResponse{Message: message})
 }
 
+// systemImageDeleteWriteDeadline is set past vyos.DeleteSystemImage's
+// 2-minute client timeout, for the same reason as
+// systemImageAddWriteDeadline.
+const systemImageDeleteWriteDeadline = 3 * time.Minute
+
 // handleDeleteSystemImage serves DELETE /api/system/images?name=... -
 // a query parameter, same rationale as handleDeleteContainerImage's
 // doc comment (though system image names don't actually contain "/"
 // or ":", the same convention is used here for consistency).
 func (s *Server) handleDeleteSystemImage(w http.ResponseWriter, r *http.Request) {
+	rc := http.NewResponseController(w)
+	if err := rc.SetWriteDeadline(time.Now().Add(systemImageDeleteWriteDeadline)); err != nil {
+		s.Logger.Warn("could not extend write deadline for system image delete", "error", err)
+	}
+
 	name := r.URL.Query().Get("name")
 	if !validateSystemImageName(name) {
 		writeError(w, http.StatusBadRequest, "invalid or missing image name")
