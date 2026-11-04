@@ -96,24 +96,47 @@ export const usePendingChangesStore = create<PendingChangesState>()(
   persist(
     (set) => ({
       changes: [],
-      // Deliberately append-only: never removes or replaces an
-      // existing entry for the same path, even one that directly
-      // conflicts (e.g. a queued `delete service ssh` followed later
-      // by `set service ssh`). A blanket "one entry per path" dedup
-      // would be actively wrong for VyOS's multi-value leaves (e.g.
-      // ChipList-edited fields like `service ssh port`), where
-      // repeated `set path value` calls with different values are
-      // cumulative, not replacing - deduping by path alone would
-      // silently drop everything but the last value added. Any reader
-      // needing "what does this path currently resolve to, given
-      // possibly-conflicting queued ops" should look at the LAST
+      // Append-only apart from two narrow cases. A blanket "one entry
+      // per path" dedup would be actively wrong for VyOS's multi-value
+      // leaves (e.g. ChipList-edited fields like `service ssh port`),
+      // where repeated `set path value` calls with different values
+      // are cumulative, not replacing - deduping by path alone would
+      // silently drop everything but the last value added. So:
+      // - an op identical (op, path, value) to the immediately
+      //   previous entry is ignored (a double click); older entries are
+      //   never compared, so `delete, set, delete` stays three entries.
+      // - a valueless `set <path>` (an "Enable X" click) whose latest
+      //   queued op for that exact path is a valueless `delete` cancels
+      //   that delete instead: `delete service ssh; set service ssh`
+      //   would reset a committed service to defaults while the form
+      //   still shows the old values.
+      // Any reader needing "what does this path currently resolve to,
+      // given possibly-conflicting queued ops" should look at the LAST
       // matching entry, not just whether one exists - see
       // latestPendingOp/hasPendingSet/hasPendingDelete/
       // withPendingEnable above.
       add: (change) =>
-        set((state) => ({
-          changes: [...state.changes, { ...change, id: crypto.randomUUID() }],
-        })),
+        set((state) => {
+          const { op } = change
+          const prev = state.changes.at(-1)?.op
+          if (
+            prev &&
+            prev.op === op.op &&
+            prev.value === op.value &&
+            prev.path.join(' ') === op.path.join(' ')
+          ) {
+            return state
+          }
+          if (op.op === 'set' && op.value === undefined) {
+            const target = op.path.join(' ')
+            const i = state.changes.findLastIndex((c) => c.op.path.join(' ') === target)
+            const latest = state.changes[i]?.op
+            if (latest?.op === 'delete' && latest.value === undefined) {
+              return { changes: state.changes.filter((_, j) => j !== i) }
+            }
+          }
+          return { changes: [...state.changes, { ...change, id: crypto.randomUUID() }] }
+        }),
       remove: (id) => set((state) => ({ changes: state.changes.filter((c) => c.id !== id) })),
       removeMany: (ids) =>
         set((state) => ({ changes: state.changes.filter((c) => !ids.includes(c.id)) })),

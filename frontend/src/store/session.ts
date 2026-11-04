@@ -7,6 +7,10 @@ export type SessionStatus = 'unknown' | 'authenticated' | 'anonymous'
 
 interface SessionState {
   user: string | null
+  /** The last user to authenticate in this tab; survives session
+   * expiry (unlike `user`) so login can tell whether queued changes
+   * belong to a different user. Cleared on logout. */
+  lastUser: string | null
   status: SessionStatus
   /** Set when handleUnauthorized fires because a previously-active
    * session expired mid-use (not on an ordinary logout, and not on
@@ -44,6 +48,7 @@ export const useSessionStore = create<SessionState>((set, get) => {
 
   return {
     user: null,
+    lastUser: null,
     status: 'unknown',
     sessionExpired: false,
     generation: 0,
@@ -51,7 +56,12 @@ export const useSessionStore = create<SessionState>((set, get) => {
     checkSession: async () => {
       try {
         const res = await api.getSession()
-        set((state) => ({ user: res.user, status: 'authenticated', generation: state.generation + 1 }))
+        set((state) => ({
+          user: res.user,
+          lastUser: res.user,
+          status: 'authenticated',
+          generation: state.generation + 1,
+        }))
       } catch {
         set({ user: null, status: 'anonymous' })
       }
@@ -59,8 +69,13 @@ export const useSessionStore = create<SessionState>((set, get) => {
 
     login: async (username, password) => {
       const res = await api.login(username, password)
+      // Changes queued by someone else must not be committed (or seen)
+      // by this user.
+      const { lastUser } = get()
+      if (lastUser !== null && lastUser !== res.user) usePendingChangesStore.getState().clear()
       set((state) => ({
         user: res.user,
+        lastUser: res.user,
         status: 'authenticated',
         sessionExpired: false,
         generation: state.generation + 1,
@@ -71,7 +86,7 @@ export const useSessionStore = create<SessionState>((set, get) => {
       try {
         await api.logout()
       } finally {
-        set({ user: null, status: 'anonymous' })
+        set({ user: null, lastUser: null, status: 'anonymous' })
         // Any queued-but-uncommitted operations may embed raw, unmasked
         // values (e.g. a secret typed into a form but never committed).
         // Those must not survive past this session on a shared/kiosk
@@ -99,10 +114,9 @@ export const useSessionStore = create<SessionState>((set, get) => {
       const state = get()
       if (requestGeneration !== state.generation) return
       const wasAuthenticated = state.status === 'authenticated'
+      // Queued changes are kept on expiry so re-login doesn't lose
+      // work; login() clears them if a different user signs in.
       set({ user: null, status: 'anonymous', sessionExpired: wasAuthenticated })
-      if (wasAuthenticated) {
-        usePendingChangesStore.getState().clear()
-      }
     },
   }
 })

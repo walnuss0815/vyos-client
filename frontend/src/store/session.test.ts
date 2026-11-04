@@ -8,7 +8,7 @@ import { useSessionStore } from './session'
 beforeEach(() => {
   sessionStorage.clear()
   usePendingChangesStore.setState({ changes: [] })
-  useSessionStore.setState({ user: null, status: 'unknown', sessionExpired: false, generation: 0 })
+  useSessionStore.setState({ user: null, lastUser: null, status: 'unknown', sessionExpired: false, generation: 0 })
 })
 
 describe('useSessionStore', () => {
@@ -45,7 +45,7 @@ describe('useSessionStore', () => {
   })
 
   describe('handleUnauthorized', () => {
-    it('flags sessionExpired and clears pending changes when a previously-authenticated session expires', () => {
+    it('flags sessionExpired and keeps pending changes when a previously-authenticated session expires', () => {
       useSessionStore.setState({ user: 'admin', status: 'authenticated', generation: 0 })
       usePendingChangesStore.getState().add({
         op: { op: 'set', path: ['system', 'host-name'], value: 'r1' },
@@ -55,6 +55,27 @@ describe('useSessionStore', () => {
       useSessionStore.getState().handleUnauthorized(0)
 
       expect(useSessionStore.getState()).toMatchObject({ status: 'anonymous', user: null, sessionExpired: true })
+      expect(usePendingChangesStore.getState().changes).toHaveLength(1)
+    })
+
+    it('keeps pending changes when the same user logs back in after expiry', async () => {
+      await useSessionStore.getState().login('admin', 'correct-password')
+      usePendingChangesStore.getState().add({ op: { op: 'set', path: ['a'], value: '1' }, label: 'a' })
+      useSessionStore.getState().handleUnauthorized(useSessionStore.getState().generation)
+
+      await useSessionStore.getState().login('admin', 'correct-password')
+
+      expect(usePendingChangesStore.getState().changes).toHaveLength(1)
+    })
+
+    it('clears pending changes when a different user logs in after expiry', async () => {
+      await useSessionStore.getState().login('admin', 'correct-password')
+      usePendingChangesStore.getState().add({ op: { op: 'set', path: ['a'], value: '1' }, label: 'a' })
+      useSessionStore.getState().handleUnauthorized(useSessionStore.getState().generation)
+      server.use(http.post('/api/auth/login', () => HttpResponse.json({ user: 'bob' })))
+
+      await useSessionStore.getState().login('bob', 'pw')
+
       expect(usePendingChangesStore.getState().changes).toHaveLength(0)
     })
 
