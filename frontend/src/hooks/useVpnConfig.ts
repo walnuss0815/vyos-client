@@ -5,6 +5,7 @@ import { ipsecPath, parseIPsecConfig } from '../lib/vpnIpsecParse'
 import { openconnectPath, parseOpenconnectConfig } from '../lib/vpnOpenconnectParse'
 import { getConfigTree } from '../lib/vyosApi'
 import { usePendingChangesStore, withPendingEnable } from '../store/pendingChanges'
+import { child } from '../lib/configTree'
 
 /**
  * Shared data source for every VPN sub-area page (IPsec, L2TP, PPTP,
@@ -69,9 +70,4 @@ export function useVpnConfig() {
   )
 
   return { ...query, ipsec, l2tp, pptp, sstp, openconnect }
-}
-
-function child(node: unknown, key: string): unknown {
-  if (typeof node !== 'object' || node === null || Array.isArray(node)) return undefined
-  return (node as Record<string, unknown>)[key]
 }

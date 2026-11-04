@@ -5,38 +5,13 @@ import type {
   DHCPStaticMapping,
   DHCPSubnet,
 } from './dhcpConfigTypes'
-
-// --- generic VyOS JSON-tree helpers (mirrors firewallParse.ts/interfaceParse.ts) ---
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v)
-}
-
-function asArray(v: unknown): string[] {
-  if (v === undefined || v === null) return []
-  if (Array.isArray(v)) return v.map(String)
-  return [String(v)]
-}
-
-function asString(v: unknown): string | undefined {
-  if (v === undefined || v === null) return undefined
-  return String(v)
-}
+import { isRecord, asString, asArray, child, isFlagPresent } from './configTree'
 
 function asNumber(v: unknown): number | undefined {
   const s = asString(v)
   if (s === undefined) return undefined
   const n = Number(s)
   return Number.isFinite(n) ? n : undefined
-}
-
-function child(node: unknown, key: string): unknown {
-  if (!isRecord(node)) return undefined
-  return node[key]
-}
-
-function isFlagPresent(node: unknown, key: string): boolean {
-  return isRecord(node) && key in node
 }
 
 // --- options (identical shape at shared-network and subnet level) ---------

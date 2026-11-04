@@ -14,34 +14,7 @@ import {
   type GroupType,
   type RuleAction,
 } from './firewallTypes'
-
-// --- generic VyOS JSON-tree helpers -------------------------------------
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v)
-}
-
-/** VyOS represents a single-valued leaf as a bare string and a
- * multi-valued leaf as an array; this normalizes either into an array. */
-function asArray(v: unknown): string[] {
-  if (v === undefined || v === null) return []
-  if (Array.isArray(v)) return v.map(String)
-  return [String(v)]
-}
-
-function asString(v: unknown): string | undefined {
-  if (v === undefined || v === null) return undefined
-  return String(v)
-}
-
-function child(node: unknown, key: string): unknown {
-  if (!isRecord(node)) return undefined
-  return node[key]
-}
-
-function isFlagPresent(node: unknown, key: string): boolean {
-  return isRecord(node) && key in node
-}
+import { isRecord, asString, asArray, child, isFlagPresent } from './configTree'
 
 // --- zones ---------------------------------------------------------------
 

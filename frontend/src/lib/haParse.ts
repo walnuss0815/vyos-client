@@ -9,24 +9,7 @@ import type {
   VRRPSyncGroup,
   VRRPTransitionScripts,
 } from './haTypes'
-
-// --- generic VyOS JSON-tree helpers (mirrors firewallParse.ts's/
-// loadBalancingParse.ts's own copies) --------------------------------
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v)
-}
-
-function asArray(v: unknown): string[] {
-  if (v === undefined || v === null) return []
-  if (Array.isArray(v)) return v.map(String)
-  return [String(v)]
-}
-
-function asString(v: unknown): string | undefined {
-  if (v === undefined || v === null) return undefined
-  return String(v)
-}
+import { isRecord, asString, asArray, child, isFlagPresent } from './configTree'
 
 function numberOrUndefined(v: unknown): number | undefined {
   const s = asString(v)
@@ -38,15 +21,6 @@ function numberOrUndefined(v: unknown): number | undefined {
   // through as a "valid" value for a field like priority/cost/
   // bandwidth that should never actually be infinite.
   return Number.isFinite(n) ? n : undefined
-}
-
-function child(node: unknown, key: string): unknown {
-  if (!isRecord(node)) return undefined
-  return node[key]
-}
-
-function isFlagPresent(node: unknown, key: string): boolean {
-  return isRecord(node) && key in node
 }
 
 // --- path helpers ----------------------------------------------------
