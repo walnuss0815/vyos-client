@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import Modal from '../../components/Modal'
+import { useCommitConfirm } from '../../hooks/useSafeApply'
 import { useSystemInfo } from '../../hooks/useSystemInfo'
 import { buttonClass, inputClass, labelClass } from '../../lib/formStyles'
 import { confirmCommit, poweroffSystem, rebootSystem, rollback, save } from '../../lib/vyosApi'
@@ -127,10 +128,12 @@ function SaveSection() {
 function RollbackSection() {
   const markSaved = useUnsavedCommitStore((s) => s.markSaved)
   const [confirming, setConfirming] = useState(false)
-  const [pendingConfirm, setPendingConfirm] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
+  const confirm = useCommitConfirm(() => {
+    setError('The confirm window ran out, so VyOS reverted the rollback and your committed changes are live again.')
+  })
 
   async function handleRollback() {
     if (!confirming) {
@@ -144,7 +147,7 @@ function RollbackSection() {
     try {
       const result = await rollback(ROLLBACK_CONFIRM_SECONDS)
       if (result.pendingConfirm) {
-        setPendingConfirm(true)
+        confirm.start(result, ROLLBACK_CONFIRM_SECONDS)
       } else {
         markSaved()
         setDone(true)
@@ -165,7 +168,7 @@ function RollbackSection() {
       // regardless of which endpoint started it.
       await confirmCommit()
       markSaved()
-      setPendingConfirm(false)
+      confirm.stop()
       setDone(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to confirm the rollback.')
@@ -186,10 +189,11 @@ function RollbackSection() {
       </p>
       {done ? (
         <p className="text-xs text-success-500">Rolled back to the last saved configuration.</p>
-      ) : pendingConfirm ? (
+      ) : confirm.active ? (
         <div>
           <p className="mb-2 text-xs text-warning-500">
             Keep this rollback? VyOS will automatically restore what was running otherwise.
+            ({confirm.secondsLeft}s left)
           </p>
           <button
             onClick={() => void handleKeep()}

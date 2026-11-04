@@ -1,16 +1,12 @@
-import { useConfirmCountdown } from '../hooks/useConfirmCountdown'
-import { useDefaultConfirmSeconds } from '../hooks/useSystemInfo'
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { useCommitConfirm, useSafeApplyInput } from '../hooks/useSafeApply'
 import { ApiError } from '../lib/api'
-import { buttonClass, inputClass, labelClass } from '../lib/formStyles'
-import { noExtensionInputProps } from '../lib/inputProtection'
-import { MAX_CONFIRM_SECONDS, MIN_CONFIRM_SECONDS } from '../lib/safeApply'
+import { buttonClass, labelClass } from '../lib/formStyles'
 import * as api from '../lib/vyosApi'
 import type { ImportMode } from '../lib/vyosApi'
-
-// endsAt is a Date.now() timestamp: when VyOS will auto-revert unless confirmed.
-type ConfirmState = { active: true; endsAt: number } | { active: false }
+import { useUnsavedCommitStore } from '../store/unsavedCommit'
+import SafeApplyField, { SAFE_APPLY_RANGE_MESSAGE } from './SafeApplyField'
 
 /**
  * Uploads a configuration file and applies it via VyOS's own
@@ -19,10 +15,10 @@ type ConfirmState = { active: true; endsAt: number } | { active: false }
  * action rather than something that flows through the pending-changes
  * cart: a file's contents replace-or-overlay the *entire* candidate
  * config in one VyOS-side operation, not a list of discrete set/delete
- * ops this app queued itself, so it doesn't fit that model. Mirrors
- * PendingChangesBar's own commit-confirm UX locally (same "Safe apply"
- * toggle/seconds field and "Keep changes?" follow-up), since VyOS
- * treats commit-confirm as a single global timer regardless of which
+ * ops this app queued itself, so it doesn't fit that model. Shares
+ * PendingChangesBar's commit-confirm UX (the "Safe apply" field and
+ * countdown from hooks/useSafeApply.ts), since VyOS treats
+ * commit-confirm as a single global timer regardless of which
  * endpoint started it - confirming here reuses the exact same
  * api.confirmCommit() call PendingChangesBar itself uses.
  */
@@ -32,24 +28,19 @@ export default function ImportConfigPanel() {
   const [content, setContent] = useState('')
   const [mode, setMode] = useState<ImportMode>('merge')
   const [acknowledged, setAcknowledged] = useState(false)
-  const [safeApply, setSafeApply] = useState(true)
-  const defaultConfirmSeconds = useDefaultConfirmSeconds()
-  const [confirmSecondsInput, setConfirmSeconds] = useState<number | null>(null)
-  const confirmSeconds = confirmSecondsInput ?? defaultConfirmSeconds
+  const safeApplyInput = useSafeApplyInput(true)
+  const { enabled: safeApply, seconds: confirmSeconds, valid: confirmSecondsValid } = safeApplyInput
+  const markCommitted = useUnsavedCommitStore((s) => s.markCommitted)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
-  const [confirmState, setConfirmState] = useState<ConfirmState>({ active: false })
 
   // VyOS reverts the import on its own once the confirm window ends.
-  const secondsLeft = useConfirmCountdown(confirmState.active ? confirmState.endsAt : null, () => {
-    setConfirmState({ active: false })
+  const confirm = useCommitConfirm(() => {
     void queryClient.invalidateQueries({ queryKey: ['config-tree'] })
     setError('The confirm window ran out, so VyOS reverted the import.')
   })
 
-  const confirmSecondsValid =
-    !safeApply || (confirmSeconds >= MIN_CONFIRM_SECONDS && confirmSeconds <= MAX_CONFIRM_SECONDS)
   const canImport = content.trim() !== '' && confirmSecondsValid && (mode === 'merge' || acknowledged)
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -69,6 +60,14 @@ export default function ImportConfigPanel() {
     void queryClient.invalidateQueries({ queryKey: ['config-tree'] })
   }
 
+  // The import is a standalone VyOS operation, so there are no queued
+  // ops to record; a synthetic entry still marks the config as
+  // committed but not saved.
+  function markImported() {
+    const label = `import (${mode})`
+    markCommitted([{ id: crypto.randomUUID(), op: { op: 'comment', path: [label] }, label }])
+  }
+
   async function runImport() {
     if (!canImport) return
     setBusy(true)
@@ -77,10 +76,11 @@ export default function ImportConfigPanel() {
     try {
       const result = await api.importConfig(content, mode, safeApply ? confirmSeconds : undefined)
       if (result.pendingConfirm) {
-        setConfirmState({ active: true, endsAt: Date.now() + (result.confirmSeconds ?? confirmSeconds) * 1000 })
+        confirm.start(result, confirmSeconds)
         return
       }
       setSuccess(true)
+      markImported()
       invalidateConfigQueries()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to import configuration.')
@@ -94,8 +94,9 @@ export default function ImportConfigPanel() {
     setError(null)
     try {
       await api.confirmCommit()
-      setConfirmState({ active: false })
+      confirm.stop()
       setSuccess(true)
+      markImported()
       invalidateConfigQueries()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to confirm the import.')
@@ -104,13 +105,13 @@ export default function ImportConfigPanel() {
     }
   }
 
-  if (confirmState.active) {
+  if (confirm.active) {
     return (
       <div className="rounded-xl border border-warning-500/40 bg-surface-900 p-4">
         <p className="font-medium text-warning-500">Keep this imported configuration?</p>
         <p className="mt-1 text-sm text-slate-400">
           VyOS will automatically revert to the previous configuration if you don't confirm within
-          the commit-confirm window. ({secondsLeft}s left)
+          the commit-confirm window. ({confirm.secondsLeft}s left)
         </p>
         <button
           onClick={handleKeep}
@@ -185,32 +186,14 @@ export default function ImportConfigPanel() {
         </div>
       )}
 
-      <label className="flex items-center gap-1.5 text-xs text-slate-400">
-        <input
-          type="checkbox"
-          checked={safeApply}
-          onChange={(e) => setSafeApply(e.target.checked)}
-          className="accent-accent-500"
-        />
-        Safe apply
-        {safeApply && (
-          <input
-            {...noExtensionInputProps}
-            type="number"
-            min={MIN_CONFIRM_SECONDS}
-            max={MAX_CONFIRM_SECONDS}
-            value={confirmSeconds}
-            onChange={(e) => setConfirmSeconds(Number(e.target.value))}
-            className={`ml-1 w-16 ${inputClass} ${confirmSecondsValid ? '' : 'border-danger-500'}`}
-          />
-        )}
-        {safeApply && <span>sec</span>}
-      </label>
-      {!confirmSecondsValid && (
-        <p className="text-sm text-danger-500">
-          Safe apply seconds must be between {MIN_CONFIRM_SECONDS} and {MAX_CONFIRM_SECONDS}.
-        </p>
-      )}
+      <SafeApplyField
+        enabled={safeApply}
+        onEnabledChange={safeApplyInput.setEnabled}
+        seconds={confirmSeconds}
+        onSecondsChange={safeApplyInput.setSeconds}
+        valid={confirmSecondsValid}
+      />
+      {!confirmSecondsValid && <p className="text-sm text-danger-500">{SAFE_APPLY_RANGE_MESSAGE}</p>}
 
       <button onClick={() => void runImport()} disabled={!canImport || busy} className={`bg-accent-600 ${buttonClass}`}>
         {busy ? 'Importing…' : 'Import configuration'}
