@@ -28,6 +28,10 @@ import (
 // sentinel), and unsupported-prefix hashes are all rejected before
 // crypt.NewFromHash is invoked, which the library's own documentation
 // warns may panic on an unrecognized prefix otherwise.
+//
+// Upstream limitation: sha512/sha256 crypt hashes with a "rounds="
+// parameter and a salt shorter than 16 characters never verify
+// (VyOS-generated hashes always use 16-character salts).
 func verifyUnixCrypt(hash, plaintext string) bool {
 	if hash == "" || hash == "*" || strings.HasPrefix(hash, "!") {
 		return false
