@@ -6,7 +6,7 @@ import "context"
 // If file is empty, VyOS saves to /config/config.boot. This is the
 // app's "Save" action.
 func (c *Client) ConfigFileSave(ctx context.Context, file string) error {
-	return c.do(ctx, "/config-file", configFileOp{Op: "save", File: file}, nil)
+	return c.doConfig(ctx, "/config-file", configFileOp{Op: "save", File: file}, nil)
 }
 
 // ConfigFileMerge merges the given configuration text into the running
@@ -20,7 +20,7 @@ func (c *Client) ConfigFileSave(ctx context.Context, file string) error {
 //
 // If confirmTime > 0, a commit-confirm timer is started (see Configure).
 func (c *Client) ConfigFileMerge(ctx context.Context, configText string, confirmTime int) error {
-	return c.do(ctx, "/config-file", configFileOp{Op: "merge", String: configText, ConfirmTime: confirmTime}, nil)
+	return c.doConfig(ctx, "/config-file", configFileOp{Op: "merge", String: configText, ConfirmTime: confirmTime}, nil)
 }
 
 // ConfigFileLoad replaces the entire candidate configuration with
@@ -36,13 +36,13 @@ func (c *Client) ConfigFileMerge(ctx context.Context, configText string, confirm
 // - strongly recommended here given the lockout risk above, since it
 // gives an operator a window to notice and let VyOS auto-revert.
 func (c *Client) ConfigFileLoad(ctx context.Context, configText string, confirmTime int) error {
-	return c.do(ctx, "/config-file", configFileOp{Op: "load", String: configText, ConfirmTime: confirmTime}, nil)
+	return c.doConfig(ctx, "/config-file", configFileOp{Op: "load", String: configText, ConfirmTime: confirmTime}, nil)
 }
 
 // ConfigFileConfirm confirms a pending commit-confirm started via
 // ConfigFileMerge(..., confirmTime > 0).
 func (c *Client) ConfigFileConfirm(ctx context.Context) error {
-	return c.do(ctx, "/config-file", confirmOp{Op: "confirm"}, nil)
+	return c.doConfig(ctx, "/config-file", confirmOp{Op: "confirm"}, nil)
 }
 
 // ConfigFileLoadFile replaces the entire candidate configuration with
@@ -61,5 +61,5 @@ func (c *Client) ConfigFileConfirm(ctx context.Context) error {
 // was saved before (it may be exactly what an operator committed a
 // fix over), so the same auto-revert safety net applies.
 func (c *Client) ConfigFileLoadFile(ctx context.Context, file string, confirmTime int) error {
-	return c.do(ctx, "/config-file", configFileOp{Op: "load", File: file, ConfirmTime: confirmTime}, nil)
+	return c.doConfig(ctx, "/config-file", configFileOp{Op: "load", File: file, ConfirmTime: confirmTime}, nil)
 }

@@ -8,8 +8,11 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/walnuss0815/vyos-client/backend/internal/testutil"
 	"github.com/walnuss0815/vyos-client/backend/internal/vyos"
@@ -614,5 +617,68 @@ func must(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDecodeEnvelope_TruncatesMalformedResponseInError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(bytes.Repeat([]byte("é"), 1024)) // 2 KiB, not JSON
+	}))
+	defer srv.Close()
+
+	c, err := vyos.New(vyos.Config{BaseURL: srv.URL, APIKey: "k"})
+	if err != nil {
+		t.Fatalf("vyos.New: %v", err)
+	}
+	_, err = c.Show(context.Background(), []string{"x"})
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	msg := err.Error()
+	if len(msg) > 600 || !strings.HasSuffix(msg, "…") || !utf8.ValidString(msg) {
+		t.Errorf("error not truncated to valid UTF-8 (len=%d): %q", len(msg), msg)
+	}
+}
+
+func TestRedirects_OnlySameHostFollowed(t *testing.T) {
+	var otherHits atomic.Int32
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		otherHits.Add(1)
+		_, _ = w.Write([]byte(`{"success":true,"data":"leaked","error":null}`))
+	}))
+	defer other.Close()
+	// Same loopback IP, but a different hostname than the main server's.
+	otherURL := strings.Replace(other.URL, "127.0.0.1", "localhost", 1)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/show":
+			http.Redirect(w, r, "/final", http.StatusTemporaryRedirect)
+		case "/retrieve":
+			http.Redirect(w, r, otherURL+"/show", http.StatusTemporaryRedirect)
+		case "/final":
+			_, _ = w.Write([]byte(`{"success":true,"data":"ok","error":null}`))
+		}
+	}))
+	defer srv.Close()
+
+	c, err := vyos.New(vyos.Config{BaseURL: srv.URL, APIKey: "k"})
+	if err != nil {
+		t.Fatalf("vyos.New: %v", err)
+	}
+
+	if got, err := c.Show(context.Background(), []string{"x"}); err != nil || got != "ok" {
+		t.Errorf("same-host redirect: got %q, err %v; want ok", got, err)
+	}
+	if _, err := c.ShowWithTimeout(context.Background(), []string{"x"}, time.Second); err != nil {
+		t.Errorf("same-host redirect via withTimeout client: %v", err)
+	}
+
+	_, err = c.ShowConfig(context.Background(), []string{"x"})
+	if err == nil || !strings.Contains(err.Error(), "refusing redirect") {
+		t.Errorf("cross-host redirect: err = %v, want refusal", err)
+	}
+	if otherHits.Load() != 0 {
+		t.Errorf("redirect target was contacted %d time(s)", otherHits.Load())
 	}
 }
