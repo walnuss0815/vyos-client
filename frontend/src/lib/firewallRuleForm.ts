@@ -257,7 +257,22 @@ export function reorderRuleOps(
     ops.push({ op: 'delete', path: rulePath(ref, rule.number) })
   }
   for (const { rule, newNumber } of changes) {
-    ops.push(...ruleFormToOps(ref, newNumber, undefined, ruleToFormValues(rule)))
+    ops.push(
+      ...(rule.raw !== undefined
+        ? subtreeToSetOps(rulePath(ref, newNumber), rule.raw)
+        : ruleFormToOps(ref, newNumber, undefined, ruleToFormValues(rule))),
+    )
   }
   return ops
+}
+
+/** Replays a VyOS JSON subtree as one `set` op per leaf: a string is a
+ * leaf value, an array is a multi-value leaf, and `{}` is a flag node
+ * (set with no value). Tag nodes are just nested objects. */
+export function subtreeToSetOps(path: string[], raw: unknown): ConfigOp[] {
+  if (Array.isArray(raw)) return raw.map((v): ConfigOp => ({ op: 'set', path, value: String(v) }))
+  if (typeof raw !== 'object' || raw === null) return [{ op: 'set', path, value: String(raw) }]
+  const entries = Object.entries(raw)
+  if (entries.length === 0) return [{ op: 'set', path }]
+  return entries.flatMap(([key, value]) => subtreeToSetOps([...path, key], value))
 }

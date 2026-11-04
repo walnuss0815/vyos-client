@@ -124,13 +124,13 @@ export function rulePath(ref: RulesetRef, ruleNumber: string, ...rest: string[])
   return rulesetPath(ref, 'rule', ruleNumber, ...rest)
 }
 
-const RULE_ACTIONS: readonly RuleAction[] = [
+export const RULE_ACTIONS: readonly RuleAction[] = [
   'accept',
-  'continue',
   'drop',
+  'reject',
+  'continue',
   'jump',
   'queue',
-  'reject',
   'return',
   'synproxy',
 ]
@@ -176,6 +176,7 @@ function parseRule(family: FirewallFamily, number: string, raw: unknown): Firewa
     inboundInterface: asString(child(child(raw, 'inbound-interface'), 'name')),
     outboundInterface: asString(child(child(raw, 'outbound-interface'), 'name')),
     icmpTypeName: asString(child(child(raw, icmpNodeName(family)), 'type-name')),
+    raw,
   }
 }
 

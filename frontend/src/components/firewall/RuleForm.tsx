@@ -6,24 +6,13 @@ import {
   type MatchFormValues,
   type RuleFormValues,
 } from '../../lib/firewallRuleForm'
-import type { RulesetRef } from '../../lib/firewallParse'
+import { RULE_ACTIONS, type RulesetRef } from '../../lib/firewallParse'
 import type { FirewallRule, RuleAction } from '../../lib/firewallTypes'
 import { noExtensionInputProps } from '../../lib/inputProtection'
 import { usePendingChangesStore } from '../../store/pendingChanges'
 import { labelClass } from '../../lib/formStyles'
 import FieldLabel from '../FieldLabel'
 import InfoTooltip from '../InfoTooltip'
-
-const RULE_ACTIONS: readonly RuleAction[] = [
-  'accept',
-  'drop',
-  'reject',
-  'continue',
-  'jump',
-  'queue',
-  'return',
-  'synproxy',
-]
 
 // Wider than the shared formStyles.inputClass (w-full, taller padding)
 // to fit RuleForm's specific layout - not a candidate for

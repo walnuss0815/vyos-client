@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { FirewallRule } from './firewallTypes'
-import { blankRuleFormValues, reorderRuleOps, ruleFormToOps, ruleToFormValues } from './firewallRuleForm'
+import {
+  blankRuleFormValues,
+  reorderRuleOps,
+  ruleFormToOps,
+  ruleToFormValues,
+  subtreeToSetOps,
+} from './firewallRuleForm'
 
 const ref = { id: 'forward', kind: 'base' as const, family: 'ipv4' as const }
 
@@ -309,6 +315,56 @@ describe('reorderRuleOps', () => {
     const ops = reorderRuleOps(ref, rules, 2, 0)
     expect(ops[0]).toEqual({ op: 'delete', path: ['firewall', 'ipv4', 'forward', 'filter', 'rule', '30'] })
     expect(ops.slice(1).every((o) => o.op === 'set')).toBe(true)
+  })
+})
+
+describe('reorderRuleOps - rules with settings the form does not model', () => {
+  it('replays every leaf of the raw subtree under the new number', () => {
+    const raw = {
+      action: 'accept',
+      state: { established: {}, related: {} },
+      limit: { rate: '5/minute', burst: '10' },
+      tcp: { flags: { not: { syn: {} } } },
+    }
+    const rules = [
+      emptyRule({ number: '10', action: 'accept', raw }),
+      emptyRule({ number: '20', action: 'accept' }),
+      emptyRule({ number: '30', action: 'accept' }),
+    ]
+    const ops = reorderRuleOps(ref, rules, 0, 2)
+    const base = ['firewall', 'ipv4', 'forward', 'filter', 'rule']
+
+    expect(ops[0]).toEqual({ op: 'delete', path: [...base, '10'] })
+    expect(ops.slice(1)).toEqual([
+      { op: 'set', path: [...base, '40', 'action'], value: 'accept' },
+      { op: 'set', path: [...base, '40', 'state', 'established'] },
+      { op: 'set', path: [...base, '40', 'state', 'related'] },
+      { op: 'set', path: [...base, '40', 'limit', 'rate'], value: '5/minute' },
+      { op: 'set', path: [...base, '40', 'limit', 'burst'], value: '10' },
+      { op: 'set', path: [...base, '40', 'tcp', 'flags', 'not', 'syn'] },
+    ])
+  })
+})
+
+describe('subtreeToSetOps', () => {
+  it('emits one set per leaf, array value and flag node', () => {
+    const ops = subtreeToSetOps(['a'], {
+      leaf: 'x',
+      multi: ['1', '2'],
+      flag: {},
+      nested: { tag: { deep: 'y' } },
+    })
+    expect(ops).toEqual([
+      { op: 'set', path: ['a', 'leaf'], value: 'x' },
+      { op: 'set', path: ['a', 'multi'], value: '1' },
+      { op: 'set', path: ['a', 'multi'], value: '2' },
+      { op: 'set', path: ['a', 'flag'] },
+      { op: 'set', path: ['a', 'nested', 'tag', 'deep'], value: 'y' },
+    ])
+  })
+
+  it('sets the path itself for an empty object', () => {
+    expect(subtreeToSetOps(['a', 'b'], {})).toEqual([{ op: 'set', path: ['a', 'b'] }])
   })
 })
 

@@ -109,6 +109,10 @@ export interface FirewallRule {
   inboundInterface?: string
   outboundInterface?: string
   icmpTypeName?: string
+  /** The rule's full config subtree as VyOS returned it, so settings
+   * the form doesn't model (state, limit, tcp flags, ...) survive a
+   * reorder. */
+  raw?: unknown
 }
 
 export interface FirewallRuleset {
