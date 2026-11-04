@@ -531,6 +531,23 @@ func TestLoad_SelfUpgradeGitHubRepoOverride(t *testing.T) {
 	}
 }
 
+func TestLoad_SelfUpgradeGitHubRepoIsLowercased(t *testing.T) {
+	cfg, err := config.Load(fakeEnv(map[string]string{
+		"VYOS_API_KEY":                "test-key",
+		"UI_ADMIN_USER":               "admin",
+		"UI_ADMIN_PASSWORD_HASH":      "$2a$10$fakehash",
+		"SELF_UPGRADE_ENABLED":        "true",
+		"SELF_UPGRADE_CONTAINER_NAME": "vyos-client",
+		"SELF_UPGRADE_GITHUB_REPO":    "Owner/Repo",
+	}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.SelfUpgradeGitHubRepo != "owner/repo" {
+		t.Errorf("SelfUpgradeGitHubRepo = %q, want owner/repo", cfg.SelfUpgradeGitHubRepo)
+	}
+}
+
 func TestLoad_SelfUpgradeRejectsInvalidGitHubRepo(t *testing.T) {
 	cases := []string{
 		"not-a-repo",         // missing "/"

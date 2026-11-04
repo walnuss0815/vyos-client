@@ -62,12 +62,15 @@ func cmpInt(a, b int) int {
 	}
 }
 
-// normalizeVersion strips a leading "v" (and any pre-release/build
-// suffix) from a raw git tag, returning "" if it isn't a recognizable
-// version at all.
+// normalizeVersion strips a leading "v" from a raw git tag, returning
+// "" if it isn't exactly X.Y.Z. A suffixed tag such as "v2.0.0-hotfix"
+// is deliberately unparseable here: the version becomes the image tag
+// to upgrade to, and the suffixed release's image isn't the plain
+// "2.0.0" one.
 func normalizeVersion(tag string) string {
-	m := semverPattern.FindStringSubmatch(strings.TrimSpace(tag))
-	if m == nil {
+	core := strings.TrimPrefix(strings.TrimSpace(tag), "v")
+	m := semverPattern.FindStringSubmatch(core)
+	if m == nil || m[0] != core {
 		return ""
 	}
 	return m[1] + "." + m[2] + "." + m[3]

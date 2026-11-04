@@ -15,6 +15,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 )
 
 // AuthMode values, selecting how vyos-client's own login is verified.
@@ -366,7 +367,9 @@ func Load(getenv func(string) string) (*Config, error) {
 	// trip over - nothing reads it while the feature is disabled, but
 	// there's no reason for the zero value to be a lie about what the
 	// effective default actually is.
-	cfg.SelfUpgradeGitHubRepo = orDefault(rawSelfUpgradeGitHubRepo, defaultSelfUpgradeGitHubRepo)
+	// Lowercased because GHCR image names must be lowercase, while
+	// GitHub's own API is case-insensitive about the repo.
+	cfg.SelfUpgradeGitHubRepo = strings.ToLower(orDefault(rawSelfUpgradeGitHubRepo, defaultSelfUpgradeGitHubRepo))
 	if cfg.SelfUpgradeEnabled {
 		cfg.SelfUpgradeContainerName = rawSelfUpgradeContainerName
 		if cfg.SelfUpgradeContainerName == "" {

@@ -169,10 +169,10 @@ type Release struct {
 //     stale result rather than erroring - "tell the operator what we
 //     last knew" beats "tell the operator nothing" when GitHub is
 //     temporarily unreachable.
-//   - If there's no previous result to fall back to, the failure
-//     itself is cached for a short negativeCacheTTL, so repeated page
-//     loads during an outage/rate-limit don't each retry immediately
-//     and prolong it further.
+//   - The failure itself is cached for a short negativeCacheTTL
+//     (serving the stale result if there is one, the error otherwise),
+//     so repeated page loads during an outage/rate-limit don't each
+//     retry immediately and prolong it further.
 func (c *Client) ListReleases(ctx context.Context) ([]Release, error) {
 	c.mu.Lock()
 	if !c.cachedAt.IsZero() && time.Since(c.cachedAt) < c.cacheTTL {
@@ -180,10 +180,12 @@ func (c *Client) ListReleases(ctx context.Context) ([]Release, error) {
 		c.mu.Unlock()
 		return cached, nil
 	}
-	hasStaleCache := !c.cachedAt.IsZero()
-	if !hasStaleCache && !c.lastErrAt.IsZero() && time.Since(c.lastErrAt) < c.negativeCacheTTL {
-		err := c.lastErr
+	if !c.lastErrAt.IsZero() && time.Since(c.lastErrAt) < c.negativeCacheTTL {
+		cached, hasStaleCache, err := c.cached, !c.cachedAt.IsZero(), c.lastErr
 		c.mu.Unlock()
+		if hasStaleCache {
+			return cached, nil
+		}
 		return nil, err
 	}
 	c.mu.Unlock()
@@ -223,10 +225,6 @@ func (c *Client) ForceRefresh(ctx context.Context) ([]Release, error) {
 // deciding whether a fetch is needed at all (ListReleases) or always
 // forcing one (ForceRefresh) before calling this.
 func (c *Client) fetchAndCache(ctx context.Context) ([]Release, error) {
-	c.mu.Lock()
-	hasStaleCache := !c.cachedAt.IsZero()
-	c.mu.Unlock()
-
 	releases, err := c.fetchReleases(ctx)
 
 	c.mu.Lock()
@@ -234,7 +232,10 @@ func (c *Client) fetchAndCache(ctx context.Context) ([]Release, error) {
 	if err != nil {
 		c.lastErr = err
 		c.lastErrAt = time.Now()
-		if hasStaleCache {
+		// Checked under this lock rather than before the fetch, so a
+		// concurrent call that filled the cache meanwhile wins over
+		// this call's error.
+		if !c.cachedAt.IsZero() {
 			return c.cached, nil
 		}
 		return nil, err
