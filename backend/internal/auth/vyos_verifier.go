@@ -74,17 +74,19 @@ func (v *VyOSUserVerifier) Verify(ctx context.Context, sourceKey, username, pass
 
 // dummyHashForTiming is a syntactically valid sha512-crypt hash with
 // no correspondence to any real password (generated once via
-// `mkpasswd -m sha-512 -S timingsalt99 <arbitrary-unused-value>`).
-// check uses it to run the exact same crypt(3) verification cost for
-// a nonexistent/disabled/passwordless username as for a real one -
-// see check's own doc comment for why this matters.
-const dummyHashForTiming = "$6$timingsalt99$nqj5.pkKH8YlwwhDB.Qkmz.hr73id4DBEvFY6Z4O0A5sskq8W0NpXHmUb30MTZ.v1UTVuEQJiUkDWm7sOxF9v1"
+// `mkpasswd -m sha-512 -R 656000 -S Xk3mQ9vTz2LpRw7B <random-unused-value>`).
+// It uses the same rounds (656000, passlib's default for sha512_crypt)
+// and 16-character salt as the hashes VyOS generates, so check runs the
+// exact same crypt(3) verification cost for a
+// nonexistent/disabled/passwordless username as for a real one - see
+// check's own doc comment for why this matters.
+const dummyHashForTiming = "$6$rounds=656000$Xk3mQ9vTz2LpRw7B$FOVqmY5Cqecii9m4VruriUDj5VAZWRmeMd7WSBs74FgdvVd5KY2mgB/z6X32HiDePW6Ir4inE6tiqzdtTZGUH1"
 
 // check performs the actual lookup+verification, separately from rate
 // limiting/error classification, to keep Verify's control flow
 // readable.
 //
-// Always performs the same three VyOS lookups and exactly one crypt(3)
+// Always performs the same four VyOS lookups and exactly one crypt(3)
 // verification, regardless of whether the username exists, is
 // disabled, or has no password configured - only the final boolean
 // result differs based on what those lookups actually found. This is
@@ -120,19 +122,28 @@ func (v *VyOSUserVerifier) check(ctx context.Context, username, password string)
 	if err != nil && !vyos.IsEmptyPath(err) {
 		return false, fmt.Errorf("%w: reading encrypted-password: %w", ErrAuthBackendUnavailable, err)
 	}
-	if hash == "" {
+	noPassword := hash == ""
+	if noPassword {
 		// No encrypted-password configured at all (vyos.IsEmptyPath's
 		// case) - shouldn't normally happen (VyOS's schema defaults
 		// this leaf to "!", which verifyUnixCrypt already treats as
 		// "no valid password" via its own prefix check), but handled
 		// explicitly here too since ReturnValue's error path can also
 		// produce an empty hash. Substituting the dummy hash keeps the
-		// crypt call below at its normal cost either way.
+		// crypt call below at its normal cost either way; the hash is
+		// public, so the result must never count for such a user.
 		hash = dummyHashForTiming
 	}
 
+	// Operator-restricted users may not have full shell/API privileges
+	// in VyOS, but a session here would grant them admin API access.
+	operator, err := v.config.Exists(ctx, userPath(username, "operator"))
+	if err != nil {
+		return false, fmt.Errorf("%w: checking operator flag: %w", ErrAuthBackendUnavailable, err)
+	}
+
 	passwordMatches := verifyUnixCrypt(hash, password)
-	if !exists || disabled {
+	if !exists || disabled || noPassword || operator {
 		return false, nil
 	}
 	return passwordMatches, nil

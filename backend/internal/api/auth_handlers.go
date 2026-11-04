@@ -18,8 +18,13 @@ type loginRequest struct {
 // credentials (bcrypt itself only looks at the first 72 bytes).
 const (
 	maxLoginUsernameBytes = 256
-	maxLoginPasswordBytes = 1024
+	maxLoginPasswordBytes = 128
 )
+
+// loginVerifySlots bounds concurrent password verifications: each one
+// is a CPU-heavy crypt computation, and rate limiting is per source,
+// so distributed requests could otherwise saturate every core.
+var loginVerifySlots = make(chan struct{}, 2)
 
 type loginResponse struct {
 	User string `json:"user"`
@@ -29,13 +34,22 @@ type loginResponse struct {
 // the connecting peer's address. In host-networking deployments (this
 // app's recommended default) the peer address is the real client, not
 // a proxy hop, so we deliberately don't trust X-Forwarded-For here
-// (which would let a client spoof its own rate-limit bucket).
+// (which would let a client spoof its own rate-limit bucket). IPv6
+// addresses are reduced to their /64, since a single host typically
+// controls a whole /64 and could otherwise rotate through addresses.
 func sourceKey(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr
 	}
-	return host
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return host
+	}
+	if v4 := ip.To4(); v4 != nil {
+		return v4.String()
+	}
+	return ip.Mask(net.CIDRMask(64, 128)).String()
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -60,6 +74,14 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if allowed, wait := s.Limiter.Allow(key); !allowed {
 		w.Header().Set("Retry-After", strconv.Itoa(max(1, int(wait.Seconds()))))
 		writeError(w, http.StatusTooManyRequests, "too many failed login attempts, try again later")
+		return
+	}
+
+	select {
+	case loginVerifySlots <- struct{}{}:
+		defer func() { <-loginVerifySlots }()
+	case <-r.Context().Done():
+		writeError(w, http.StatusServiceUnavailable, "unable to verify credentials right now, try again shortly")
 		return
 	}
 

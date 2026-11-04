@@ -13,8 +13,8 @@ import (
 
 // realSHA512CryptHash is a genuine glibc crypt(3) SHA-512 hash for the
 // plaintext "s3cret-password", generated independently of this
-// project's code via `mkpasswd -m sha-512 -S abcdefgh12345678
-// s3cret-password` (Debian's `whois` package, the same tool VyOS
+// project's code via `mkpasswd -m sha-512 -R 656000 -S
+// abcdefgh12345678 s3cret-password` (Debian's `whois` package, the same tool VyOS
 // operators would reach for) - this is exactly the hash format VyOS's
 // own conf-mode script produces (passlib's linux_context, sha512_crypt
 // as the default scheme; see docs/roadmap.md). Using an
@@ -23,7 +23,7 @@ import (
 // compatibility with VyOS's real hash format, not just internal
 // self-consistency.
 const (
-	realSHA512CryptHash     = "$6$abcdefgh12345678$QP4os7MdHpNrBHQ/JDFr25yyxxc.4mwnFNG245l78B.t1RZNZQ3zKCRnE68hFDlYl1uJtvrFMDkYZ5x/whKXO1"
+	realSHA512CryptHash     = "$6$rounds=656000$abcdefgh12345678$NfvnoGuhAz5oOjKyC6pSHO0sPqZU3KrV9btt6Y44Xid5mfIvhs09St1DB4WceEf4LlIY7MZ4iXldwNudBJoPH."
 	realSHA512CryptPassword = "s3cret-password"
 )
 
@@ -59,7 +59,7 @@ func (f *fakeConfigReader) ReturnValue(_ context.Context, path []string) (string
 		// valid but unpopulated path (see vyos.IsEmptyPath) - this
 		// case is reached for real by check() querying a nonexistent
 		// user's encrypted-password leaf, now that it always performs
-		// all three lookups regardless of whether the user exists
+		// all four lookups regardless of whether the user exists
 		// (see vyos_verifier.go's timing-equalization doc comment).
 		return "", &vyos.APIError{StatusCode: 400, Message: "Configuration under specified path is empty"}
 	}
@@ -133,6 +133,32 @@ func TestVyOSUserVerifier_LockedAccount(t *testing.T) {
 	}
 }
 
+func TestVyOSUserVerifier_EmptyPasswordHash(t *testing.T) {
+	cfg := &fakeConfigReader{
+		values: map[string]string{
+			"system/login/user/alice":                                   "",
+			"system/login/user/alice/authentication/encrypted-password": "",
+		},
+	}
+	v := auth.NewVyOSUserVerifier(cfg, auth.NewLoginLimiter())
+
+	// The timing fallback hash is public in the source, so a match
+	// against it must never log a passwordless user in.
+	if err := v.Verify(context.Background(), "1.2.3.4", "alice", "anything"); !errors.Is(err, auth.ErrInvalidCredentials) {
+		t.Errorf("expected ErrInvalidCredentials for an empty password hash, got %v", err)
+	}
+}
+
+func TestVyOSUserVerifier_OperatorAccount(t *testing.T) {
+	cfg := newAliceConfig()
+	cfg.values["system/login/user/alice/operator"] = ""
+	v := auth.NewVyOSUserVerifier(cfg, auth.NewLoginLimiter())
+
+	if err := v.Verify(context.Background(), "1.2.3.4", "alice", realSHA512CryptPassword); !errors.Is(err, auth.ErrInvalidCredentials) {
+		t.Errorf("expected ErrInvalidCredentials for an operator account, got %v", err)
+	}
+}
+
 func TestVyOSUserVerifier_UnsupportedHashPrefix(t *testing.T) {
 	cfg := &fakeConfigReader{
 		values: map[string]string{
@@ -177,9 +203,9 @@ func TestVyOSUserVerifier_BackendError(t *testing.T) {
 // one, which is what the crypt-skipping short-circuit would produce.
 //
 // This necessarily uses a generous tolerance (sha512-crypt itself
-// takes single-digit milliseconds on typical hardware, so noise from
-// scheduling/GC could easily swing an individual measurement by a
-// similar margin) - it's checking for the *qualitative* absence of a
+// at VyOS's default 656000 rounds takes on the order of 100ms, so
+// noise from scheduling/GC is small next to each measurement, but
+// still not negligible) - it's checking for the *qualitative* absence of a
 // "skip the expensive step entirely" shortcut, not asserting a tight
 // timing bound.
 //
@@ -194,11 +220,11 @@ func TestVyOSUserVerifier_BackendError(t *testing.T) {
 //     transient slowdown during any given window then affects both
 //     cumulative timers together, instead of being able to skew only
 //     whichever block happens to be running at the time.
-//   - `samples` is 10x larger (200, not 20), so any noise that isn't
-//     fully correlated between the two paths gets averaged down
-//     proportionally more before the ratio is computed.
+//   - Each sample is a full 656000-round computation, so a handful
+//     of samples already averages out noise that isn't fully
+//     correlated between the two paths.
 func TestVyOSUserVerifier_UnknownUserTakesComparableTimeToWrongPassword(t *testing.T) {
-	const samples = 200
+	const samples = 10
 	limiter := auth.NewLoginLimiter()
 	limiter.MaxAttempts = samples * 3 // avoid backoff from interfering with the measurement
 

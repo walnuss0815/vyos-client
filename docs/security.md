@@ -62,6 +62,10 @@ VyOS Client supports two login modes, selected by `AUTH_MODE`
     with no password set (`encrypted-password` defaults to `!`, VyOS's
     "locked" sentinel) is correctly rejected, same as VyOS's own login
     would reject it.
+  - A user with the `operator` flag (`system login user <name>
+    operator`, restricted to operational mode in VyOS) is rejected at
+    login, because a session here grants the full API access of
+    `VYOS_API_KEY`.
 - **`static`** — the single shared admin account
   (`UI_ADMIN_USER`/`UI_ADMIN_PASSWORD_HASH`, bcrypt-hashed), entirely
   independent of VyOS's own user database, exactly as VyOS Client's
@@ -118,12 +122,23 @@ session. Building real-time revocation would mean either a server-side
 session store (the stateless design's whole reason for existing) or a
 VyOS round-trip on every request (a real latency cost for something
 that's rarely actually needed) — not attempted in this pass. Rotating
-`SESSION_SECRET`, restarting the backend, or simply waiting out the
-TTL remain the only ways to force an existing session out today.
+`SESSION_SECRET`, restarting the backend while `SESSION_SECRET` is
+unset (a fresh random secret is generated on each start; with an
+explicit `SESSION_SECRET` sessions survive restarts), or simply waiting
+out the TTL remain the only ways to force an existing session out
+today.
 
 Login attempts are rate-limited per source IP with exponential backoff
 (`backend/internal/auth/ratelimit.go`) to slow down brute-forcing of the
-shared credential.
+shared credential. IPv6 sources are grouped by their /64, so rotating
+addresses within one prefix shares a single budget. Passwords longer
+than 128 bytes are rejected, and at most two password verifications run
+at the same time.
+
+Behind a reverse proxy every request arrives from the proxy's address,
+so all clients share one rate-limit bucket and one client's failed
+logins delay everyone's. `X-Forwarded-For` is deliberately not trusted,
+because a client could spoof it.
 
 CSRF protection uses the double-submit cookie pattern: a non-HttpOnly
 CSRF cookie whose value must be echoed back in an `X-CSRF-Token` header
@@ -391,7 +406,10 @@ stay `'self'` with no exception at all.
   its own (see [architecture.md](architecture.md#files-a-curated-read-only-viewer-over-show-file-path)),
   so even this app's own curated allowlist (`/config`, `/var/log`) is
   something an operator may reasonably want to opt out of entirely
-  rather than rely on that allowlist alone.
+  rather than rely on that allowlist alone. Within that allowlist,
+  `.boot` config files and `/config/archive` are blocked, because they
+  contain unmasked secrets (the file browser shows raw file contents,
+  not the masked config view).
 
 ### Restricting access to LAN clients only
 
