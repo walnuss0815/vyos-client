@@ -288,7 +288,13 @@ func (s *Server) handleSave(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "malformed request")
 		return
 	}
-	if err := s.VyOS.ConfigFileSave(r.Context(), req.File); err != nil {
+	// VyOS accepts remote URLs and arbitrary local paths here, so the
+	// destination is never client-controlled.
+	if req.File != "" {
+		writeError(w, http.StatusBadRequest, "file must not be set")
+		return
+	}
+	if err := s.VyOS.ConfigFileSave(r.Context(), ""); err != nil {
 		s.handleVyOSError(w, "saving configuration", err)
 		return
 	}
