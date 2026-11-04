@@ -1269,6 +1269,21 @@ func TestSystemInfo_ConfigWarningsEnabledDefaultsToFalse(t *testing.T) {
 	}
 }
 
+func TestSystemInfo_SafeApplyDefaultSecondsReflectsServerSetting(t *testing.T) {
+	e := newTestEnv(t)
+	resp := e.doJSON(t, http.MethodGet, "/api/system/info", nil)
+	defer func() { _ = resp.Body.Close() }()
+	var out struct {
+		SafeApplyDefaultSeconds int `json:"safeApplyDefaultSeconds"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if out.SafeApplyDefaultSeconds != 90 {
+		t.Errorf("safeApplyDefaultSeconds = %d, want 90", out.SafeApplyDefaultSeconds)
+	}
+}
+
 func TestSystemInfo_ConfigWarningsEnabledReflectsServerSetting(t *testing.T) {
 	e := newTestEnv(t)
 	e.apiServer.ConfigWarningsEnabled = true

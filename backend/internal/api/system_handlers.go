@@ -42,6 +42,9 @@ type systemInfoResponse struct {
 	// happens at handleFileBrowserRoots/handleFiles themselves, not
 	// here - this is purely a UI hint.
 	FileBrowserEnabled bool `json:"fileBrowserEnabled"`
+	// SafeApplyDefaultSeconds mirrors Server.SafeApplyDefaultSeconds,
+	// the suggested default commit-confirm countdown for the UI.
+	SafeApplyDefaultSeconds int `json:"safeApplyDefaultSeconds"`
 }
 
 // handleSystemInfo wraps VyOS's unauthenticated GET /info (hostname,
@@ -65,6 +68,8 @@ func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
 		ConfigWarningsEnabled: s.ConfigWarningsEnabled,
 		SelfUpgradeEnabled:    s.SelfUpgradeEnabled,
 		FileBrowserEnabled:    s.FileBrowserEnabled,
+
+		SafeApplyDefaultSeconds: s.SafeApplyDefaultSeconds,
 	})
 }
 
