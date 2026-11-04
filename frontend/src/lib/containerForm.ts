@@ -1,5 +1,6 @@
 import { containerNamePath } from './containerParse'
 import type { ContainerDefinition } from './containerTypes'
+import { multiValueDiffOps } from './configOps'
 import type { ConfigOp } from './vyosApi'
 
 export interface ContainerFormValues {
@@ -152,18 +153,7 @@ export function containerFormToOps(
     ops.push(newValue ? { op: 'set', path } : { op: 'delete', path })
   }
 
-  const oldCapabilities = new Set(beforeValues.capabilities)
-  const newCapabilities = new Set(values.capabilities)
-  for (const cap of newCapabilities) {
-    if (!oldCapabilities.has(cap)) {
-      ops.push({ op: 'set', path: [...base, 'capability'], value: cap })
-    }
-  }
-  for (const cap of oldCapabilities) {
-    if (!newCapabilities.has(cap)) {
-      ops.push({ op: 'delete', path: [...base, 'capability'], value: cap })
-    }
-  }
+  ops.push(...multiValueDiffOps([...base, 'capability'], beforeValues.capabilities, values.capabilities))
 
   return ops
 }

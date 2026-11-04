@@ -5,6 +5,7 @@ import {
   httpsPath,
 } from './serviceHttpsParse'
 import type { HTTPSConfig } from './serviceHttpsTypes'
+import { multiValueDiffOps } from './configOps'
 import type { ConfigOp } from './vyosApi'
 
 export interface HTTPSFormValues {
@@ -110,15 +111,7 @@ export function httpsFormToOps(before: HTTPSConfig, values: HTTPSFormValues): Co
     else ops.push({ op: 'set', path: field.path, value: newValue.trim() })
   }
 
-  const oldVersions = new Set(beforeValues.tlsVersions)
-  const newVersions = new Set(values.tlsVersions)
-  const tlsVersionPath = httpsPath('tls-version')
-  for (const version of newVersions) {
-    if (!oldVersions.has(version)) ops.push({ op: 'set', path: tlsVersionPath, value: version })
-  }
-  for (const version of oldVersions) {
-    if (!newVersions.has(version)) ops.push({ op: 'delete', path: tlsVersionPath, value: version })
-  }
+  ops.push(...multiValueDiffOps(httpsPath('tls-version'), beforeValues.tlsVersions, values.tlsVersions))
 
   return ops
 }
