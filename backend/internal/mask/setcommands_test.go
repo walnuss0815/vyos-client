@@ -95,6 +95,62 @@ func TestRedactSetCommands_MultipleQuotedPathSegments(t *testing.T) {
 	}
 }
 
+func TestRedactSetCommands_SNMPCommunityName(t *testing.T) {
+	tests := []struct {
+		name string
+		line string
+		want string
+	}{
+		{
+			name: "community name before a further leaf",
+			line: `set service snmp community 'hunter2' authorization 'ro'`,
+			want: `set service snmp community '` + mask.MaskPlaceholder + `' authorization 'ro'`,
+		},
+		{
+			name: "community name before a network leaf",
+			line: `set service snmp community 'hunter2' network '192.0.2.0/24'`,
+			want: `set service snmp community '` + mask.MaskPlaceholder + `' network '192.0.2.0/24'`,
+		},
+		{
+			name: "unquoted community name",
+			line: `set service snmp community hunter2 authorization ro`,
+			want: `set service snmp community '` + mask.MaskPlaceholder + `' authorization ro`,
+		},
+		{
+			name: "community name as the last token",
+			line: `set service snmp community 'hunter2'`,
+			want: `set service snmp community '` + mask.MaskPlaceholder + `'`,
+		},
+		{
+			name: "route-map community is not an snmp community name",
+			line: `set policy route-map 'RM' rule '10' set community add '65000:1'`,
+			want: `set policy route-map 'RM' rule '10' set community add '65000:1'`,
+		},
+		{
+			name: "other snmp lines are untouched",
+			line: `set service snmp location 'rack 4'`,
+			want: `set service snmp location 'rack 4'`,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := mask.RedactSetCommands(tc.line); got != tc.want {
+				t.Errorf("RedactSetCommands(%q) = %q, want %q", tc.line, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestRedactSetCommands_NewSecretLeaves(t *testing.T) {
+	for _, leaf := range []string{"cak", "md5", "client-secret", "cisco-authentication"} {
+		line := `set some path '` + leaf + `-parent' ` + leaf + ` 'topsecret'`
+		want := `set some path '` + leaf + `-parent' ` + leaf + ` '` + mask.MaskPlaceholder + `'`
+		if got := mask.RedactSetCommands(line); got != want {
+			t.Errorf("RedactSetCommands(%q) = %q, want %q", line, got, want)
+		}
+	}
+}
+
 // TestRedactSetCommands_UnterminatedQuoteFallsBackToConservativeRedaction
 // covers the defense-in-depth path for a line whose final quote is
 // genuinely unterminated (no closing quote anywhere before end of

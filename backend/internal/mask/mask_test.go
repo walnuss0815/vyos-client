@@ -11,18 +11,22 @@ import (
 
 func TestIsSensitiveLeaf(t *testing.T) {
 	cases := map[string]bool{
-		"password":           true,
-		"Password":           true, // case-insensitive
-		"plaintext-password": true,
-		"plaintext_password": true, // underscore normalization
-		"pre-shared-key":     true,
-		"community":          true,
-		"key":                true,
-		"secret":             true,
-		"host-name":          false,
-		"address":            false,
-		"description":        false,
-		"interface":          false,
+		"password":             true,
+		"Password":             true, // case-insensitive
+		"plaintext-password":   true,
+		"plaintext_password":   true, // underscore normalization
+		"pre-shared-key":       true,
+		"community":            true,
+		"key":                  true,
+		"secret":               true,
+		"cak":                  true,
+		"md5":                  true,
+		"client-secret":        true,
+		"cisco-authentication": true,
+		"host-name":            false,
+		"address":              false,
+		"description":          false,
+		"interface":            false,
 	}
 	for name, want := range cases {
 		if got := mask.IsSensitiveLeaf(name); got != want {
