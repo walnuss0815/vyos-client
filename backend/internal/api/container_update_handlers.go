@@ -42,6 +42,9 @@ type checkContainerImageUpdateResponse struct {
 	// its trailing tag replaced, preserving everything else exactly
 	// as the operator originally typed it (see imageupdate.ReplaceTag).
 	NewImageRef string `json:"newImageRef,omitempty"`
+	// MajorUpdate is true when LatestTag's major version differs from
+	// CurrentTag's - such upgrades often need a data migration.
+	MajorUpdate bool `json:"majorUpdate,omitempty"`
 }
 
 // containerUpdateCheckTimeout stays under the server's 60s
@@ -121,6 +124,9 @@ func (s *Server) handleCheckContainerImageUpdate(w http.ResponseWriter, r *http.
 			return
 		}
 		resp.NewImageRef = newRef
+		cur, curOK := imageupdate.ParseTag(ref.Tag)
+		next, nextOK := imageupdate.ParseTag(newest)
+		resp.MajorUpdate = curOK && nextOK && cur.Major != next.Major
 	}
 
 	writeJSON(w, http.StatusOK, resp)
