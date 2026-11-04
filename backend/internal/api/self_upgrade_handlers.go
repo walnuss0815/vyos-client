@@ -64,6 +64,11 @@ type selfUpgradeStatusResponse struct {
 	Releases []selfUpgradeReleaseResponse `json:"releases"`
 }
 
+// selfUpgradeStatusTimeout stays under the server's 60s WriteTimeout
+// so slow upstreams yield a clean error instead of a dropped
+// connection.
+const selfUpgradeStatusTimeout = 45 * time.Second
+
 // handleSelfUpgradeStatus serves GET /api/system/self-upgrade - the
 // System > Upgrades page's data source. When self-upgrade is disabled
 // (the default - see config.Config.SelfUpgradeEnabled), this returns
@@ -74,8 +79,9 @@ type selfUpgradeStatusResponse struct {
 //
 // Also verifies (via s.ImageRegistry.TagExists, the same registry
 // client the Containers page's own "Check for update" button uses)
-// that each newer release's corresponding ghcr.io image actually
-// exists, before reporting it as upgradable. .github/workflows/
+// that the newest newer release's corresponding ghcr.io image
+// actually exists (older ones are reported as not verified), before
+// reporting it as upgradable. .github/workflows/
 // release.yml publishes the GitHub Release and the GHCR image as two
 // separate jobs with only a one-directional dependency (the image
 // build only runs if the release was published, never the converse),
@@ -122,12 +128,15 @@ func (s *Server) handleSelfUpgradeStatus(w http.ResponseWriter, r *http.Request)
 		Releases:       []selfUpgradeReleaseResponse{},
 	}
 
+	ctx, cancel := context.WithTimeout(r.Context(), selfUpgradeStatusTimeout)
+	defer cancel()
+
 	var releases []selfupgrade.Release
 	var err error
 	if r.URL.Query().Get("force") == "true" {
-		releases, err = s.SelfUpgradeGitHub.ForceRefresh(r.Context())
+		releases, err = s.SelfUpgradeGitHub.ForceRefresh(ctx)
 	} else {
-		releases, err = s.SelfUpgradeGitHub.ListReleases(r.Context())
+		releases, err = s.SelfUpgradeGitHub.ListReleases(ctx)
 	}
 	if err != nil {
 		s.Logger.Error("checking for self-upgrade releases", "error", err)
@@ -156,18 +165,22 @@ func (s *Server) handleSelfUpgradeStatus(w http.ResponseWriter, r *http.Request)
 		resp.CurrentVersionRecognized = true
 		resp.UpdateAvailable = len(newer) > 0
 		resp.Releases = make([]selfUpgradeReleaseResponse, 0, len(newer))
-		for _, rel := range newer {
+		for i, rel := range newer {
 			var publishedAt string
 			if !rel.PublishedAt.IsZero() {
 				publishedAt = rel.PublishedAt.Format(time.RFC3339)
 			}
+			// Only the newest release's image is checked - it's the
+			// one the Upgrade button targets, and each check can cost
+			// several sequential registry calls.
+			imageExists := i == 0 && s.selfUpgradeImageExists(ctx, rel.Version)
 			resp.Releases = append(resp.Releases, selfUpgradeReleaseResponse{
 				Version:     rel.Version,
 				Name:        rel.Name,
 				Body:        rel.Body,
 				PublishedAt: publishedAt,
 				HTMLURL:     rel.HTMLURL,
-				ImageExists: s.selfUpgradeImageExists(r.Context(), rel.Version),
+				ImageExists: imageExists,
 			})
 		}
 	}
