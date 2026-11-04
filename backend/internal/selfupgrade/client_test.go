@@ -216,6 +216,52 @@ func TestListReleases_ServesStaleCacheOnError(t *testing.T) {
 	}
 }
 
+// TestListReleases_NegativeCacheAppliesWithStaleCache guards against
+// every request hitting GitHub live while it is failing just because a
+// stale result happens to exist: the failure is remembered for
+// NegativeCacheTTL either way.
+func TestListReleases_NegativeCacheAppliesWithStaleCache(t *testing.T) {
+	var failing bool
+	var requestCount int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		if failing {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"tag_name": "v1.0.0", "name": "1.0.0", "draft": false, "prerelease": false}]`))
+	}))
+	defer server.Close()
+
+	client, err := New(Config{
+		Repo:             "example/repo",
+		BaseURL:          server.URL,
+		HTTPClient:       server.Client(),
+		CacheTTL:         1 * time.Millisecond,
+		NegativeCacheTTL: 1 * time.Hour,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if _, err := client.ListReleases(context.Background()); err != nil {
+		t.Fatalf("ListReleases (first, successful): %v", err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	failing = true
+	requestCount = 0
+
+	for i := range 3 {
+		releases, err := client.ListReleases(context.Background())
+		if err != nil || len(releases) != 1 {
+			t.Fatalf("call %d: expected the stale cache without an error, got %+v, %v", i, releases, err)
+		}
+	}
+	if requestCount != 1 {
+		t.Errorf("expected 1 request within the negative cache window, got %d", requestCount)
+	}
+}
+
 // TestListReleases_NegativeCacheAvoidsRepeatedRequests guards against
 // hammering (and further prolonging) a rate limit/outage: when there
 // is no previous successful result to fall back to, a failed fetch

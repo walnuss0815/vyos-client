@@ -52,10 +52,12 @@ func TestSemverCompare(t *testing.T) {
 
 func TestNormalizeVersion(t *testing.T) {
 	cases := map[string]string{
-		"v1.2.3":     "1.2.3",
-		"1.2.3":      "1.2.3",
-		"v1.2.3-rc1": "1.2.3",
-		"not-a-tag":  "",
+		"v1.2.3":        "1.2.3",
+		"1.2.3":         "1.2.3",
+		"v1.2.3-rc1":    "",
+		"v2.0.0-hotfix": "",
+		"v1.2.3.4":      "",
+		"not-a-tag":     "",
 	}
 	for raw, want := range cases {
 		if got := normalizeVersion(raw); got != want {
