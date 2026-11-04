@@ -66,6 +66,46 @@ describe('ImportConfigPanel', () => {
     }
   })
 
+  it('counts down the window VyOS reports, not the requested seconds', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      server.use(
+        http.post('/api/config/import', () => HttpResponse.json({ pendingConfirm: true, confirmSeconds: 120 })),
+      )
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+      renderWithProviders(<ImportConfigPanel />)
+
+      await user.upload(screen.getByLabelText(/configuration file/i), makeFile("set system host-name 'r1'\n"))
+      const importButton = screen.getByRole('button', { name: /import configuration/i })
+      await waitFor(() => expect(importButton).not.toBeDisabled())
+      await user.click(importButton)
+      await screen.findByText(/keep this imported configuration/i)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100_000)
+      })
+      expect(screen.getByText(/keep this imported configuration/i)).toBeInTheDocument()
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(21_000)
+      })
+      expect(screen.queryByText(/keep this imported configuration/i)).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('starts the Safe apply seconds from the system info default', async () => {
+    server.use(
+      http.get('/api/system/info', () =>
+        HttpResponse.json({ hostname: 'r', version: '1', loginBanner: '', safeApplyDefaultSeconds: 45 }),
+      ),
+    )
+    renderWithProviders(<ImportConfigPanel />)
+
+    await waitFor(() => expect(screen.getByRole('spinbutton')).toHaveValue(45))
+  })
+
   it('requires acknowledgment before a full-replace (load) import is enabled', async () => {
     const user = userEvent.setup()
     renderWithProviders(<ImportConfigPanel />)
