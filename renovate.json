@@ -57,7 +57,8 @@
     {
       "description": "Base images in deploy/Dockerfile and deploy/mock-vyos.Dockerfile (node, golang, gcr.io/distroless/static-debian12) grouped into one PR per update type.",
       "matchManagers": ["dockerfile"],
-      "groupName": "Docker base images"
+      "groupName": "Docker base images",
+      "pinDigests": true
     },
     {
       "description": "The real-VyOS e2e suite's pinned rolling/Stream builds (e2e/vyos-versions.env) never auto-merge, regardless of update type - unlike this repo's other dependencies, e2e.yml only runs on a schedule/tag-push/workflow_dispatch, not on every PR (see e2e/README.md), so a PR bumping one of these has no automated confirmation that the new pinned build actually boots and passes the suite before merge. A human should either run e2e.yml manually against the bumped version first, or accept the (bounded, next-Monday) delay before the scheduled run surfaces a problem.",
