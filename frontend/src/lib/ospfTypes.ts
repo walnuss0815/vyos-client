@@ -196,10 +196,6 @@ export interface OSPFProcessConfig {
   redistributions: OSPFRedistribution[]
 }
 
-export function blankProcessConfig(): OSPFProcessConfig {
-  return { global: blankGlobalSettings(), areas: [], interfaces: [], redistributions: [] }
-}
-
 export interface OSPFConfig {
   ospf: OSPFProcessConfig
   ospfv3: OSPFProcessConfig

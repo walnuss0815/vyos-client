@@ -62,10 +62,6 @@ export function qosMatchGroupPath(name: string, ...rest: string[]): string[] {
   return [...qosPath('traffic-match-group'), name, ...rest]
 }
 
-export function qosMatchGroupMatchPath(groupName: string, matchId: string, ...rest: string[]): string[] {
-  return [...qosMatchGroupPath(groupName), 'match', matchId, ...rest]
-}
-
 // --- shared: match rules -----------------------------------------------
 
 function parseQosMatch(id: string, raw: unknown): QosMatch {

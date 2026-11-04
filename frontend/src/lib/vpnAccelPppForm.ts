@@ -98,10 +98,6 @@ export function removeAccelPppClientIpPoolOp(kind: AccelPppKind, name: string): 
 
 // --- client IPv6 pools --------------------------------------------------------
 
-export function addAccelPppClientIpv6PoolOp(kind: AccelPppKind, name: string): ConfigOp {
-  return { op: 'set', path: accelPppClientIpv6PoolPath(kind, name) }
-}
-
 export function removeAccelPppClientIpv6PoolOp(kind: AccelPppKind, name: string): ConfigOp {
   return { op: 'delete', path: accelPppClientIpv6PoolPath(kind, name) }
 }
