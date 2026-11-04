@@ -837,6 +837,21 @@ func TestSave(t *testing.T) {
 	}
 }
 
+func TestSave_RejectsFilePath(t *testing.T) {
+	e := newTestEnv(t)
+	e.login(t)
+
+	before := len(e.fakeVyOS.Requests)
+	resp := e.doJSON(t, http.MethodPost, "/api/config/save", map[string]any{"file": "scp://x/y"})
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", resp.StatusCode)
+	}
+	if got := len(e.fakeVyOS.Requests); got != before {
+		t.Errorf("VyOS received %d request(s), want none", got-before)
+	}
+}
+
 func TestRollback_RequiresAuth(t *testing.T) {
 	e := newTestEnv(t)
 	resp := e.doJSON(t, http.MethodPost, "/api/config/rollback", nil)
