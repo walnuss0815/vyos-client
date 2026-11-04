@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 	"unicode/utf8"
 )
@@ -147,8 +148,8 @@ func (c *Client) ListTags(ctx context.Context, ref Reference, creds *Credentials
 	firstURL := fmt.Sprintf("%s://%s/v2/%s/tags/list?n=%d", scheme, ref.APIHost, ref.Repository, tagsPageSize)
 
 	var authHeader string
-	tags, next, err := c.fetchTagsPage(ctx, httpClient, firstURL, creds, &authHeader)
-	if err != nil && insecure && isConnectionError(err) {
+	tags, next, err := c.fetchTagsPage(ctx, httpClient, firstURL, creds, &authHeader, insecure)
+	if err != nil && insecure && shouldFallBackToHTTP(err) {
 		// VyOS's own "insecure" flag also covers a registry with no
 		// TLS at all, not only an untrusted certificate (which the
 		// InsecureSkipVerify transport above already tolerates) - a
@@ -160,7 +161,7 @@ func (c *Client) ListTags(ctx context.Context, ref Reference, creds *Credentials
 		scheme = "http"
 		firstURL = fmt.Sprintf("%s://%s/v2/%s/tags/list?n=%d", scheme, ref.APIHost, ref.Repository, tagsPageSize)
 		authHeader = ""
-		tags, next, err = c.fetchTagsPage(ctx, httpClient, firstURL, creds, &authHeader)
+		tags, next, err = c.fetchTagsPage(ctx, httpClient, firstURL, creds, &authHeader, insecure)
 	}
 	if err != nil {
 		return nil, err
@@ -173,7 +174,7 @@ func (c *Client) ListTags(ctx context.Context, ref Reference, creds *Credentials
 		if err != nil {
 			return nil, err
 		}
-		pageTags, next, err := c.fetchTagsPage(ctx, httpClient, resolved, creds, &authHeader)
+		pageTags, next, err := c.fetchTagsPage(ctx, httpClient, resolved, creds, &authHeader, insecure)
 		if err != nil {
 			return nil, err
 		}
@@ -213,14 +214,14 @@ func (c *Client) TagExists(ctx context.Context, ref Reference, creds *Credential
 	firstURL := fmt.Sprintf("%s://%s/v2/%s/manifests/%s", scheme, ref.APIHost, ref.Repository, ref.Tag)
 
 	var authHeader string
-	exists, err := c.fetchManifestExists(ctx, httpClient, firstURL, creds, &authHeader)
-	if err != nil && insecure && isConnectionError(err) {
+	exists, err := c.fetchManifestExists(ctx, httpClient, firstURL, creds, &authHeader, insecure)
+	if err != nil && insecure && shouldFallBackToHTTP(err) {
 		// Same insecure-registry HTTP fallback as ListTags - see its
 		// own doc comment for the full reasoning.
 		scheme = "http"
 		firstURL = fmt.Sprintf("%s://%s/v2/%s/manifests/%s", scheme, ref.APIHost, ref.Repository, ref.Tag)
 		authHeader = ""
-		exists, err = c.fetchManifestExists(ctx, httpClient, firstURL, creds, &authHeader)
+		exists, err = c.fetchManifestExists(ctx, httpClient, firstURL, creds, &authHeader, insecure)
 	}
 	return exists, err
 }
@@ -231,16 +232,16 @@ func (c *Client) TagExists(ctx context.Context, ref Reference, creds *Credential
 // a manifest pull is derived from whatever the registry's own
 // challenge specifies, nothing tags-list-specific is hardcoded in
 // that path).
-func (c *Client) fetchManifestExists(ctx context.Context, httpClient *http.Client, manifestURL string, creds *Credentials, authHeader *string) (bool, error) {
+func (c *Client) fetchManifestExists(ctx context.Context, httpClient *http.Client, manifestURL string, creds *Credentials, authHeader *string, insecure bool) (bool, error) {
 	resp, err := c.doGet(ctx, httpClient, manifestURL, manifestAcceptHeader, *authHeader)
 	if err != nil {
-		return false, err
+		return false, &initialRequestError{err}
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusUnauthorized {
 		challenge := resp.Header.Get("WWW-Authenticate")
-		newAuth, cErr := c.authenticate(ctx, httpClient, challenge, creds)
+		newAuth, cErr := c.authenticate(ctx, httpClient, challenge, creds, insecure)
 		if cErr != nil {
 			return false, cErr
 		}
@@ -282,14 +283,28 @@ func decodeManifestExists(resp *http.Response) (bool, error) {
 	}
 }
 
-// isConnectionError reports whether err looks like a transport-level
-// failure (couldn't establish a connection/TLS handshake at all) as
-// opposed to a successfully-received HTTP error response - the only
-// case ListTags falls back from https to plain http for an insecure
-// registry.
-func isConnectionError(err error) bool {
-	var urlErr *url.Error
-	return errors.As(err, &urlErr)
+// initialRequestError marks a transport failure of a page's very
+// first request, before any auth step ran - the only failure
+// shouldFallBackToHTTP may act on, so an error from the token
+// exchange or from a retried request never triggers a plain-http retry.
+type initialRequestError struct{ err error }
+
+func (e *initialRequestError) Error() string { return e.err.Error() }
+func (e *initialRequestError) Unwrap() error { return e.err }
+
+// shouldFallBackToHTTP reports whether err means the registry doesn't
+// speak TLS on this port (the server answered the TLS handshake with
+// plain HTTP, or nothing listens for https at all) - the only cases
+// ListTags/TagExists fall back from https to plain http for an
+// insecure registry. Timeouts, cancelled contexts and DNS failures
+// are not "not TLS" signals and must surface as errors.
+func shouldFallBackToHTTP(err error) bool {
+	var initial *initialRequestError
+	if !errors.As(err, &initial) {
+		return false
+	}
+	var recordErr tls.RecordHeaderError
+	return errors.As(err, &recordErr) || errors.Is(err, http.ErrSchemeMismatch) || errors.Is(err, syscall.ECONNREFUSED)
 }
 
 type tagsListResponse struct {
@@ -305,16 +320,16 @@ type tagsListResponse struct {
 // rejected, this method still re-runs the full challenge once more
 // (see the 401 handling below), so an expired token mid-pagination
 // doesn't hard-fail the whole listing.
-func (c *Client) fetchTagsPage(ctx context.Context, httpClient *http.Client, pageURL string, creds *Credentials, authHeader *string) (tags []string, next string, err error) {
+func (c *Client) fetchTagsPage(ctx context.Context, httpClient *http.Client, pageURL string, creds *Credentials, authHeader *string, insecure bool) (tags []string, next string, err error) {
 	resp, err := c.doGet(ctx, httpClient, pageURL, "application/json", *authHeader)
 	if err != nil {
-		return nil, "", err
+		return nil, "", &initialRequestError{err}
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusUnauthorized {
 		challenge := resp.Header.Get("WWW-Authenticate")
-		newAuth, cErr := c.authenticate(ctx, httpClient, challenge, creds)
+		newAuth, cErr := c.authenticate(ctx, httpClient, challenge, creds, insecure)
 		if cErr != nil {
 			return nil, "", cErr
 		}
@@ -388,17 +403,17 @@ var linkNextPattern = regexp.MustCompile(`<([^>]+)>;\s*rel="next"`)
 // the spec allows to be a relative path, e.g.
 // "/v2/library/nginx/tags/list?last=...&n=100", though some
 // registries return an absolute URL instead) against the same
-// scheme/host the first page request used.
+// scheme/host the first page request used. An absolute URL's own
+// scheme and host are deliberately discarded, so a registry can't
+// redirect the Authorization header to another origin.
 func resolvePageURL(scheme, apiHost, ref string) (string, error) {
 	u, err := url.Parse(ref)
 	if err != nil {
 		return "", fmt.Errorf("imageupdate: parsing pagination Link: %w", err)
 	}
-	if u.IsAbs() {
-		return ref, nil
-	}
 	u.Scheme = scheme
 	u.Host = apiHost
+	u.User = nil
 	return u.String(), nil
 }
 
@@ -418,14 +433,14 @@ var bearerChallengePattern = regexp.MustCompile(`realm="([^"]*)"(?:,service="([^
 // is empty) and direct Basic auth (used by some simpler/self-hosted
 // registries, which challenge for credentials on every request rather
 // than issuing a short-lived token).
-func (c *Client) authenticate(ctx context.Context, httpClient *http.Client, challenge string, creds *Credentials) (string, error) {
+func (c *Client) authenticate(ctx context.Context, httpClient *http.Client, challenge string, creds *Credentials, insecure bool) (string, error) {
 	switch {
 	case strings.HasPrefix(challenge, "Bearer "):
 		m := bearerChallengePattern.FindStringSubmatch(challenge)
 		if m == nil || m[1] == "" {
 			return "", fmt.Errorf("imageupdate: registry sent an unrecognized Bearer challenge: %q", challenge)
 		}
-		return c.fetchBearerToken(ctx, httpClient, m[1], m[2], m[3], creds)
+		return c.fetchBearerToken(ctx, httpClient, m[1], m[2], m[3], creds, insecure)
 	case strings.HasPrefix(challenge, "Basic "):
 		if creds.empty() {
 			return "", fmt.Errorf("imageupdate: registry requires authentication, but no matching " +
@@ -449,7 +464,7 @@ type tokenResponse struct {
 // no credentials at all, which is what makes checking a public
 // image's tags for updates work without any `container registry`
 // entry configured.
-func (c *Client) fetchBearerToken(ctx context.Context, httpClient *http.Client, realm, service, scope string, creds *Credentials) (string, error) {
+func (c *Client) fetchBearerToken(ctx context.Context, httpClient *http.Client, realm, service, scope string, creds *Credentials, insecure bool) (string, error) {
 	u, err := url.Parse(realm)
 	if err != nil {
 		return "", fmt.Errorf("imageupdate: parsing token realm %q: %w", realm, err)
@@ -462,6 +477,12 @@ func (c *Client) fetchBearerToken(ctx context.Context, httpClient *http.Client, 
 		q.Set("scope", scope)
 	}
 	u.RawQuery = q.Encode()
+
+	// The realm is chosen by the registry's own response, so sending
+	// Basic credentials to a plain-http realm would leak them.
+	if !creds.empty() && u.Scheme != "https" && !insecure {
+		return "", fmt.Errorf("imageupdate: refusing to send credentials to non-https token realm %q", realm)
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {

@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
 
 func testRef(t *testing.T, apiHost string) Reference {
@@ -364,5 +366,103 @@ func TestTagExists_InsecureFallsBackToPlainHTTP(t *testing.T) {
 	}
 	if !exists {
 		t.Error("expected exists=true")
+	}
+}
+
+func TestListTags_AbsoluteLinkToOtherHostIsNotFollowed(t *testing.T) {
+	other := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("cross-host Link was followed; Authorization = %q", r.Header.Get("Authorization"))
+	}))
+	defer other.Close()
+
+	registry := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "" {
+			w.Header().Set("WWW-Authenticate", `Basic realm="registry"`)
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if r.URL.Query().Get("last") == "" {
+			w.Header().Set("Link", fmt.Sprintf(`<%s/v2/library/nginx/tags/list?last=1.25.0>; rel="next"`, other.URL))
+			_, _ = w.Write([]byte(`{"name":"library/nginx","tags":["1.24.0","1.25.0"]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"name":"library/nginx","tags":["1.25.3"]}`))
+	}))
+	defer registry.Close()
+
+	c := NewClient(Config{HTTPClient: httpsTestClient(t, registry, other)})
+	ref := testRef(t, strings.TrimPrefix(registry.URL, "https://"))
+	creds := &Credentials{Username: "alice", Password: "s3cret"}
+	tags, err := c.ListTags(context.Background(), ref, creds, false)
+	if err != nil {
+		t.Fatalf("ListTags: %v", err)
+	}
+	if len(tags) != 3 {
+		t.Errorf("expected all 3 tags fetched from the original registry, got %+v", tags)
+	}
+}
+
+func TestListTags_RefusesCredentialsToPlainHTTPRealm(t *testing.T) {
+	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("token request reached a plain-http realm; Authorization = %q", r.Header.Get("Authorization"))
+	}))
+	defer tokenServer.Close()
+
+	registry := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Bearer realm="%s"`, tokenServer.URL))
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer registry.Close()
+
+	c := NewClient(Config{HTTPClient: registry.Client()})
+	ref := testRef(t, strings.TrimPrefix(registry.URL, "https://"))
+	creds := &Credentials{Username: "alice", Password: "s3cret"}
+	_, err := c.ListTags(context.Background(), ref, creds, false)
+	if err == nil || !strings.Contains(err.Error(), "non-https token realm") {
+		t.Errorf("expected a refusal to send credentials to a plain-http realm, got %v", err)
+	}
+}
+
+func TestListTags_TimeoutDoesNotFallBackToPlainHTTP(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-time.After(2 * time.Second):
+		}
+	}))
+	defer server.Close()
+
+	c := NewClient(Config{Timeout: 50 * time.Millisecond})
+	ref := testRef(t, strings.TrimPrefix(server.URL, "https://"))
+	_, err := c.ListTags(context.Background(), ref, nil, true)
+	// A plain-http retry against this TLS server would answer 400
+	// right away instead of timing out.
+	if err == nil || !strings.Contains(err.Error(), "Client.Timeout") {
+		t.Errorf("expected the original timeout error, got %v", err)
+	}
+}
+
+func TestShouldFallBackToHTTP(t *testing.T) {
+	refused := fmt.Errorf("dial: %w", syscall.ECONNREFUSED)
+	notTLS := tls.RecordHeaderError{Msg: "first record does not look like a TLS handshake"}
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"initial request refused", &initialRequestError{refused}, true},
+		{"initial request got plain http", &initialRequestError{notTLS}, true},
+		{"initial request got an HTTP response", &initialRequestError{http.ErrSchemeMismatch}, true},
+		{"initial request timed out", &initialRequestError{context.DeadlineExceeded}, false},
+		{"initial request cancelled", &initialRequestError{context.Canceled}, false},
+		{"refusal outside the initial request", refused, false},
+		{"token step failure", fmt.Errorf("imageupdate: fetching registry token: %w", notTLS), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldFallBackToHTTP(tt.err); got != tt.want {
+				t.Errorf("shouldFallBackToHTTP = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
