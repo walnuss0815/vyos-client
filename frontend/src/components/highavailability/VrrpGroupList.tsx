@@ -304,9 +304,14 @@ function VrrpGroupFormPanel({
         <div className="grid grid-cols-2 gap-2">
           <input
             {...noExtensionInputProps}
+            type="password"
             value={values.authenticationPassword}
             onChange={(e) => update('authenticationPassword', e.target.value)}
-            placeholder="password (up to 8 chars)"
+            placeholder={
+              !isCreate && group.hasAuthenticationPassword
+                ? '•••••••• (configured - leave blank to keep)'
+                : 'password (up to 8 chars)'
+            }
             className={inputClass}
           />
           <select

@@ -39,16 +39,16 @@ export interface DynamicDNSEntry {
   /** Write-only, like every other masked credential in this app - see
    * SystemUser.hasPassword's doc comment for the general convention. */
   hasPassword: boolean
-  /** TSIG key *file path* (for RFC2136 nsupdate-style updates), not
-   * key material itself - not masked (it's a path, not a secret). */
-  key?: string
+  /** The TSIG key leaf (RFC2136 nsupdate-style updates) is masked by
+   * the backend like any `key` leaf, so only its presence is exposed. */
+  hasKey: boolean
   ttl?: string
   waitTime?: string
   expiryTime?: string
 }
 
 export function blankDynamicDNSEntry(): Omit<DynamicDNSEntry, 'name'> {
-  return { hostNames: [], hasPassword: false }
+  return { hostNames: [], hasPassword: false, hasKey: false }
 }
 
 export interface DynamicDNSConfig {

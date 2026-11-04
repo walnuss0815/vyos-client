@@ -56,7 +56,8 @@ export interface VRRPGroup {
   rfc3768Compatibility: boolean
   helloSourceAddress?: string
   peerAddresses: string[]
-  authenticationPassword?: string
+  /** Write-only, like BGPPeer.hasPassword - the backend masks the value. */
+  hasAuthenticationPassword: boolean
   authenticationType?: string // 'plaintext-password' | 'ah'
   healthCheck?: VRRPHealthCheck
   excludeVrrpInterface: boolean

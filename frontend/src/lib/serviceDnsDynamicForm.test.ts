@@ -108,6 +108,23 @@ describe('dynamicDNSEntryFormToOps - editing an existing entry', () => {
   })
 })
 
+describe('dynamicDNSEntryFormToOps - write-only key', () => {
+  it('never queues the key when left blank', () => {
+    const entry = emptyEntry({ hasKey: true })
+    expect(dynamicDNSEntryFormToOps('home', entry, dynamicDNSEntryToFormValues(entry))).toEqual([])
+  })
+
+  it('queues a typed key', () => {
+    const entry = emptyEntry({ hasKey: true })
+    const values = dynamicDNSEntryToFormValues(entry)
+    values.key = '/config/auth/new.key'
+
+    expect(dynamicDNSEntryFormToOps('home', entry, values)).toEqual([
+      { op: 'set', path: ['service', 'dns', 'dynamic', 'name', 'home', 'key'], value: '/config/auth/new.key' },
+    ])
+  })
+})
+
 describe('deleteDynamicDNSEntryOp', () => {
   it('builds a delete op for the whole entry', () => {
     expect(deleteDynamicDNSEntryOp('home')).toEqual({

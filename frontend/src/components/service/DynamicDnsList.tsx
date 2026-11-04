@@ -229,14 +229,14 @@ function EntryForm({
           />
         </label>
         <FieldLabel
-          label="TSIG key file path"
+          label={`TSIG key file path ${!isCreate && entry.hasKey ? '(configured - leave blank to keep)' : ''}`}
           hint="Path on the router to a pre-shared secret file used to cryptographically sign updates - only used by the RFC 2136 ('nsupdate') protocol, not by third-party cloud providers."
         >
           <input
             {...noExtensionInputProps}
             value={values.key}
             onChange={(e) => update('key', e.target.value)}
-            placeholder="/config/auth/ddns.key"
+            placeholder={!isCreate && entry.hasKey ? '••••••••' : '/config/auth/ddns.key'}
             className={inputClass}
           />
         </FieldLabel>

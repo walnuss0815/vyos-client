@@ -121,7 +121,7 @@ function parseVRRPGroup(name: string, raw: unknown): VRRPGroup {
     rfc3768Compatibility: isFlagPresent(raw, 'rfc3768-compatibility'),
     helloSourceAddress: asString(child(raw, 'hello-source-address')),
     peerAddresses: asArray(child(raw, 'peer-address')),
-    authenticationPassword: asString(child(auth, 'password')),
+    hasAuthenticationPassword: child(auth, 'password') !== undefined,
     authenticationType: asString(child(auth, 'type')),
     healthCheck: parseVRRPHealthCheck(child(raw, 'health-check')),
     excludeVrrpInterface: isFlagPresent(track, 'exclude-vrrp-interface'),
