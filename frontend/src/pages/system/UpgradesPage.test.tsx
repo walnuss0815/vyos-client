@@ -115,6 +115,7 @@ describe('UpgradesPage', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Upgrade to 1.3.0' }))
     await screen.findByText(/pulled and queued image/i)
+    expect(screen.getAllByText(/safe apply can't actually protect/i)).toHaveLength(1)
 
     const { changes } = usePendingChangesStore.getState()
     expect(changes).toHaveLength(1)
@@ -165,6 +166,7 @@ describe('UpgradesPage', () => {
     const upgradeButton = await screen.findByRole('button', { name: 'Upgrade to 1.3.0' })
     expect(upgradeButton).toBeDisabled()
     expect(screen.getByText(/an upgrade is already queued/i)).toBeInTheDocument()
+    expect(screen.getByText(/safe apply can't actually protect this particular commit/i)).toBeInTheDocument()
 
     await user.click(upgradeButton)
     const { changes } = usePendingChangesStore.getState()

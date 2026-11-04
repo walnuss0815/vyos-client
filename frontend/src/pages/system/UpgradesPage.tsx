@@ -208,18 +208,23 @@ export default function UpgradesPage() {
       {queuedVersion && !pullError && (
         <p className="text-sm text-success-500">
           Pulled and queued image <span className="font-mono">{status.imageRepo}:{queuedVersion}</span> - review and
-          commit below. Note that Safe apply can&apos;t actually protect this particular commit: it
+          commit below.
+        </p>
+      )}
+      {upgradeAlreadyQueued && !queuedVersion && (
+        <p className="text-sm text-slate-400">
+          An upgrade is already queued - commit or discard it in the pending changes bar before queuing another.
+        </p>
+      )}
+      {upgradeAlreadyQueued && (
+        <p className="text-sm text-warning-500">
+          Note that Safe apply can&apos;t actually protect this particular commit: it
           recreates this very container, so nothing can be left running to show the "Keep changes?"
           confirm panel or click it - the commit-confirm window will always expire unconfirmed and
           VyOS will revert it after the timer, even if the new image came up perfectly healthy. A
           plain Commit (or Commit &amp; Save) is what actually keeps an upgrade - if the new image
           fails to start at all, recovery currently requires the VyOS CLI/console directly, not this
           app.
-        </p>
-      )}
-      {upgradeAlreadyQueued && !queuedVersion && (
-        <p className="text-sm text-slate-400">
-          An upgrade is already queued - commit or discard it in the pending changes bar before queuing another.
         </p>
       )}
 
