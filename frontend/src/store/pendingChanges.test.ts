@@ -22,6 +22,46 @@ describe('usePendingChangesStore', () => {
     expect(changes[0].op.path).toEqual(['system', 'host-name'])
   })
 
+  describe('add dedup', () => {
+    const { add } = usePendingChangesStore.getState()
+    const setOp = (path: string[], value?: string) => ({ op: { op: 'set' as const, path, value }, label: 'x' })
+    const delOp = (path: string[]) => ({ op: { op: 'delete' as const, path }, label: 'x' })
+    const count = () => usePendingChangesStore.getState().changes.length
+
+    it('ignores an op identical to the previous entry', () => {
+      add(setOp(['a'], '1'))
+      add(setOp(['a'], '1'))
+      expect(count()).toBe(1)
+    })
+
+    it('only compares against the immediately previous entry', () => {
+      add(setOp(['a'], '1'))
+      add(setOp(['b'], '2'))
+      add(setOp(['a'], '1'))
+      expect(count()).toBe(3)
+    })
+
+    it('keeps delete, set, delete as three entries', () => {
+      add(delOp(['a']))
+      add({ op: { op: 'set', path: ['a', 'b'], value: '1' }, label: 'x' })
+      add(delOp(['a']))
+      expect(count()).toBe(3)
+    })
+
+    it('cancels a queued delete when the path is enabled again', () => {
+      add(delOp(['service', 'ssh']))
+      add(setOp(['service', 'ssh']))
+      expect(count()).toBe(0)
+    })
+
+    it('does not cancel a delete of a different path or a valued delete', () => {
+      add(delOp(['service', 'https']))
+      add({ op: { op: 'delete', path: ['service', 'ssh', 'port'], value: '22' }, label: 'x' })
+      add(setOp(['service', 'ssh']))
+      expect(count()).toBe(3)
+    })
+  })
+
   it('removes a change by id', () => {
     usePendingChangesStore.getState().add({ op: { op: 'set', path: ['a'], value: '1' }, label: 'a' })
     const id = usePendingChangesStore.getState().changes[0].id
