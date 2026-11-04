@@ -59,11 +59,19 @@ func (s *Server) handleFileBrowserRoots(w http.ResponseWriter, _ *http.Request) 
 // *within* an allowed root out to somewhere else entirely - this
 // validation narrows what this app will ever ask VyOS to look at, it
 // isn't a guarantee about where VyOS's own answer came from.
+//
+// Whitespace and glob/URL characters are refused because the path is
+// handed to a VyOS op-mode command (which splits on whitespace and may
+// expand globs). config.boot and /config/archive hold unmasked
+// secrets, so they are refused too.
 func validateFileBrowserPath(p string) bool {
-	if p == "" || !strings.HasPrefix(p, "/") {
+	if p == "" || !strings.HasPrefix(p, "/") || strings.ContainsAny(p, " \t*?[:") {
 		return false
 	}
 	clean := path.Clean(p)
+	if strings.HasSuffix(clean, ".boot") || clean == "/config/archive" || strings.HasPrefix(clean, "/config/archive/") {
+		return false
+	}
 	for _, root := range fileBrowserRoots {
 		if clean == root || strings.HasPrefix(clean, root+"/") {
 			return true
@@ -125,7 +133,7 @@ func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dir, file, err := s.VyOS.ShowFile(r.Context(), reqPath)
+	dir, file, err := s.VyOS.ShowFile(r.Context(), path.Clean(reqPath))
 	if err != nil {
 		s.handleVyOSError(w, "fetching file/directory listing", err)
 		return
