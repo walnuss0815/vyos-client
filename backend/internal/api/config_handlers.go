@@ -124,6 +124,10 @@ func (s *Server) handleCommit(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "op must be one of set, delete, comment")
 			return
 		}
+		if o.Op == vyos.OpSet && o.Value == mask.MaskPlaceholder {
+			writeError(w, http.StatusBadRequest, "value is a masked placeholder, not a real value")
+			return
+		}
 		ops = append(ops, vyos.ConfigOp{Op: o.Op, Path: o.Path, Value: o.Value})
 	}
 
@@ -187,6 +191,10 @@ func (s *Server) handleImportConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.TrimSpace(req.Content) == "" {
 		writeError(w, http.StatusBadRequest, "content must not be empty")
+		return
+	}
+	if strings.Contains(req.Content, mask.MaskPlaceholder) {
+		writeError(w, http.StatusBadRequest, "content contains masked placeholders; supply the real values")
 		return
 	}
 	if req.Mode != "merge" && req.Mode != "load" {

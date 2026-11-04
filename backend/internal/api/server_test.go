@@ -23,6 +23,7 @@ import (
 
 	"github.com/walnuss0815/vyos-client/backend/internal/api"
 	"github.com/walnuss0815/vyos-client/backend/internal/auth"
+	"github.com/walnuss0815/vyos-client/backend/internal/mask"
 	"github.com/walnuss0815/vyos-client/backend/internal/testutil"
 	"github.com/walnuss0815/vyos-client/backend/internal/vyos"
 )
@@ -1069,6 +1070,41 @@ func TestImportConfig_RejectsOutOfRangeConfirmSeconds(t *testing.T) {
 		if resp.StatusCode != http.StatusBadRequest {
 			t.Errorf("confirmSeconds=%d: status = %d, want 400", seconds, resp.StatusCode)
 		}
+	}
+}
+
+func TestCommit_RejectsMaskedPlaceholderValue(t *testing.T) {
+	e := newTestEnv(t)
+	e.login(t)
+
+	before := len(e.fakeVyOS.Requests)
+	resp := e.doJSON(t, http.MethodPost, "/api/config/commit", map[string]any{
+		"ops": []map[string]any{{"op": "set", "path": []string{"system", "login", "user", "x", "authentication", "plaintext-password"}, "value": mask.MaskPlaceholder}},
+	})
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", resp.StatusCode)
+	}
+	if got := len(e.fakeVyOS.Requests); got != before {
+		t.Errorf("VyOS received %d request(s), want none", got-before)
+	}
+}
+
+func TestImportConfig_RejectsMaskedPlaceholder(t *testing.T) {
+	e := newTestEnv(t)
+	e.login(t)
+
+	before := len(e.fakeVyOS.Requests)
+	resp := e.doJSON(t, http.MethodPost, "/api/config/import", map[string]any{
+		"content": "service {\n    key " + mask.MaskPlaceholder + "\n}\n",
+		"mode":    "merge",
+	})
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", resp.StatusCode)
+	}
+	if got := len(e.fakeVyOS.Requests); got != before {
+		t.Errorf("VyOS received %d request(s), want none", got-before)
 	}
 }
 
