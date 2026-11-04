@@ -229,7 +229,7 @@ export default function UpgradesPage() {
       )}
 
       <div className="space-y-3">
-        {status.releases.map((release) => (
+        {status.releases.map((release, index) => (
           <div key={release.htmlUrl || release.version} className="rounded-xl border border-surface-border bg-surface-900 p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -250,16 +250,20 @@ export default function UpgradesPage() {
                   </a>
                 )}
               </div>
-              <button
-                onClick={() => void handleUpgrade(release.version)}
-                disabled={pullingVersion !== null || upgradeAlreadyQueued || !release.imageExists}
-                title={release.imageExists ? undefined : `The ghcr.io image for ${release.version} isn't available yet`}
-                className={`bg-accent-600 ${buttonClass}`}
-              >
-                {pullingVersion === release.version ? 'Pulling…' : `Upgrade to ${release.version}`}
-              </button>
+              {index === 0 ? (
+                <button
+                  onClick={() => void handleUpgrade(release.version)}
+                  disabled={pullingVersion !== null || upgradeAlreadyQueued || !release.imageExists}
+                  title={release.imageExists ? undefined : `The ghcr.io image for ${release.version} isn't available yet`}
+                  className={`bg-accent-600 ${buttonClass}`}
+                >
+                  {pullingVersion === release.version ? 'Pulling…' : `Upgrade to ${release.version}`}
+                </button>
+              ) : (
+                <span className="text-xs text-slate-500">Upgrade to the latest release first</span>
+              )}
             </div>
-            {!release.imageExists && (
+            {index === 0 && !release.imageExists && (
               <p className="mt-2 text-xs text-slate-500">
                 The image for this release isn&apos;t available on ghcr.io yet (the release and its image are
                 published separately, so this can lag behind briefly, or mean the image build failed) - try
