@@ -229,6 +229,20 @@ describe('settings form', () => {
     expect(ops).toContainEqual({ op: 'delete', path: ['vpn', 'sstp', 'authentication', 'protocols'] })
   })
 
+  it('deletes only the unticked authProtocols values', () => {
+    const before = blankAccelPppConfig()
+    before.enabled = true
+    before.authentication.protocols = ['pap', 'chap', 'mschap-v2']
+    const values = accelPppConfigToSettingsFormValues(before)
+    values.authProtocols = ['mschap-v2']
+    const ops = accelPppSettingsFormToOps('sstp', before, values).filter((o) => o.path.at(-1) === 'protocols')
+    const path = ['vpn', 'sstp', 'authentication', 'protocols']
+    expect(ops).toEqual([
+      { op: 'delete', path, value: 'pap' },
+      { op: 'delete', path, value: 'chap' },
+    ])
+  })
+
   it('produces no ops when nothing changed', () => {
     const before = blankAccelPppConfig()
     before.enabled = true

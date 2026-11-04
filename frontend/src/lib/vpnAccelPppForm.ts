@@ -13,6 +13,7 @@ import {
   sstpSslPath,
 } from './vpnAccelPppParse'
 import type { AccelPppConfig, AccelPppKind } from './vpnAccelPppTypes'
+import { multiValueDiffOps } from './configOps'
 import type { ConfigOp } from './vyosApi'
 
 export function enableAccelPppOp(kind: AccelPppKind): ConfigOp {
@@ -264,21 +265,6 @@ export function accelPppConfigToSettingsFormValues(config: AccelPppConfig): Acce
   }
 }
 
-function stringArraysEqual(a: string[], b: string[]): boolean {
-  return a.length === b.length && a.every((v, i) => v === b[i])
-}
-
-function multiSetOps(base: string[], oldValues: string[], newValues: string[]): ConfigOp[] {
-  if (stringArraysEqual(oldValues, newValues)) return []
-  const ops: ConfigOp[] = []
-  if (newValues.length === 0) {
-    ops.push({ op: 'delete', path: base })
-  } else {
-    for (const v of newValues) ops.push({ op: 'set', path: base, value: v })
-  }
-  return ops
-}
-
 export function accelPppSettingsFormToOps(
   kind: AccelPppKind,
   before: AccelPppConfig,
@@ -361,7 +347,12 @@ export function accelPppSettingsFormToOps(
     else ops.push({ op: 'set', path: field.path, value: newValue.trim() })
   }
 
-  ops.push(...multiSetOps([...authBase, 'protocols'], beforeValues.authProtocols, values.authProtocols))
+  const protocolsPath = [...authBase, 'protocols']
+  if (values.authProtocols.length === 0 && beforeValues.authProtocols.length > 0) {
+    ops.push({ op: 'delete', path: protocolsPath })
+  } else {
+    ops.push(...multiValueDiffOps(protocolsPath, beforeValues.authProtocols, values.authProtocols))
+  }
 
   const trimmedIpsecSecret = values.hasIpsecPresharedSecret.trim()
   if (kind === 'l2tp' && trimmedIpsecSecret) {
