@@ -558,6 +558,9 @@ export interface ContainerImageUpdateCheck {
   /** The full image reference to pull/queue if the suggested update
    * is accepted - '' unless updateAvailable is true. */
   newImageRef: string
+  /** True when the suggested update crosses a major version; omitted
+   * by the backend when false. */
+  majorUpdate?: boolean
 }
 
 /** Checks whether image has a newer tag published on its registry -
