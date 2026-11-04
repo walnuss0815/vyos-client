@@ -8,6 +8,10 @@ describe('isSensitiveLeaf', () => {
     expect(isSensitiveLeaf('plaintext-password')).toBe(true)
     expect(isSensitiveLeaf('pre-shared-key')).toBe(true)
     expect(isSensitiveLeaf('community')).toBe(true)
+    expect(isSensitiveLeaf('cak')).toBe(true)
+    expect(isSensitiveLeaf('md5')).toBe(true)
+    expect(isSensitiveLeaf('client-secret')).toBe(true)
+    expect(isSensitiveLeaf('cisco-authentication')).toBe(true)
   })
 
   it('normalizes underscores to hyphens', () => {

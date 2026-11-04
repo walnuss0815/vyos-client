@@ -43,6 +43,11 @@ func RedactSetCommands(text string) string {
 
 func redactSetLine(line string) string {
 	tokens := tokenizeSetLine(line)
+	if redacted := redactSNMPCommunityName(line, tokens); redacted != line {
+		line = redacted
+		// Offsets in tokens are stale after the replacement.
+		tokens = tokenizeSetLine(line)
+	}
 	// A value-bearing line is `set <path words...> <leaf> '<value>'` -
 	// at least 3 tokens (set, one path word, the value), with the
 	// value itself a quoted token. Anything shorter, or ending in an
@@ -78,10 +83,28 @@ func redactSetLine(line string) string {
 	return line[:last.start] + "'" + MaskPlaceholder + "'"
 }
 
+// redactSNMPCommunityName masks the community string in
+// `service snmp community <name> ...`: the string is the tag node's
+// own name, not a leaf value, so the leaf-name check below never sees
+// it on lines that continue past it (e.g. `... community 'x'
+// authorization 'ro'`). Restricted to the `snmp community` pair, since
+// `community` also names unrelated nodes (e.g. route-map `set
+// community add ...`).
+func redactSNMPCommunityName(line string, tokens []setLineToken) string {
+	for i := 1; i+1 < len(tokens); i++ {
+		if tokens[i].text == "community" && tokens[i-1].text == "snmp" {
+			name := tokens[i+1]
+			return line[:name.start] + "'" + MaskPlaceholder + "'" + line[name.end:]
+		}
+	}
+	return line
+}
+
 type setLineToken struct {
 	text   string // unquoted content (quote characters stripped)
 	quoted bool
 	start  int // byte offset in the original line where this token begins (the opening quote, for a quoted token)
+	end    int // byte offset just past the token (its closing quote, for a quoted token)
 }
 
 // tokenizeSetLine splits a `show configuration commands` line into
@@ -109,11 +132,11 @@ func tokenizeSetLine(line string) []setLineToken {
 			if end < 0 {
 				// Unterminated quote - take the rest of the line as
 				// this token's content (see doc comment).
-				tokens = append(tokens, setLineToken{text: line[i+1:], quoted: true, start: start})
+				tokens = append(tokens, setLineToken{text: line[i+1:], quoted: true, start: start, end: len(line)})
 				break
 			}
 			end += i + 1
-			tokens = append(tokens, setLineToken{text: line[i+1 : end], quoted: true, start: start})
+			tokens = append(tokens, setLineToken{text: line[i+1 : end], quoted: true, start: start, end: end + 1})
 			i = end + 1
 			continue
 		}
@@ -121,7 +144,7 @@ func tokenizeSetLine(line string) []setLineToken {
 		for i < len(line) && line[i] != ' ' && line[i] != '\t' {
 			i++
 		}
-		tokens = append(tokens, setLineToken{text: line[start:i], quoted: false, start: start})
+		tokens = append(tokens, setLineToken{text: line[start:i], quoted: false, start: start, end: i})
 	}
 	return tokens
 }
