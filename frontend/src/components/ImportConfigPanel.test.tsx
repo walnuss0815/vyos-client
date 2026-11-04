@@ -4,6 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../test/mocks/server'
 import { renderWithProviders } from '../test/testUtils'
+import { useUnsavedCommitStore } from '../store/unsavedCommit'
 import ImportConfigPanel from './ImportConfigPanel'
 
 function makeFile(content: string, name = 'config.txt') {
@@ -11,6 +12,8 @@ function makeFile(content: string, name = 'config.txt') {
 }
 
 beforeEach(() => {
+  localStorage.clear()
+  useUnsavedCommitStore.setState({ committedChanges: [] })
   server.use(http.post('/api/config/import', () => HttpResponse.json({ pendingConfirm: false })))
 })
 
@@ -40,6 +43,41 @@ describe('ImportConfigPanel', () => {
 
     expect(await screen.findByText(/imported successfully/i)).toBeInTheDocument()
     expect(receivedBody).toMatchObject({ mode: 'merge', content: "set system host-name 'r1'\n" })
+  })
+
+  it('records a merge import as committed but not saved', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<ImportConfigPanel />)
+
+    await user.upload(screen.getByLabelText(/configuration file/i), makeFile("set system host-name 'r1'\n"))
+    const importButton = screen.getByRole('button', { name: /import configuration/i })
+    await waitFor(() => expect(importButton).not.toBeDisabled())
+    await user.click(importButton)
+    await screen.findByText(/imported successfully/i)
+
+    const committed = useUnsavedCommitStore.getState().committedChanges
+    expect(committed).toHaveLength(1)
+    expect(committed[0].label).toBe('import (merge)')
+  })
+
+  it('records a load import as committed but not saved once the commit is kept', async () => {
+    server.use(http.post('/api/config/import', () => HttpResponse.json({ pendingConfirm: true })))
+    const user = userEvent.setup()
+    renderWithProviders(<ImportConfigPanel />)
+
+    await user.upload(screen.getByLabelText(/configuration file/i), makeFile("set system host-name 'r1'\n"))
+    await user.click(screen.getByRole('radio', { name: /full replace/i }))
+    await user.click(screen.getByRole('checkbox', { name: /i understand/i }))
+    await user.click(screen.getByRole('button', { name: /import configuration/i }))
+    await screen.findByText(/keep this imported configuration/i)
+    expect(useUnsavedCommitStore.getState().committedChanges).toHaveLength(0)
+
+    await user.click(screen.getByRole('button', { name: /keep changes/i }))
+    await screen.findByText(/imported successfully/i)
+
+    const committed = useUnsavedCommitStore.getState().committedChanges
+    expect(committed).toHaveLength(1)
+    expect(committed[0].label).toBe('import (load)')
   })
 
   it('leaves the confirm panel once the window runs out', async () => {

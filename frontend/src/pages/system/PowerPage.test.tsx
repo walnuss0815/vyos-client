@@ -1,7 +1,7 @@
-import { screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../../test/mocks/server'
 import { renderWithProviders } from '../../test/testUtils'
 import { useUnsavedCommitStore } from '../../store/unsavedCommit'
@@ -224,6 +224,36 @@ describe('PowerPage - rollback', () => {
     await user.click(keepButton)
 
     expect(await screen.findByText(/rolled back to the last saved configuration/i)).toBeInTheDocument()
+  })
+
+  it('counts down the window VyOS reports and reports the revert when it runs out', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      server.use(
+        http.post('/api/config/rollback', () => HttpResponse.json({ pendingConfirm: true, confirmSeconds: 120 })),
+      )
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+      renderWithProviders(<PowerPage />)
+
+      await user.click(screen.getByRole('button', { name: 'Rollback' }))
+      await user.click(screen.getByRole('button', { name: 'Confirm rollback?' }))
+      await screen.findByRole('button', { name: /keep this rollback/i })
+      expect(screen.getByText(/\ds left/)).toBeInTheDocument()
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100_000)
+      })
+      expect(screen.getByRole('button', { name: /keep this rollback/i })).toBeInTheDocument()
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(21_000)
+      })
+      expect(screen.queryByRole('button', { name: /keep this rollback/i })).not.toBeInTheDocument()
+      expect(screen.getByText(/confirm window ran out/i)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Rollback' })).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('shows an error message when the rollback request fails', async () => {

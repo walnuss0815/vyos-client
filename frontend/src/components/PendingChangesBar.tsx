@@ -1,7 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { useConfirmCountdown } from '../hooks/useConfirmCountdown'
-import { useDefaultConfirmSeconds } from '../hooks/useSystemInfo'
+import { useCommitConfirm, useSafeApplyInput } from '../hooks/useSafeApply'
 import { ApiError } from '../lib/api'
 import * as api from '../lib/vyosApi'
 import { maskValue } from '../lib/masking'
@@ -9,9 +8,7 @@ import { MAX_CONFIRM_SECONDS, MIN_CONFIRM_SECONDS } from '../lib/safeApply'
 import { usePendingChangesStore, type PendingChange } from '../store/pendingChanges'
 import { useUnsavedCommitStore } from '../store/unsavedCommit'
 import type { ConfigOp } from '../lib/vyosApi'
-
-// endsAt is a Date.now() timestamp: when VyOS will auto-revert unless confirmed.
-type ConfirmState = { active: true; endsAt: number } | { active: false }
+import SafeApplyField, { SAFE_APPLY_RANGE_MESSAGE } from './SafeApplyField'
 
 // Which action started the current commit-confirm cycle - both
 // commit and rollback share the exact same VyOS-side mechanism (see
@@ -116,7 +113,7 @@ export default function PendingChangesBar() {
   // Defaults off, not on: Safe apply's whole safety property depends
   // on the operator actually being able to click "Keep changes" (or
   // the confirm window expiring and VyOS auto-reverting) - but that
-  // confirm-cycle state (confirmState/pendingCommitChanges/
+  // confirm-cycle state (the confirm window/pendingCommitChanges/
   // saveAfterConfirm below) is plain component state, not persisted
   // anywhere, so a page reload while a confirm window is open loses
   // all track of it. Defaulting to on made that an easy trap to fall
@@ -125,13 +122,10 @@ export default function PendingChangesBar() {
   // actually needed - see UpgradesPage.tsx for the one case (self-
   // upgrade) where Safe apply's mechanism can't work AT ALL, not just
   // "risks being interrupted".
-  const [safeApply, setSafeApply] = useState(false)
-  const defaultConfirmSeconds = useDefaultConfirmSeconds()
-  const [confirmSecondsInput, setConfirmSeconds] = useState<number | null>(null)
-  const confirmSeconds = confirmSecondsInput ?? defaultConfirmSeconds
+  const safeApplyInput = useSafeApplyInput(false)
+  const { enabled: safeApply, seconds: confirmSeconds, defaultSeconds: defaultConfirmSeconds } = safeApplyInput
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [confirmState, setConfirmState] = useState<ConfirmState>({ active: false })
   const [pendingAction, setPendingAction] = useState<PendingAction>('commit')
   // The exact changes a pending commit-confirm cycle was started for
   // (pendingAction === 'commit') - captured at the moment Commit was
@@ -153,8 +147,7 @@ export default function PendingChangesBar() {
   // were never removed from the pending list, so they simply show up
   // as pending again; a reverted rollback leaves the committed list as
   // it was.
-  const secondsLeft = useConfirmCountdown(confirmState.active ? confirmState.endsAt : null, () => {
-    setConfirmState({ active: false })
+  const confirm = useCommitConfirm(() => {
     setSaveAfterConfirm(false)
     void queryClient.invalidateQueries({ queryKey: ['config-tree'] })
     setError(
@@ -173,17 +166,12 @@ export default function PendingChangesBar() {
   // visible until saved (or explicitly dismissed) rather than
   // disappearing the moment the pending-changes cart happens to be
   // empty.
-  if (changes.length === 0 && !confirmState.active && !error && !hasUnsavedCommit) return null
+  if (changes.length === 0 && !confirm.active && !error && !hasUnsavedCommit) return null
 
-  // Clearing the confirmSeconds field entirely produces Number('') ===
-  // 0, which vyosApi.commit() would otherwise silently collapse to "no
-  // confirm_time sent" (0 is falsy) - i.e. commit-confirm protection
-  // quietly disabled while "Safe apply" still looks checked. Given the
-  // whole point of this feature is preventing lockout scenarios, an
-  // invalid value must block committing (visibly, via the disabled
-  // buttons below), not silently degrade to "unsafe".
-  const confirmSecondsValid =
-    !safeApply || (confirmSeconds >= MIN_CONFIRM_SECONDS && confirmSeconds <= MAX_CONFIRM_SECONDS)
+  // An invalid Safe apply value must block committing (visibly, via the
+  // disabled buttons below), not silently degrade to "unsafe" - see
+  // useSafeApplyInput.
+  const confirmSecondsValid = safeApplyInput.valid
 
   const invalidQuoteChanges = changes.filter((c) => hasInvalidQuote(c.op))
   const hasInvalidQuoteValue = invalidQuoteChanges.length > 0
@@ -234,7 +222,7 @@ export default function PendingChangesBar() {
         setPendingAction('commit')
         setPendingCommitChanges(committing)
         setSaveAfterConfirm(alsoSave)
-        setConfirmState({ active: true, endsAt: Date.now() + (result.confirmSeconds ?? confirmSeconds) * 1000 })
+        confirm.start(result, confirmSeconds)
         return
       }
       // Only what was committed - edits queued while the request was in
@@ -273,7 +261,7 @@ export default function PendingChangesBar() {
     try {
       await api.confirmCommit()
       invalidateConfigQueries()
-      setConfirmState({ active: false })
+      confirm.stop()
       if (pendingAction === 'rollback') {
         markSaved()
       } else {
@@ -341,10 +329,7 @@ export default function PendingChangesBar() {
       const result = await api.rollback(rollbackConfirmSeconds)
       if (result.pendingConfirm) {
         setPendingAction('rollback')
-        setConfirmState({
-          active: true,
-          endsAt: Date.now() + (result.confirmSeconds ?? rollbackConfirmSeconds) * 1000,
-        })
+        confirm.start(result, rollbackConfirmSeconds)
         return
       }
       invalidateConfigQueries()
@@ -356,7 +341,7 @@ export default function PendingChangesBar() {
     }
   }
 
-  if (confirmState.active) {
+  if (confirm.active) {
     const isRollback = pendingAction === 'rollback'
     return (
       <div className="fixed inset-x-0 bottom-0 z-50 border-t border-warning-500/40 bg-surface-900/95 backdrop-blur">
@@ -367,7 +352,7 @@ export default function PendingChangesBar() {
             </p>
             <p className="text-sm text-slate-400">
               VyOS will automatically {isRollback ? 'restore your committed changes' : 'revert to the previous configuration'} if
-              you don't confirm within the commit-confirm window. ({secondsLeft}s left)
+              you don't confirm within the commit-confirm window. ({confirm.secondsLeft}s left)
             </p>
           </div>
           <div className="flex gap-2">
@@ -472,28 +457,13 @@ export default function PendingChangesBar() {
           </button>
 
           <div className="flex flex-wrap items-center gap-2">
-            <label className="flex items-center gap-1.5 text-xs text-slate-400">
-              <input
-                type="checkbox"
-                checked={safeApply}
-                onChange={(e) => setSafeApply(e.target.checked)}
-                className="accent-accent-500"
-              />
-              Safe apply
-              {safeApply && (
-                <input
-                  type="number"
-                  min={MIN_CONFIRM_SECONDS}
-                  max={MAX_CONFIRM_SECONDS}
-                  value={confirmSeconds}
-                  onChange={(e) => setConfirmSeconds(Number(e.target.value))}
-                  className={`ml-1 w-14 rounded border bg-surface-800 px-1 py-0.5 text-xs text-white ${
-                    confirmSecondsValid ? 'border-surface-border' : 'border-danger-500'
-                  }`}
-                />
-              )}
-              {safeApply && <span>sec</span>}
-            </label>
+            <SafeApplyField
+              enabled={safeApply}
+              onEnabledChange={safeApplyInput.setEnabled}
+              seconds={confirmSeconds}
+              onSecondsChange={safeApplyInput.setSeconds}
+              valid={confirmSecondsValid}
+            />
 
             <button
               onClick={() => clear()}
@@ -520,9 +490,7 @@ export default function PendingChangesBar() {
         </div>
 
         {!confirmSecondsValid && (
-          <p className="mt-2 text-sm text-danger-500">
-            Safe apply seconds must be between {MIN_CONFIRM_SECONDS} and {MAX_CONFIRM_SECONDS}.
-          </p>
+          <p className="mt-2 text-sm text-danger-500">{SAFE_APPLY_RANGE_MESSAGE}</p>
         )}
         {hasInvalidQuoteValue && (
           <p className="mt-2 text-sm text-danger-500">
