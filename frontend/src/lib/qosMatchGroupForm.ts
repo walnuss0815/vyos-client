@@ -6,14 +6,6 @@ export interface MatchGroupFormValues {
   description: string
 }
 
-export function blankMatchGroupFormValues(): MatchGroupFormValues {
-  return { description: '' }
-}
-
-export function matchGroupToFormValues(group: QosMatchGroup): MatchGroupFormValues {
-  return { description: group.description ?? '' }
-}
-
 export function matchGroupFormToOps(
   name: string,
   before: QosMatchGroup | undefined,

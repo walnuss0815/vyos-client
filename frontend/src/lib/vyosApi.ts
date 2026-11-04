@@ -447,11 +447,11 @@ export function confirmCommit(): Promise<void> {
   return apiRequest<void>('/api/config/commit/confirm', { method: 'POST' })
 }
 
-/** Persists the current running configuration to disk (/config/config.boot
- * unless overridden). This is the app's "Save" action, independent of
- * Commit. */
-export function save(file?: string): Promise<void> {
-  return apiRequest<void>('/api/config/save', { body: { file: file || undefined } })
+/** Persists the current running configuration to disk (/config/config.boot).
+ * This is the app's "Save" action, independent of Commit. The backend
+ * rejects any client-chosen destination, so there is nothing to pass. */
+export function save(): Promise<void> {
+  return apiRequest<void>('/api/config/save', { method: 'POST' })
 }
 
 /** Discards the running configuration's divergence from the last

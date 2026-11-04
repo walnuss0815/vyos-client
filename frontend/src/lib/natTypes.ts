@@ -54,10 +54,6 @@ export interface NATMatch {
   portGroup?: string
 }
 
-export function blankNATMatch(): NATMatch {
-  return {}
-}
-
 export interface NATRule {
   kind: NATRuleKind
   /** The tag-node identifier - VyOS's own rule number. */
