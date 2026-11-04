@@ -2236,7 +2236,7 @@ func TestFiles_FileView(t *testing.T) {
 	e := newTestEnv(t)
 	e.apiServer.FileBrowserEnabled = true
 	e.login(t)
-	e.fakeVyOS.ShowOutputs["file /config/config.boot"] = "########## FILE INFO ##########\n" +
+	e.fakeVyOS.ShowOutputs["file /config/scripts/hello.sh"] = "########## FILE INFO ##########\n" +
 		"Type:\t\tASCII text\n" +
 		"Owner:\t\troot:vyattacfg\n" +
 		"Permissions:\trw-r--r--\n" +
@@ -2245,7 +2245,7 @@ func TestFiles_FileView(t *testing.T) {
 		"########## FILE DATA ##########\n" +
 		"set system host-name 'vyos'\n"
 
-	resp := e.doJSON(t, http.MethodGet, "/api/files?path="+url.QueryEscape("/config/config.boot"), nil)
+	resp := e.doJSON(t, http.MethodGet, "/api/files?path="+url.QueryEscape("/config/scripts/hello.sh"), nil)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
@@ -2275,7 +2275,11 @@ func TestFiles_RejectsPathsOutsideBrowsableRoots(t *testing.T) {
 	e := newTestEnv(t)
 	e.apiServer.FileBrowserEnabled = true
 	e.login(t)
-	for _, p := range []string{"/etc/shadow", "/config/../etc/shadow", "relative", ""} {
+	for _, p := range []string{
+		"/etc/shadow", "/config/../etc/shadow", "relative", "",
+		"/config/a b", "/config/a\tb", "/config/*", "/config/a?", "/config/[a]", "/config/scp:x",
+		"/config/config.boot", "/config/archive", "/config/archive/config.boot.1.gz", "/config/x/../archive/y",
+	} {
 		resp := e.doJSON(t, http.MethodGet, "/api/files?path="+url.QueryEscape(p), nil)
 		status := resp.StatusCode
 		_ = resp.Body.Close()
@@ -2287,6 +2291,24 @@ func TestFiles_RejectsPathsOutsideBrowsableRoots(t *testing.T) {
 		if status != http.StatusBadRequest {
 			t.Errorf("path=%q: status = %d, want 400", p, status)
 		}
+	}
+}
+
+func TestFiles_SendsCleanedPathToVyOS(t *testing.T) {
+	e := newTestEnv(t)
+	e.apiServer.FileBrowserEnabled = true
+	e.login(t)
+	e.fakeVyOS.ShowOutputs["file /var/log"] = "########## DIRECTORY LISTING ##########\nPath:\t /var/log\ntotal 0\n"
+
+	resp := e.doJSON(t, http.MethodGet, "/api/files?path="+url.QueryEscape("/var//log/./"), nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status=%d body=%s", resp.StatusCode, b)
+	}
+	last := e.fakeVyOS.Requests[len(e.fakeVyOS.Requests)-1]
+	if !strings.Contains(string(last.Data), `"/var/log"`) || strings.Contains(string(last.Data), "//") {
+		t.Errorf("request data = %s, want cleaned path /var/log", last.Data)
 	}
 }
 
