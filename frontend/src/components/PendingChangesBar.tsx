@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useCommitConfirm, useSafeApplyInput } from '../hooks/useSafeApply'
 import { ApiError } from '../lib/api'
+import { invalidateConfigQueries } from '../lib/invalidateConfigQueries'
 import * as api from '../lib/vyosApi'
 import { maskValue } from '../lib/masking'
 import { MAX_CONFIRM_SECONDS, MIN_CONFIRM_SECONDS } from '../lib/safeApply'
@@ -149,7 +150,7 @@ export default function PendingChangesBar() {
   // it was.
   const confirm = useCommitConfirm(() => {
     setSaveAfterConfirm(false)
-    void queryClient.invalidateQueries({ queryKey: ['config-tree'] })
+    invalidateConfigQueries(queryClient)
     setError(
       pendingAction === 'rollback'
         ? 'The confirm window ran out, so VyOS reverted the rollback and your committed changes are live again.'
@@ -175,15 +176,6 @@ export default function PendingChangesBar() {
 
   const invalidQuoteChanges = changes.filter((c) => hasInvalidQuote(c.op))
   const hasInvalidQuoteValue = invalidQuoteChanges.length > 0
-
-  // Every page's data (Config Tree, Firewall, and eventually DHCP) is
-  // fetched under a ['config-tree', ...] query key. Invalidating that
-  // whole prefix after a successful commit/confirm is what makes those
-  // pages reflect the change without a manual reload - there is no
-  // other cache to keep in sync, by design (see docs/architecture.md).
-  function invalidateConfigQueries() {
-    void queryClient.invalidateQueries({ queryKey: ['config-tree'] })
-  }
 
   // Persists the already-applied running config to disk. Used both
   // right after a no-confirm commit and after confirming a pending
@@ -228,7 +220,7 @@ export default function PendingChangesBar() {
       // Only what was committed - edits queued while the request was in
       // flight stay pending.
       removeMany(committing.map((c) => c.id))
-      invalidateConfigQueries()
+      invalidateConfigQueries(queryClient)
       // Unconditionally, before knowing whether alsoSave's own save
       // succeeds - a commit always means "committed, not yet confirmed
       // saved". saveAfterSuccessfulCommit flips this back off on
@@ -260,7 +252,7 @@ export default function PendingChangesBar() {
     setError(null)
     try {
       await api.confirmCommit()
-      invalidateConfigQueries()
+      invalidateConfigQueries(queryClient)
       confirm.stop()
       if (pendingAction === 'rollback') {
         markSaved()
@@ -332,7 +324,7 @@ export default function PendingChangesBar() {
         confirm.start(result, rollbackConfirmSeconds)
         return
       }
-      invalidateConfigQueries()
+      invalidateConfigQueries(queryClient)
       markSaved()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to roll back configuration.')

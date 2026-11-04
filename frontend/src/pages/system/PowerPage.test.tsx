@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../../test/mocks/server'
-import { renderWithProviders } from '../../test/testUtils'
+import { createTestQueryClient, renderWithProviders } from '../../test/testUtils'
 import { useUnsavedCommitStore } from '../../store/unsavedCommit'
 import PowerPage from './PowerPage'
 
@@ -191,6 +191,35 @@ describe('PowerPage - rollback', () => {
     await user.click(screen.getByRole('button', { name: 'Confirm rollback?' }))
     expect(await screen.findByText(/rolled back to the last saved configuration/i)).toBeInTheDocument()
     expect(requestedConfirmSeconds).toBeGreaterThan(0)
+  })
+
+  it('invalidates config queries after a rollback and after keeping one', async () => {
+    const queryClient = createTestQueryClient()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    server.use(http.post('/api/config/rollback', () => HttpResponse.json({ pendingConfirm: true })))
+    const user = userEvent.setup()
+    renderWithProviders(<PowerPage />, { queryClient })
+
+    await user.click(screen.getByRole('button', { name: 'Rollback' }))
+    await user.click(screen.getByRole('button', { name: 'Confirm rollback?' }))
+    await user.click(await screen.findByRole('button', { name: /keep this rollback/i }))
+    await screen.findByText(/rolled back to the last saved configuration/i)
+
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['config-tree'] })
+  })
+
+  it('invalidates config queries after an immediate rollback', async () => {
+    const queryClient = createTestQueryClient()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    server.use(http.post('/api/config/rollback', () => HttpResponse.json({ pendingConfirm: false })))
+    const user = userEvent.setup()
+    renderWithProviders(<PowerPage />, { queryClient })
+
+    await user.click(screen.getByRole('button', { name: 'Rollback' }))
+    await user.click(screen.getByRole('button', { name: 'Confirm rollback?' }))
+    await screen.findByText(/rolled back to the last saved configuration/i)
+
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['config-tree'] })
   })
 
   it('clears a pending "committed but not saved" flag on success', async () => {

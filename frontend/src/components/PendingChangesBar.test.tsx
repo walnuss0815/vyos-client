@@ -71,6 +71,24 @@ describe('PendingChangesBar', () => {
     })
   })
 
+  it('invalidates every config-derived query after a successful commit', async () => {
+    const queryClient = createTestQueryClient()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    usePendingChangesStore
+      .getState()
+      .add({ op: { op: 'set', path: ['system', 'host-name'], value: 'r1' }, label: 'set host-name' })
+    const user = userEvent.setup()
+    renderWithProviders(<PendingChangesBar />, { queryClient })
+
+    await user.click(screen.getByRole('button', { name: /^commit$/i }))
+
+    await waitFor(() => {
+      for (const queryKey of [['config-tree'], ['set-commands'], ['system-info'], ['pki-expiry']]) {
+        expect(invalidateSpy).toHaveBeenCalledWith({ queryKey })
+      }
+    })
+  })
+
   it('invalidates config-tree queries after confirming a commit-confirm', async () => {
     server.use(http.post('/api/config/commit', () => HttpResponse.json({ pendingConfirm: true })))
     const queryClient = createTestQueryClient()
@@ -150,7 +168,9 @@ describe('PendingChangesBar', () => {
         .getState()
         .add({ op: { op: 'set', path: ['system', 'host-name'], value: 'r1' }, label: 'set host-name' })
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
-      renderWithProviders(<PendingChangesBar />)
+      const queryClient = createTestQueryClient()
+      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+      renderWithProviders(<PendingChangesBar />, { queryClient })
 
       await user.click(screen.getByRole('checkbox', { name: /safe apply/i }))
       await user.click(screen.getByRole('button', { name: /^commit$/i }))
@@ -165,6 +185,7 @@ describe('PendingChangesBar', () => {
         await vi.advanceTimersByTimeAsync(21_000)
       })
       expect(screen.queryByText(/keep these changes/i)).not.toBeInTheDocument()
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['system-info'] })
     } finally {
       vi.useRealTimers()
     }

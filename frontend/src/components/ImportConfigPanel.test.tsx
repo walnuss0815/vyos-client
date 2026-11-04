@@ -3,7 +3,8 @@ import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../test/mocks/server'
-import { renderWithProviders } from '../test/testUtils'
+import { createTestQueryClient, renderWithProviders } from '../test/testUtils'
+import { usePendingChangesStore } from '../store/pendingChanges'
 import { useUnsavedCommitStore } from '../store/unsavedCommit'
 import ImportConfigPanel from './ImportConfigPanel'
 
@@ -13,6 +14,7 @@ function makeFile(content: string, name = 'config.txt') {
 
 beforeEach(() => {
   localStorage.clear()
+  usePendingChangesStore.setState({ changes: [] })
   useUnsavedCommitStore.setState({ committedChanges: [] })
   server.use(http.post('/api/config/import', () => HttpResponse.json({ pendingConfirm: false })))
 })
@@ -43,6 +45,44 @@ describe('ImportConfigPanel', () => {
 
     expect(await screen.findByText(/imported successfully/i)).toBeInTheDocument()
     expect(receivedBody).toMatchObject({ mode: 'merge', content: "set system host-name 'r1'\n" })
+  })
+
+  it('invalidates every config-derived query after an import', async () => {
+    const queryClient = createTestQueryClient()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    const user = userEvent.setup()
+    renderWithProviders(<ImportConfigPanel />, { queryClient })
+
+    await user.upload(screen.getByLabelText(/configuration file/i), makeFile("set system host-name 'r1'\n"))
+    const importButton = screen.getByRole('button', { name: /import configuration/i })
+    await waitFor(() => expect(importButton).not.toBeDisabled())
+    await user.click(importButton)
+    await screen.findByText(/imported successfully/i)
+
+    for (const queryKey of [['config-tree'], ['set-commands'], ['system-info'], ['pki-expiry']]) {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey })
+    }
+  })
+
+  it('warns in load mode that queued changes were made against the current configuration', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<ImportConfigPanel />)
+    await user.click(screen.getByRole('radio', { name: /full replace/i }))
+    expect(screen.queryByText(/queued change/i)).not.toBeInTheDocument()
+
+    const store = usePendingChangesStore.getState()
+    act(() => {
+      store.add({ op: { op: 'set', path: ['system', 'host-name'], value: 'r1' }, label: 'a' })
+      store.add({ op: { op: 'set', path: ['system', 'domain-name'], value: 'x.net' }, label: 'b' })
+    })
+
+    expect(
+      screen.getByText(
+        /2 queued changes were made against the current configuration; review or discard them after importing\./,
+      ),
+    ).toBeInTheDocument()
+    await user.click(screen.getByRole('radio', { name: /merge/i }))
+    expect(screen.queryByText(/queued change/i)).not.toBeInTheDocument()
   })
 
   it('records a merge import as committed but not saved', async () => {

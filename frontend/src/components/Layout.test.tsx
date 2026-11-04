@@ -1,9 +1,9 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { server } from '../test/mocks/server'
-import { renderWithProviders } from '../test/testUtils'
+import { createTestQueryClient, renderWithProviders } from '../test/testUtils'
 import { useSessionStore } from '../store/session'
 import Layout, { DEFAULT_DOCUMENT_TITLE } from './Layout'
 
@@ -43,6 +43,18 @@ describe('Layout', () => {
       expect(screen.getByText('admin')).toBeInTheDocument()
     })
     expect(document.title).toBe(DEFAULT_DOCUMENT_TITLE)
+  })
+
+  it('clears the query cache once logout completes', async () => {
+    const queryClient = createTestQueryClient()
+    const clearSpy = vi.spyOn(queryClient, 'clear')
+    const user = userEvent.setup()
+    renderWithProviders(<Layout />, { queryClient })
+
+    await user.click(screen.getByRole('button', { name: /sign out/i }))
+
+    await waitFor(() => expect(clearSpy).toHaveBeenCalled())
+    expect(useSessionStore.getState().status).toBe('anonymous')
   })
 
   it('labels the routing nav item "Routing", not "Routes"', () => {
