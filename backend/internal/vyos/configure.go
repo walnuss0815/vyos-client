@@ -27,11 +27,11 @@ func (c *Client) Configure(ctx context.Context, ops []ConfigOp, confirmTime int)
 			Value:       ops[0].Value,
 			ConfirmTime: confirmTime,
 		}
-		return c.do(ctx, "/configure", payload, nil)
+		return c.doConfig(ctx, "/configure", payload, nil)
 	}
 
 	payload := configureList{Commands: ops, ConfirmTime: confirmTime}
-	return c.do(ctx, "/configure", payload, nil)
+	return c.doConfig(ctx, "/configure", payload, nil)
 }
 
 // Confirming a pending commit-confirm started via Configure(...,

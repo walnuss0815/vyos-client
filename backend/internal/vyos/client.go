@@ -60,7 +60,7 @@ func New(cfg Config) (*Client, error) {
 		transport := &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: cfg.InsecureSkipVerify},
 		}
-		httpClient = &http.Client{Timeout: timeout, Transport: transport}
+		httpClient = &http.Client{Timeout: timeout, Transport: transport, CheckRedirect: refuseUnsafeRedirect}
 	}
 
 	return &Client{
@@ -80,7 +80,43 @@ func New(cfg Config) (*Client, error) {
 // instead of five separate call sites each constructing their own
 // otherwise-identical *http.Client.
 func (c *Client) withTimeout(timeout time.Duration) *http.Client {
-	return &http.Client{Timeout: timeout, Transport: c.httpClient.Transport}
+	return &http.Client{Timeout: timeout, Transport: c.httpClient.Transport, CheckRedirect: refuseUnsafeRedirect}
+}
+
+// maxRedirects matches net/http's own default limit.
+const maxRedirects = 10
+
+// refuseUnsafeRedirect only lets a redirect stay on the original
+// host (e.g. a reverse proxy's 307/308 in front of VyOS) and never
+// downgrade https to http. Every request carries the API key in its
+// body, which Go replays on 307/308, so following a redirect anywhere
+// else would hand the key to that host.
+func refuseUnsafeRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= maxRedirects {
+		return fmt.Errorf("vyos: stopped after %d redirects", maxRedirects)
+	}
+	first := via[0].URL
+	if !strings.EqualFold(req.URL.Hostname(), first.Hostname()) {
+		return fmt.Errorf("vyos: refusing redirect to a different host (%s)", req.URL.Hostname())
+	}
+	if first.Scheme == "https" && req.URL.Scheme != "https" {
+		return fmt.Errorf("vyos: refusing redirect from https to %s", req.URL.Scheme)
+	}
+	return nil
+}
+
+// maxErrorMessageBytes caps how much of an unparseable response body
+// is echoed back in an error message.
+const maxErrorMessageBytes = 512
+
+// configTimeout bounds /configure and /config-file calls. A commit can
+// legitimately outlast the default timeout, but must stay under the
+// server's 60s WriteTimeout so the caller still gets a clean error.
+const configTimeout = 55 * time.Second
+
+// doConfig is do with configTimeout, for /configure and /config-file.
+func (c *Client) doConfig(ctx context.Context, endpoint string, payload any, out any) error {
+	return c.doWithClient(ctx, c.withTimeout(configTimeout), endpoint, payload, out)
 }
 
 // do POSTs payload (already a struct that will be JSON-encoded into the
@@ -179,7 +215,11 @@ func send(httpClient *http.Client, req *http.Request, endpoint string) ([]byte, 
 func decodeEnvelope(respBody []byte, statusCode int, out any) error {
 	var env Envelope
 	if err := json.Unmarshal(respBody, &env); err != nil {
-		return &APIError{StatusCode: statusCode, Message: fmt.Sprintf("malformed response: %s", string(respBody))}
+		msg := string(respBody)
+		if len(msg) > maxErrorMessageBytes {
+			msg = strings.ToValidUTF8(msg[:maxErrorMessageBytes], "") + "…"
+		}
+		return &APIError{StatusCode: statusCode, Message: fmt.Sprintf("malformed response: %s", msg)}
 	}
 
 	if !env.Success {

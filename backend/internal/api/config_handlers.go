@@ -87,6 +87,38 @@ type commitRequest struct {
 
 type commitResponse struct {
 	PendingConfirm bool `json:"pendingConfirm"`
+	// ConfirmSeconds is the confirm window VyOS actually started
+	// (whole minutes), so the UI can count down the real deadline.
+	ConfirmSeconds int `json:"confirmSeconds,omitempty"`
+}
+
+func newCommitResponse(confirmMinutes int) commitResponse {
+	return commitResponse{PendingConfirm: confirmMinutes > 0, ConfirmSeconds: confirmMinutes * 60}
+}
+
+// confirmMinutesFromSeconds validates a request's confirmSeconds and
+// converts it to the minutes VyOS's confirm_time expects, rounding up
+// to at least one minute if any window was asked for (the UI works in
+// seconds for a friendlier countdown). On an out-of-range value it
+// writes a 400 and returns false.
+//
+// The bounds match the "Safe apply" input's min/max in
+// PendingChangesBar.tsx. Those HTML attributes are advisory only
+// (trivially bypassed by any direct API client), so the actual bound
+// has to live here: a 1-second window is close to useless (network
+// latency alone could exceed it), and an absurdly large value leaves
+// the system in "pending confirm" limbo if the operator forgets to
+// confirm. 0 (disabling safe apply entirely) is always valid.
+func confirmMinutesFromSeconds(w http.ResponseWriter, seconds int) (int, bool) {
+	if seconds == 0 {
+		return 0, true
+	}
+	if seconds < minConfirmSeconds || seconds > maxConfirmSeconds {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf(
+			"confirmSeconds must be 0 (disabled) or between %d and %d", minConfirmSeconds, maxConfirmSeconds))
+		return 0, false
+	}
+	return (seconds + 59) / 60, true
 }
 
 func (s *Server) handleCommit(w http.ResponseWriter, r *http.Request) {
@@ -99,16 +131,8 @@ func (s *Server) handleCommit(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "no operations to apply")
 		return
 	}
-	// Matches the "Safe apply" input's min/max in PendingChangesBar.tsx.
-	// Those HTML attributes are advisory only (trivially bypassed by
-	// any direct API client), so the actual bound has to live here: a
-	// 1-second window is close to useless (network latency alone could
-	// exceed it), and an absurdly large value leaves the system in
-	// "pending confirm" limbo if the operator forgets to confirm. 0
-	// (disabling safe apply entirely) is always valid.
-	if req.ConfirmSeconds != 0 && (req.ConfirmSeconds < minConfirmSeconds || req.ConfirmSeconds > maxConfirmSeconds) {
-		writeError(w, http.StatusBadRequest, fmt.Sprintf(
-			"confirmSeconds must be 0 (disabled) or between %d and %d", minConfirmSeconds, maxConfirmSeconds))
+	confirmMinutes, ok := confirmMinutesFromSeconds(w, req.ConfirmSeconds)
+	if !ok {
 		return
 	}
 
@@ -131,21 +155,12 @@ func (s *Server) handleCommit(w http.ResponseWriter, r *http.Request) {
 		ops = append(ops, vyos.ConfigOp{Op: o.Op, Path: o.Path, Value: o.Value})
 	}
 
-	// The VyOS API's confirm_time is expressed in minutes; the UI
-	// works in seconds for a friendlier countdown granularity, so
-	// round up to at least one minute if the caller asked for any
-	// confirmation window at all.
-	confirmMinutes := 0
-	if req.ConfirmSeconds > 0 {
-		confirmMinutes = (req.ConfirmSeconds + 59) / 60
-	}
-
 	if err := s.VyOS.Configure(r.Context(), ops, confirmMinutes); err != nil {
 		s.handleVyOSError(w, "applying configuration", err)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, commitResponse{PendingConfirm: confirmMinutes > 0})
+	writeJSON(w, http.StatusOK, newCommitResponse(confirmMinutes))
 }
 
 func (s *Server) handleCommitConfirm(w http.ResponseWriter, r *http.Request) {
@@ -201,16 +216,9 @@ func (s *Server) handleImportConfig(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "mode must be one of merge, load")
 		return
 	}
-	if req.ConfirmSeconds != 0 && (req.ConfirmSeconds < minConfirmSeconds || req.ConfirmSeconds > maxConfirmSeconds) {
-		writeError(w, http.StatusBadRequest, fmt.Sprintf(
-			"confirmSeconds must be 0 (disabled) or between %d and %d", minConfirmSeconds, maxConfirmSeconds))
+	confirmMinutes, ok := confirmMinutesFromSeconds(w, req.ConfirmSeconds)
+	if !ok {
 		return
-	}
-
-	// Same seconds-to-minutes rounding as handleCommit.
-	confirmMinutes := 0
-	if req.ConfirmSeconds > 0 {
-		confirmMinutes = (req.ConfirmSeconds + 59) / 60
 	}
 
 	var err error
@@ -224,7 +232,7 @@ func (s *Server) handleImportConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, commitResponse{PendingConfirm: confirmMinutes > 0})
+	writeJSON(w, http.StatusOK, newCommitResponse(confirmMinutes))
 }
 
 // savedConfigFile is where VyOS's own Save action persists to when no
@@ -260,16 +268,9 @@ func (s *Server) handleRollback(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "malformed request")
 		return
 	}
-	if req.ConfirmSeconds != 0 && (req.ConfirmSeconds < minConfirmSeconds || req.ConfirmSeconds > maxConfirmSeconds) {
-		writeError(w, http.StatusBadRequest, fmt.Sprintf(
-			"confirmSeconds must be 0 (disabled) or between %d and %d", minConfirmSeconds, maxConfirmSeconds))
+	confirmMinutes, ok := confirmMinutesFromSeconds(w, req.ConfirmSeconds)
+	if !ok {
 		return
-	}
-
-	// Same seconds-to-minutes rounding as handleCommit.
-	confirmMinutes := 0
-	if req.ConfirmSeconds > 0 {
-		confirmMinutes = (req.ConfirmSeconds + 59) / 60
 	}
 
 	if err := s.VyOS.ConfigFileLoadFile(r.Context(), savedConfigFile, confirmMinutes); err != nil {
@@ -277,7 +278,7 @@ func (s *Server) handleRollback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, commitResponse{PendingConfirm: confirmMinutes > 0})
+	writeJSON(w, http.StatusOK, newCommitResponse(confirmMinutes))
 }
 
 type saveRequest struct {

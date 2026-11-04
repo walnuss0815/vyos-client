@@ -365,3 +365,23 @@ func TestShowFile_PropagatesVyOSError(t *testing.T) {
 		t.Errorf("Message = %q", apiErr.Message)
 	}
 }
+
+func TestParseShowFile_DirectoryListing_AcceptsACLAndSELinuxMarkers(t *testing.T) {
+	raw := "########## DIRECTORY LISTING ##########\n" +
+		"Path:\t /config\n" +
+		"total 8\n" +
+		"-rw-r--r--+ 1 root  123 Jan  1 00:00 acl\n" +
+		"-rw-r--r--. 1 root  123 Jan  1 00:00 selinux\n" +
+		"-rw-r--r--@ 1 root  123 Jan  1 00:00 xattr\n"
+
+	dir, _, err := vyos.ParseShowFile("/config", raw)
+	if err != nil {
+		t.Fatalf("ParseShowFile: %v", err)
+	}
+	if len(dir.Entries) != 3 {
+		t.Fatalf("Entries = %+v, want 3", dir.Entries)
+	}
+	if dir.Entries[0].Name != "acl" || dir.Entries[0].Permissions != "-rw-r--r--" {
+		t.Errorf("acl entry = %+v", dir.Entries[0])
+	}
+}

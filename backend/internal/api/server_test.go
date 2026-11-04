@@ -812,6 +812,10 @@ func TestCommit_ConfirmFlow(t *testing.T) {
 	if out["pendingConfirm"] != true {
 		t.Errorf("pendingConfirm = %v, want true", out["pendingConfirm"])
 	}
+	// 90s rounds up to 2 whole minutes, VyOS's real window.
+	if out["confirmSeconds"] != float64(120) {
+		t.Errorf("confirmSeconds = %v, want 120", out["confirmSeconds"])
+	}
 	if !e.fakeVyOS.PendingConfirm {
 		t.Error("expected fake VyOS server to record a pending confirm")
 	}

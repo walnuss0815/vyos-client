@@ -86,7 +86,7 @@ const (
 // line: permissions, link count, owner, size, month, day,
 // time-or-year, name. `-G` suppresses the group column entirely
 // (otherwise present between owner and size in plain `ls -l`).
-var lsLineRE = regexp.MustCompile(`^([a-zA-Z?-]{10})\s+\d+\s+(\S+)\s+(\S+)\s+(\w{3})\s+(\d+)\s+([\d:]+)\s+(.+)$`)
+var lsLineRE = regexp.MustCompile(`^([a-zA-Z?-]{10})[.+@]?\s+\d+\s+(\S+)\s+(\S+)\s+(\w{3})\s+(\d+)\s+([\d:]+)\s+(.+)$`)
 
 // ParseShowFile parses the raw text `show file <path>` returns into
 // either a DirectoryListing or a FileView, whichever VyOS decided the
