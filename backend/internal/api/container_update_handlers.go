@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/walnuss0815/vyos-client/backend/internal/imageupdate"
 	"github.com/walnuss0815/vyos-client/backend/internal/vyos"
@@ -42,6 +43,11 @@ type checkContainerImageUpdateResponse struct {
 	// as the operator originally typed it (see imageupdate.ReplaceTag).
 	NewImageRef string `json:"newImageRef,omitempty"`
 }
+
+// containerUpdateCheckTimeout stays under the server's 60s
+// WriteTimeout so a slow registry yields a clean error instead of a
+// dropped connection.
+const containerUpdateCheckTimeout = 45 * time.Second
 
 // handleCheckContainerImageUpdate serves POST
 // /api/container/images/check-update ({"image": "..."}) - the
@@ -87,13 +93,16 @@ func (s *Server) handleCheckContainerImageUpdate(w http.ResponseWriter, r *http.
 		return
 	}
 
-	creds, insecure, err := s.lookupRegistryCredentials(r.Context(), ref.RegistryName)
+	ctx, cancel := context.WithTimeout(r.Context(), containerUpdateCheckTimeout)
+	defer cancel()
+
+	creds, insecure, err := s.lookupRegistryCredentials(ctx, ref.RegistryName)
 	if err != nil {
 		s.handleVyOSError(w, "looking up registry credentials", err)
 		return
 	}
 
-	tags, err := s.ImageRegistry.ListTags(r.Context(), ref, creds, insecure)
+	tags, err := s.ImageRegistry.ListTags(ctx, ref, creds, insecure)
 	if err != nil {
 		s.Logger.Error("checking for container image updates", "image", req.Image, "registry", ref.APIHost, "error", err)
 		writeError(w, http.StatusBadGateway, "failed checking the registry for available tags")
