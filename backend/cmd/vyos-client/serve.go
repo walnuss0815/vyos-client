@@ -184,8 +184,11 @@ func runServer() error {
 		// malicious client can't hold a connection open indefinitely
 		// during header-read, response-write, or idle-keepalive.
 		// ReadHeaderTimeout alone (the only one previously set) only
-		// covers the first of these.
+		// covers the first of these. ReadTimeout also bounds a slow
+		// request body; HTTP/1 clears the read deadline once the body
+		// has been read, so long-running handlers are unaffected.
 		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      60 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
