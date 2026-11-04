@@ -1,6 +1,15 @@
 package api
 
-import "net/http"
+import (
+	"net/http"
+	"regexp"
+)
+
+// qosInterfacePattern bounds the interface name passed into the
+// op-mode command, for the same defense-in-depth reason as
+// containerImageNamePattern: VyOS interface names (eth0, bond0.10,
+// wg-site) fit this allowlist, shell metacharacters and spaces don't.
+var qosInterfacePattern = regexp.MustCompile(`^[a-zA-Z0-9._-]{1,32}$`)
 
 // Traffic Policy / QoS's configuration (`qos policy <type> <name>`,
 // `qos interface <name> {ingress,egress}`, `qos traffic-match-group
@@ -38,6 +47,10 @@ func (s *Server) handleQosShaperStatus(w http.ResponseWriter, r *http.Request) {
 	ifname := r.URL.Query().Get("interface")
 	if ifname == "" {
 		writeError(w, http.StatusBadRequest, "interface is required")
+		return
+	}
+	if !qosInterfacePattern.MatchString(ifname) {
+		writeError(w, http.StatusBadRequest, "invalid interface name")
 		return
 	}
 

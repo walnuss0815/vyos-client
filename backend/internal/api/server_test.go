@@ -2587,6 +2587,22 @@ func TestQosShaperStatus_MissingInterfaceReturns400(t *testing.T) {
 	}
 }
 
+func TestQosShaperStatus_RejectsInvalidInterfaceName(t *testing.T) {
+	e := newTestEnv(t)
+	e.login(t)
+	for _, name := range []string{"eth0 foo", "eth0;ls", "a/b", strings.Repeat("a", 33)} {
+		before := len(e.fakeVyOS.Requests)
+		resp := e.doJSON(t, http.MethodGet, "/api/qos/shaper-status?interface="+url.QueryEscape(name), nil)
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("interface=%q: status = %d, want 400", name, resp.StatusCode)
+		}
+		if len(e.fakeVyOS.Requests) != before {
+			t.Errorf("interface=%q: VyOS was called", name)
+		}
+	}
+}
+
 func TestQosShaperStatus_ReturnsParsedClasses(t *testing.T) {
 	e := newTestEnv(t)
 	e.login(t)
