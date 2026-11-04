@@ -234,6 +234,9 @@ export function wanRuleFormToOps(
     if (!hasLimit) {
       if (hadLimit) ops.push({ op: 'delete', path: limitPath })
     } else {
+      // Every limit leaf has a VyOS default, so deleting first makes a
+      // cleared sub-field fall back to it instead of keeping the old value.
+      if (hadLimit) ops.push({ op: 'delete', path: limitPath })
       ops.push({ op: 'set', path: limitPath })
       for (const [segment, value] of limitFields) {
         if (value !== '') ops.push({ op: 'set', path: [...limitPath, segment], value })

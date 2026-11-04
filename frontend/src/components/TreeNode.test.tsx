@@ -26,8 +26,26 @@ describe('TreeNode', () => {
     await user.click(screen.getByRole('button', { name: /queue/i }))
 
     const { changes } = usePendingChangesStore.getState()
-    expect(changes).toHaveLength(1)
-    expect(changes[0].op).toEqual({ op: 'set', path: ['system', 'host-name'], value: 'router2' })
+    expect(changes.map((c) => c.op)).toEqual([
+      { op: 'delete', path: ['system', 'host-name'] },
+      { op: 'set', path: ['system', 'host-name'], value: 'router2' },
+    ])
+  })
+
+  it('replaces a leaf VyOS returned as a plain string instead of adding a second value', async () => {
+    const user = userEvent.setup()
+    render(
+      <TreeNode segment="name-server" path={['system', 'name-server']} value="1.1.1.1" depth={1} />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /edit/i }))
+    await user.type(screen.getByPlaceholderText('1.1.1.1'), '9.9.9.9')
+    await user.click(screen.getByRole('button', { name: /queue/i }))
+
+    expect(usePendingChangesStore.getState().changes.map((c) => c.op)).toEqual([
+      { op: 'delete', path: ['system', 'name-server'] },
+      { op: 'set', path: ['system', 'name-server'], value: '9.9.9.9' },
+    ])
   })
 
   it('masks a sensitive leaf and labels its edit action "Replace" instead of "Edit"', () => {

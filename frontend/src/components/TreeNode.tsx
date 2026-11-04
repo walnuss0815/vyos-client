@@ -224,6 +224,9 @@ function LeafRow({
   }
 
   function queueSet() {
+    // VyOS returns a multi-value leaf with one value as a plain string, so
+    // a bare `set` would add a second value instead of replacing it.
+    add({ op: { op: 'delete', path }, label: `delete ${path.join(' ')}` })
     add({ op: { op: 'set', path, value: draft }, label: `set ${path.join(' ')} '${draft}'` })
     setEditing(false)
     setDraft('')

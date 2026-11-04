@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import {
+  authSecretMissing,
   blankInterfaceFormValues,
   interfaceFormToOps,
   interfaceToFormValues,
@@ -31,7 +32,8 @@ export default function OSPFInterfaceForm({ protocol, iface, existingNames, onDo
   const isCreate = iface === undefined
   const trimmedName = name.trim()
   const nameTaken = isCreate && existingNames.includes(trimmedName)
-  const canSubmit = trimmedName !== '' && !nameTaken
+  const secretMissing = authSecretMissing(protocol, iface, values)
+  const canSubmit = trimmedName !== '' && !nameTaken && !secretMissing
 
   function update<K extends keyof OSPFInterfaceFormValues>(key: K, value: OSPFInterfaceFormValues[K]) {
     setValues((v) => ({ ...v, [key]: value }))
@@ -222,6 +224,13 @@ export default function OSPFInterfaceForm({ protocol, iface, existingNames, onDo
                 />
               </label>
             </div>
+          )}
+
+          {secretMissing && (
+            <p className="mt-2 text-xs text-danger-500">
+              Enter the {values.authMode === 'md5' ? 'key ID and key' : 'password'} to apply this authentication
+              change.
+            </p>
           )}
 
           {!isCreate && iface.authMode && (

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  authSecretMissing,
   blankInterfaceFormValues,
   deleteInterfaceOp,
   interfaceFormToOps,
@@ -258,6 +259,41 @@ describe('interfaceFormToOps - editing an existing interface', () => {
     expect(ops).toEqual([
       { op: 'delete', path: ['protocols', 'ospf', 'interface', 'eth0', 'authentication'] },
     ])
+  })
+})
+
+describe('authSecretMissing', () => {
+  it('is true when switching plaintext-password to md5 with a blank key', () => {
+    const iface = emptyInterface({ authMode: 'plaintext-password', hasPlaintextPassword: true })
+    const values = interfaceToFormValues(iface)
+    values.authMode = 'md5'
+    values.md5KeyId = '1'
+    expect(authSecretMissing('ospf', iface, values)).toBe(true)
+    values.md5Key = 'secret'
+    expect(authSecretMissing('ospf', iface, values)).toBe(false)
+  })
+
+  it('is true when the md5 key-id changes with a blank key', () => {
+    const iface = emptyInterface({ authMode: 'md5', md5KeyId: '1', hasMd5Key: true })
+    const values = interfaceToFormValues(iface)
+    values.md5KeyId = '2'
+    expect(authSecretMissing('ospf', iface, values)).toBe(true)
+  })
+
+  it('is false when the mode is unchanged and the password is blank (keep)', () => {
+    const iface = emptyInterface({ authMode: 'plaintext-password', hasPlaintextPassword: true })
+    expect(authSecretMissing('ospf', iface, interfaceToFormValues(iface))).toBe(false)
+  })
+
+  it('is false for none, null and ospfv3', () => {
+    const iface = emptyInterface({ authMode: 'plaintext-password', hasPlaintextPassword: true })
+    const values = interfaceToFormValues(iface)
+    values.authMode = ''
+    expect(authSecretMissing('ospf', iface, values)).toBe(false)
+    values.authMode = 'null'
+    expect(authSecretMissing('ospf', iface, values)).toBe(false)
+    values.authMode = 'md5'
+    expect(authSecretMissing('ospfv3', iface, values)).toBe(false)
   })
 })
 
