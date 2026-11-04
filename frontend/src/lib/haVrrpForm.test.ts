@@ -82,7 +82,7 @@ describe('VRRP group form', () => {
       preemptDelay: 0,
       rfc3768Compatibility: false,
       peerAddresses: [],
-      authenticationPassword: 'secret',
+      hasAuthenticationPassword: true,
       authenticationType: 'plaintext-password',
       excludeVrrpInterface: false,
       trackInterfaces: [],
@@ -91,10 +91,51 @@ describe('VRRP group form', () => {
       excludedAddresses: [],
     }
     const values = vrrpGroupToFormValues(before)
-    values.authenticationPassword = ''
     values.authenticationType = ''
     const ops = vrrpGroupFormToOps('OUTSIDE', before, values)
     expect(ops).toEqual([{ op: 'delete', path: ['high-availability', 'vrrp', 'group', 'OUTSIDE', 'authentication'] }])
+  })
+
+  describe('write-only authentication password', () => {
+    const authPath = ['high-availability', 'vrrp', 'group', 'OUTSIDE', 'authentication']
+    const before: VRRPGroup = {
+      name: 'OUTSIDE',
+      priority: 100,
+      advertiseInterval: 1,
+      disabled: false,
+      noPreempt: false,
+      preemptDelay: 0,
+      rfc3768Compatibility: false,
+      peerAddresses: [],
+      hasAuthenticationPassword: true,
+      authenticationType: 'plaintext-password',
+      excludeVrrpInterface: false,
+      trackInterfaces: [],
+      transitionScripts: {},
+      addresses: [],
+      excludedAddresses: [],
+    }
+
+    it('queues nothing when the password is left blank', () => {
+      expect(vrrpGroupFormToOps('OUTSIDE', before, vrrpGroupToFormValues(before))).toEqual([])
+    })
+
+    it('changing only the type does not queue the password', () => {
+      const values = vrrpGroupToFormValues(before)
+      values.authenticationType = 'ah'
+      expect(vrrpGroupFormToOps('OUTSIDE', before, values)).toEqual([
+        { op: 'set', path: [...authPath, 'type'], value: 'ah' },
+      ])
+    })
+
+    it('queues a typed password', () => {
+      const values = vrrpGroupToFormValues(before)
+      values.authenticationPassword = 'newpass'
+      expect(vrrpGroupFormToOps('OUTSIDE', before, values)).toEqual([
+        { op: 'set', path: [...authPath, 'password'], value: 'newpass' },
+        { op: 'set', path: [...authPath, 'type'], value: 'plaintext-password' },
+      ])
+    })
   })
 
   it('emits nothing when editing with no changes', () => {
@@ -109,6 +150,7 @@ describe('VRRP group form', () => {
       preemptDelay: 0,
       rfc3768Compatibility: false,
       peerAddresses: [],
+      hasAuthenticationPassword: false,
       excludeVrrpInterface: false,
       trackInterfaces: [],
       transitionScripts: {},

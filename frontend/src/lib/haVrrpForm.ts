@@ -60,6 +60,7 @@ export interface VRRPGroupFormValues {
   preemptDelay: string
   rfc3768Compatibility: boolean
   helloSourceAddress: string
+  /** Write-only: blank = unchanged. */
   authenticationPassword: string
   authenticationType: string
   excludeVrrpInterface: boolean
@@ -113,7 +114,7 @@ export function vrrpGroupToFormValues(group: VRRPGroup): VRRPGroupFormValues {
     preemptDelay: String(group.preemptDelay),
     rfc3768Compatibility: group.rfc3768Compatibility,
     helloSourceAddress: group.helloSourceAddress ?? '',
-    authenticationPassword: group.authenticationPassword ?? '',
+    authenticationPassword: '',
     authenticationType: group.authenticationType ?? '',
     excludeVrrpInterface: group.excludeVrrpInterface,
     healthCheckPing: group.healthCheck?.ping ?? '',
@@ -189,18 +190,17 @@ export function vrrpGroupFormToOps(
   }
 
   const authPath = [...base, 'authentication']
-  const hadAuth = beforeValues.authenticationPassword !== '' && beforeValues.authenticationType !== ''
-  const hasAuth = values.authenticationPassword.trim() !== '' && values.authenticationType.trim() !== ''
-  if (
-    beforeValues.authenticationPassword !== values.authenticationPassword ||
-    beforeValues.authenticationType !== values.authenticationType
-  ) {
-    if (!hasAuth) {
-      if (hadAuth) ops.push({ op: 'delete', path: authPath })
-    } else {
-      ops.push({ op: 'set', path: [...authPath, 'password'], value: values.authenticationPassword.trim() })
-      ops.push({ op: 'set', path: [...authPath, 'type'], value: values.authenticationType.trim() })
-    }
+  const hadPassword = before?.hasAuthenticationPassword ?? false
+  const hadAuth = hadPassword && beforeValues.authenticationType !== ''
+  const typedPassword = values.authenticationPassword.trim()
+  const newType = values.authenticationType.trim()
+  if (newType === '') {
+    if (hadAuth) ops.push({ op: 'delete', path: authPath })
+  } else if (typedPassword !== '') {
+    ops.push({ op: 'set', path: [...authPath, 'password'], value: typedPassword })
+    ops.push({ op: 'set', path: [...authPath, 'type'], value: newType })
+  } else if (hadPassword && newType !== beforeValues.authenticationType) {
+    ops.push({ op: 'set', path: [...authPath, 'type'], value: newType })
   }
 
   return ops

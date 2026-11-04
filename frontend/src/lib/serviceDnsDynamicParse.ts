@@ -55,7 +55,7 @@ function parseEntry(name: string, raw: unknown): DynamicDNSEntry {
     zone: asString(child(raw, 'zone')),
     username: asString(child(raw, 'username')),
     hasPassword: child(raw, 'password') !== undefined,
-    key: asString(child(raw, 'key')),
+    hasKey: child(raw, 'key') !== undefined,
     ttl: asString(child(raw, 'ttl')),
     waitTime: asString(child(raw, 'wait-time')),
     expiryTime: asString(child(raw, 'expiry-time')),

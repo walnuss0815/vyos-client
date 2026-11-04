@@ -17,6 +17,7 @@ export interface DynamicDNSEntryFormValues {
   /** Write-only, like SystemUserFormValues.password - see that type's
    * doc comment for the general convention. */
   password: string
+  /** Write-only like `password`: blank = unchanged. */
   key: string
   ttl: string
   waitTime: string
@@ -56,7 +57,7 @@ export function dynamicDNSEntryToFormValues(entry: DynamicDNSEntry): DynamicDNSE
     zone: entry.zone ?? '',
     username: entry.username ?? '',
     password: '',
-    key: entry.key ?? '',
+    key: '',
     ttl: entry.ttl ?? '',
     waitTime: entry.waitTime ?? '',
     expiryTime: entry.expiryTime ?? '',
@@ -75,7 +76,6 @@ const SCALAR_FIELDS: ScalarField[] = [
   { get: (v) => v.server, segments: ['server'] },
   { get: (v) => v.zone, segments: ['zone'] },
   { get: (v) => v.username, segments: ['username'] },
-  { get: (v) => v.key, segments: ['key'] },
   { get: (v) => v.ttl, segments: ['ttl'] },
   { get: (v) => v.waitTime, segments: ['wait-time'] },
   { get: (v) => v.expiryTime, segments: ['expiry-time'] },
@@ -125,6 +125,11 @@ export function dynamicDNSEntryFormToOps(
   const trimmedPassword = values.password.trim()
   if (trimmedPassword) {
     ops.push({ op: 'set', path: [...base, 'password'], value: trimmedPassword })
+  }
+
+  const trimmedKey = values.key.trim()
+  if (trimmedKey) {
+    ops.push({ op: 'set', path: [...base, 'key'], value: trimmedKey })
   }
 
   return ops
