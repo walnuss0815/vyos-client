@@ -2321,6 +2321,7 @@ func TestFiles_RejectsPathsOutsideBrowsableRoots(t *testing.T) {
 		"/config/a b", "/config/a\tb", "/config/*", "/config/a?", "/config/[a]", "/config/scp:x",
 		"/config/config.boot", "/config/archive", "/config/archive/config.boot.1.gz", "/config/x/../archive/y",
 		"/var/log/x\ny", "/var/log/$(reboot)", "/var/log/a;b", "/var/log/`id`", "/var/log/a|b", "/var/log/a&b",
+		"/config/auth", "/config/auth/server.key", "/config/x/../auth/server.key",
 	} {
 		resp := e.doJSON(t, http.MethodGet, "/api/files?path="+url.QueryEscape(p), nil)
 		status := resp.StatusCode
