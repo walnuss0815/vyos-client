@@ -564,16 +564,16 @@ repository's published tags:
    browser.
 4. `imageupdate.NewestMatching` compares the currently configured tag
    against every tag the registry returned, using a permissive
-   version parser (optional leading "v", major.minor(.patch)?, optional
+   version parser (optional leading "v", major(.minor(.patch)?)?, optional
    suffix like "-alpine") — deliberately more permissive than
    self-upgrade's own strict `vX.Y.Z` comparator
    (`internal/selfupgrade/semver.go`), since real-world container tags vary far more than
    this project's own clean release tags. A candidate is only ever
    suggested as an update if it shares the current tag's exact
-   "flavor" (leading-"v" style, suffix, and patch-presence all
-   identical) — e.g. a `-alpine` tag is never suggested as an update
-   for a plain tag, and a bare `node:22` is never compared against a
-   patched `node:22.1.0` as if the missing patch meant zero.
+   "flavor" (leading-"v" style, suffix, and minor- and patch-presence
+   all identical) — e.g. a `-alpine` tag is never suggested as an
+   update for a plain tag, and a bare `node:22` is never compared
+   against a patched `node:22.1.0` as if the missing patch meant zero.
 5. Clicking "Upgrade to X" reuses the exact same two-step pattern as
    self-upgrade: pull the new image via the existing `POST
    /api/container/images`, then queue `set container name <NAME> image

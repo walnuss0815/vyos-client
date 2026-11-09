@@ -405,9 +405,9 @@ stay `'self'` with no exception at all.
   so even this app's own curated allowlist (`/config`, `/var/log`) is
   something an operator may reasonably want to opt out of entirely
   rather than rely on that allowlist alone. Within that allowlist,
-  `.boot` config files and `/config/archive` are blocked, because they
-  contain unmasked secrets (the file browser shows raw file contents,
-  not the masked config view).
+  `.boot` config files, `/config/archive` and `/config/auth` (private
+  keys) are blocked, because they contain unmasked secrets (the file
+  browser shows raw file contents, not the masked config view).
 
 ### Restricting access to LAN clients only
 
