@@ -5,6 +5,18 @@ import { usePendingChangesStore } from './pendingChanges'
 
 export type SessionStatus = 'unknown' | 'authenticated' | 'anonymous'
 
+// Mirrors lastUser in sessionStorage, where the pending-changes cart
+// lives too, so a reload can't hand one user's queue to another.
+const LAST_USER_KEY = 'vyos-client-last-user'
+
+/** Records `user` as this tab's user, first clearing the queued changes
+ * if they were made by someone else. */
+function rememberUser(previous: string | null, user: string) {
+  const last = previous ?? sessionStorage.getItem(LAST_USER_KEY)
+  if (last !== null && last !== user) usePendingChangesStore.getState().clear()
+  sessionStorage.setItem(LAST_USER_KEY, user)
+}
+
 interface SessionState {
   user: string | null
   /** The last user to authenticate in this tab; survives session
@@ -56,6 +68,9 @@ export const useSessionStore = create<SessionState>((set, get) => {
     checkSession: async () => {
       try {
         const res = await api.getSession()
+        // The cookie is shared between tabs, so a reload can find
+        // another user signed in.
+        rememberUser(get().lastUser, res.user)
         set((state) => ({
           user: res.user,
           lastUser: res.user,
@@ -71,8 +86,7 @@ export const useSessionStore = create<SessionState>((set, get) => {
       const res = await api.login(username, password)
       // Changes queued by someone else must not be committed (or seen)
       // by this user.
-      const { lastUser } = get()
-      if (lastUser !== null && lastUser !== res.user) usePendingChangesStore.getState().clear()
+      rememberUser(get().lastUser, res.user)
       set((state) => ({
         user: res.user,
         lastUser: res.user,
@@ -87,6 +101,7 @@ export const useSessionStore = create<SessionState>((set, get) => {
         await api.logout()
       } finally {
         set({ user: null, lastUser: null, status: 'anonymous' })
+        sessionStorage.removeItem(LAST_USER_KEY)
         // Any queued-but-uncommitted operations may embed raw, unmasked
         // values (e.g. a secret typed into a form but never committed).
         // Those must not survive past this session on a shared/kiosk

@@ -38,6 +38,48 @@ describe('useSessionStore', () => {
     expect(useSessionStore.getState().status).toBe('anonymous')
   })
 
+  describe('last user across a page reload', () => {
+    // After a reload the in-memory lastUser is null again; only
+    // sessionStorage (like the pending-changes cart) survives.
+    it('clears pending changes when a different user logs in after a reload', async () => {
+      sessionStorage.setItem('vyos-client-last-user', 'alice')
+      usePendingChangesStore.getState().add({ op: { op: 'set', path: ['a'], value: '1' }, label: 'a' })
+      server.use(http.post('/api/auth/login', () => HttpResponse.json({ user: 'bob' })))
+
+      await useSessionStore.getState().login('bob', 'pw')
+
+      expect(usePendingChangesStore.getState().changes).toHaveLength(0)
+    })
+
+    it('keeps pending changes when the same user logs in after a reload', async () => {
+      sessionStorage.setItem('vyos-client-last-user', 'admin')
+      usePendingChangesStore.getState().add({ op: { op: 'set', path: ['a'], value: '1' }, label: 'a' })
+
+      await useSessionStore.getState().login('admin', 'correct-password')
+
+      expect(usePendingChangesStore.getState().changes).toHaveLength(1)
+    })
+
+    it('clears pending changes when a reload finds a different user already signed in', async () => {
+      sessionStorage.setItem('vyos-client-last-user', 'alice')
+      usePendingChangesStore.getState().add({ op: { op: 'set', path: ['a'], value: '1' }, label: 'a' })
+      server.use(http.get('/api/auth/session', () => HttpResponse.json({ user: 'bob' })))
+
+      await useSessionStore.getState().checkSession()
+
+      expect(usePendingChangesStore.getState().changes).toHaveLength(0)
+      expect(sessionStorage.getItem('vyos-client-last-user')).toBe('bob')
+    })
+
+    it('stores the user on login and removes it on logout', async () => {
+      await useSessionStore.getState().login('admin', 'correct-password')
+      expect(sessionStorage.getItem('vyos-client-last-user')).toBe('admin')
+
+      await useSessionStore.getState().logout()
+      expect(sessionStorage.getItem('vyos-client-last-user')).toBeNull()
+    })
+  })
+
   it('does not flag sessionExpired on an ordinary logout', async () => {
     useSessionStore.setState({ user: 'admin', status: 'authenticated' })
     await useSessionStore.getState().logout()
