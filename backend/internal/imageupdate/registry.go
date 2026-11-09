@@ -57,7 +57,7 @@ const (
 	// selfupgrade.Client's own maxPages reasoning. Manual/on-demand
 	// triggering (see docs/architecture.md) makes a modestly higher
 	// bound than selfupgrade's 5 reasonable here.
-	maxTagPages = 10
+	maxTagPages = 30
 )
 
 // Credentials authenticates against a registry - looked up from a
