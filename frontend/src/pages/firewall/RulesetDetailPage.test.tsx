@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react'
+import { act, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { Route, Routes } from 'react-router-dom'
@@ -308,6 +308,42 @@ describe('RulesetDetailPage', () => {
       // With only one rule, no reordering hint or drag affordance is
       // needed either.
       expect(screen.queryByText(/drag the/i)).not.toBeInTheDocument()
+    })
+
+    it('disables Move up/down after a move is queued', async () => {
+      const user = userEvent.setup()
+      renderDetail('/firewall/rulesets/ipv4/base/forward')
+      await screen.findByText('forward')
+
+      await user.click(screen.getByLabelText('Move rule 10 down'))
+
+      expect(screen.getByLabelText('Move rule 10 down')).toBeDisabled()
+      expect(screen.getByLabelText('Move rule 20 up')).toBeDisabled()
+      expect(
+        screen.getByText(/commit or discard the queued rule changes before reordering/i),
+      ).toBeInTheDocument()
+    })
+
+    it('re-enables moving after the queue is discarded', async () => {
+      const user = userEvent.setup()
+      renderDetail('/firewall/rulesets/ipv4/base/forward')
+      await screen.findByText('forward')
+
+      await user.click(screen.getByLabelText('Move rule 10 down'))
+      act(() => usePendingChangesStore.getState().clear())
+
+      expect(screen.getByLabelText('Move rule 10 down')).toBeEnabled()
+    })
+
+    it('does not block moving when queued changes belong to another ruleset', async () => {
+      usePendingChangesStore.getState().add({
+        op: { op: 'delete', path: ['firewall', 'ipv4', 'name', 'OTHER', 'rule', '10'] },
+        label: 'x',
+      })
+      renderDetail('/firewall/rulesets/ipv4/base/forward')
+      await screen.findByText('forward')
+
+      expect(screen.getByLabelText('Move rule 10 down')).toBeEnabled()
     })
   })
 

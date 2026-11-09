@@ -24,6 +24,7 @@ export default function RulesetDetailPage() {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
   const add = usePendingChangesStore((s) => s.add)
+  const changes = usePendingChangesStore((s) => s.changes)
 
   if (
     (params.family !== 'ipv4' && params.family !== 'ipv6') ||
@@ -90,7 +91,14 @@ export default function RulesetDetailPage() {
   // Captures `rules` (not `ruleset.rules` directly) since TypeScript's
   // control-flow narrowing of `ruleset` from the undefined-check above
   // doesn't persist into this nested function's body.
+  // Moves are computed from the fetched rule numbers, so a second move
+  // before commit would use stale numbers. A queued move can't be told
+  // apart from a rule edit, so any queued change under the rules locks it.
+  const rulesPrefix = rulesetPath(ref, 'rule').join(' ') + ' '
+  const rulesLocked = changes.some((c) => (c.op.path.join(' ') + ' ').startsWith(rulesPrefix))
+
   function reorderRule(fromIndex: number, toIndex: number) {
+    if (rulesLocked) return
     const ops = reorderRuleOps(ref, rules, fromIndex, toIndex)
     for (const op of ops) {
       add({ op, label: `${op.op} ${op.path.join(' ')}${op.value ? ` '${op.value}'` : ''}` })
@@ -182,6 +190,11 @@ export default function RulesetDetailPage() {
           available between its new neighbors, the rest of the ruleset too).
         </p>
       )}
+      {ruleset.rules.length > 1 && rulesLocked && (
+        <p className="mb-2 text-xs text-warning-500">
+          Commit or discard the queued rule changes before reordering.
+        </p>
+      )}
       <div className="overflow-x-auto rounded-xl border border-surface-border">
         <table className="w-full text-sm">
           <thead className="bg-surface-900 text-left text-xs uppercase tracking-wide text-slate-500">
@@ -234,7 +247,7 @@ export default function RulesetDetailPage() {
                 <td className="px-3 py-2 text-right whitespace-nowrap">
                   <button
                     onClick={() => reorderRule(index, index - 1)}
-                    disabled={index === 0}
+                    disabled={index === 0 || rulesLocked}
                     aria-label={`Move rule ${rule.number} up`}
                     className="text-xs text-slate-500 hover:text-accent-500 disabled:opacity-30 disabled:hover:text-slate-500"
                   >
@@ -242,7 +255,7 @@ export default function RulesetDetailPage() {
                   </button>{' '}
                   <button
                     onClick={() => reorderRule(index, index + 1)}
-                    disabled={index === ruleset.rules.length - 1}
+                    disabled={index === ruleset.rules.length - 1 || rulesLocked}
                     aria-label={`Move rule ${rule.number} down`}
                     className="text-xs text-slate-500 hover:text-accent-500 disabled:opacity-30 disabled:hover:text-slate-500"
                   >
