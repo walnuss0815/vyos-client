@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { hasPendingDelete, hasPendingSet, usePendingChangesStore, withPendingEnable } from './pendingChanges'
+import {
+  hasPendingDelete,
+  hasPendingSet,
+  pendingValue,
+  usePendingChangesStore,
+  withPendingEnable,
+  type PendingChange,
+} from './pendingChanges'
 
 beforeEach(() => {
   sessionStorage.clear()
@@ -209,6 +216,32 @@ describe('usePendingChangesStore', () => {
       usePendingChangesStore.getState().clear()
       expect(usePendingChangesStore.getState().droppedSecretPaths).toEqual([])
     })
+  })
+})
+
+describe('pendingValue', () => {
+  const c = (op: 'set' | 'delete', value?: string): PendingChange => ({
+    id: Math.random().toString(),
+    op: { op, path: ['a', 'b'], value },
+    label: 'x',
+  })
+
+  it('returns the latest queued set value', () => {
+    expect(pendingValue([c('set', '1'), c('set', '2')], ['a', 'b'])).toBe('2')
+  })
+
+  it('returns undefined after a delete', () => {
+    expect(pendingValue([c('set', '1'), c('delete')], ['a', 'b'])).toBeUndefined()
+  })
+
+  it('returns undefined when nothing is queued for the path', () => {
+    expect(pendingValue([c('set', '1')], ['a'])).toBeUndefined()
+  })
+
+  it('falls back to the committed value only when nothing is queued', () => {
+    expect(pendingValue([], ['a', 'b'], 'committed')).toBe('committed')
+    expect(pendingValue([c('delete')], ['a', 'b'], 'committed')).toBeUndefined()
+    expect(pendingValue([c('set', '2')], ['a', 'b'], 'committed')).toBe('2')
   })
 })
 

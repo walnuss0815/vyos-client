@@ -60,6 +60,15 @@ function latestPendingOp(changes: PendingChange[], path: string[]): ConfigOp | u
   return undefined
 }
 
+/** The value `path` will have after commit: the latest queued `set`,
+ * undefined after a queued delete, or `committed` if nothing is queued -
+ * lets a control show what the user just picked. */
+export function pendingValue(changes: PendingChange[], path: string[], committed?: string): string | undefined {
+  const op = latestPendingOp(changes, path)
+  if (!op) return committed
+  return op.op === 'set' ? op.value : undefined
+}
+
 /** Whether the most recently queued op for exactly `path` is a `set`.
  * Used by useServiceConfig.ts/useVpnConfig.ts so a feature gated
  * behind an "Enable X" button (which queues `set <path>`) becomes

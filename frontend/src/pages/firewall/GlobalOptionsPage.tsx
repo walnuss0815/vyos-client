@@ -1,12 +1,17 @@
 import { globalOptionsPath } from '../../lib/firewallParse'
 import { useFirewallConfig } from '../../hooks/useFirewallConfig'
-import { usePendingChangesStore } from '../../store/pendingChanges'
+import { pendingValue, usePendingChangesStore } from '../../store/pendingChanges'
 import { inputClass as selectClass } from '../../lib/formStyles'
 import InfoTooltip from '../../components/InfoTooltip'
 
 export default function GlobalOptionsPage() {
   const { globalOptions, isLoading, isError } = useFirewallConfig()
   const add = usePendingChangesStore((s) => s.add)
+  const changes = usePendingChangesStore((s) => s.changes)
+
+  function queued(committed: string | undefined, ...segments: string[]) {
+    return pendingValue(changes, globalOptionsPath(...segments), committed)
+  }
 
   function queueToggle(...segments: string[]) {
     return (value: string) => {
@@ -28,31 +33,31 @@ export default function GlobalOptionsPage() {
           <ToggleRow
             label="Respond to all ping to the router"
             hint="Whether the router answers ICMP echo requests (ping) sent to any of its own addresses."
-            value={globalOptions.allPing}
+            value={queued(globalOptions.allPing, 'all-ping')}
             onChange={queueToggle('all-ping')}
           />
           <ToggleRow
             label="Respond to broadcast ping"
             hint="Whether to answer pings sent to a broadcast address (e.g. 192.168.1.255) - leaving this off avoids participating in Smurf-style amplification floods."
-            value={globalOptions.broadcastPing}
+            value={queued(globalOptions.broadcastPing, 'broadcast-ping')}
             onChange={queueToggle('broadcast-ping')}
           />
           <ToggleRow
             label="TCP SYN cookies"
             hint="A defense against SYN-flood attacks: instead of allocating state for every half-open connection, the kernel encodes it into the SYN-ACK sequence number and reconstructs it only if the handshake completes."
-            value={globalOptions.synCookies}
+            value={queued(globalOptions.synCookies, 'syn-cookies')}
             onChange={queueToggle('syn-cookies')}
           />
           <ToggleRow
             label="Log martian (spoofed/unroutable) packets"
             hint="A 'martian packet' has a source or destination address that shouldn't be able to reach this interface (e.g. spoofed) - logging them helps spot spoofing or routing misconfiguration."
-            value={globalOptions.logMartians}
+            value={queued(globalOptions.logMartians, 'log-martians')}
             onChange={queueToggle('log-martians')}
           />
           <ToggleRow
             label="Accept IP source-routed packets"
             hint="Source routing lets the sender dictate a packet's path through the network - a legacy feature almost never needed today and commonly abused to bypass filtering, so this is usually left off."
-            value={globalOptions.ipSrcRoute}
+            value={queued(globalOptions.ipSrcRoute, 'ip-src-route')}
             onChange={queueToggle('ip-src-route')}
           />
         </div>
@@ -70,19 +75,19 @@ export default function GlobalOptionsPage() {
           <ActionRow
             label="Established connections"
             hint="Traffic belonging to a connection the connection tracker has already seen a reply for."
-            value={globalOptions.stateEstablishedAction}
+            value={queued(globalOptions.stateEstablishedAction, 'state-policy', 'established', 'action')}
             onChange={queueToggle('state-policy', 'established', 'action')}
           />
           <ActionRow
             label="Related connections"
             hint="Traffic that's tied to an existing connection but isn't part of it directly - e.g. an FTP data channel, or an ICMP error referencing another flow."
-            value={globalOptions.stateRelatedAction}
+            value={queued(globalOptions.stateRelatedAction, 'state-policy', 'related', 'action')}
             onChange={queueToggle('state-policy', 'related', 'action')}
           />
           <ActionRow
             label="Invalid connections"
             hint="Packets the connection tracker can't associate with any known connection state - often malformed or spoofed traffic."
-            value={globalOptions.stateInvalidAction}
+            value={queued(globalOptions.stateInvalidAction, 'state-policy', 'invalid', 'action')}
             onChange={queueToggle('state-policy', 'invalid', 'action')}
           />
         </div>
@@ -99,7 +104,7 @@ function ToggleRow({
 }: {
   label: string
   hint?: string
-  value: 'enable' | 'disable' | undefined
+  value: string | undefined
   onChange: (value: string) => void
 }) {
   return (

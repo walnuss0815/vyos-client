@@ -5,7 +5,7 @@ import { rulePath, rulesetPath, type RulesetRef } from '../../lib/firewallParse'
 import { reorderRuleOps } from '../../lib/firewallRuleForm'
 import type { FirewallRule, RuleAction } from '../../lib/firewallTypes'
 import { useFirewallConfig } from '../../hooks/useFirewallConfig'
-import { usePendingChangesStore } from '../../store/pendingChanges'
+import { pendingValue, usePendingChangesStore } from '../../store/pendingChanges'
 import { inputClass } from '../../lib/formStyles'
 import InfoTooltip from '../../components/InfoTooltip'
 
@@ -131,7 +131,7 @@ export default function RulesetDetailPage() {
               <InfoTooltip text="What happens to a packet that falls through without matching any rule above. return exits back to whichever chain jumped here, resuming evaluation there instead of dropping/accepting outright." />
             )}
             <select
-              value={ruleset.defaultAction ?? 'accept'}
+              value={pendingValue(changes, rulesetPath(ref, 'default-action'), ruleset.defaultAction) ?? 'accept'}
               onChange={(e) => queueSetDefaultAction(e.target.value)}
               className={inputClass}
             >

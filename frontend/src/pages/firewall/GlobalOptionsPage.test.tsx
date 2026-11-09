@@ -59,4 +59,27 @@ describe('GlobalOptionsPage', () => {
       value: 'drop',
     })
   })
+
+  it('shows "not set" when a delete of the option is queued', async () => {
+    usePendingChangesStore.getState().add({
+      op: { op: 'delete', path: ['firewall', 'global-options', 'all-ping'] },
+      label: 'x',
+    })
+    renderWithProviders(<GlobalOptionsPage />)
+    await screen.findByText('Respond to all ping to the router')
+
+    expect(screen.getByLabelText(/respond to all ping/i)).toHaveValue('')
+  })
+
+  it('shows queued values instead of the committed ones', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<GlobalOptionsPage />)
+    await screen.findByText('Respond to all ping to the router')
+
+    await user.selectOptions(screen.getByLabelText(/respond to all ping/i), 'disable')
+    await user.selectOptions(screen.getByLabelText(/established connections/i), 'drop')
+
+    expect(screen.getByLabelText(/respond to all ping/i)).toHaveValue('disable')
+    expect(screen.getByLabelText(/established connections/i)).toHaveValue('drop')
+  })
 })

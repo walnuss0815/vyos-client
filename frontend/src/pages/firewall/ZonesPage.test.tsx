@@ -68,6 +68,23 @@ describe('ZonesPage', () => {
       path: ['firewall', 'zone', 'LAN', 'default-action'],
       value: 'reject',
     })
+    expect(screen.getAllByLabelText(/default action/i)[0]).toHaveValue('reject')
+  })
+
+  it('shows the VyOS default when a delete of the zone default-action is queued', async () => {
+    server.use(
+      http.get('/api/config/tree', () =>
+        HttpResponse.json({ data: { zone: { LAN: { interface: 'eth1', 'default-action': 'reject' } } } }),
+      ),
+    )
+    usePendingChangesStore.getState().add({
+      op: { op: 'delete', path: ['firewall', 'zone', 'LAN', 'default-action'] },
+      label: 'x',
+    })
+    renderWithProviders(<ZonesPage />)
+    await screen.findByText('LAN')
+
+    expect(screen.getByLabelText(/default action/i)).toHaveValue('drop')
   })
 
   it('queues zone deletion', async () => {
