@@ -224,6 +224,7 @@ function RollbackSection() {
 }
 
 function RebootSection() {
+  const unsaved = useUnsavedCommitStore((s) => s.committedChanges.length)
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -252,9 +253,13 @@ function RebootSection() {
     <div className="rounded-xl border border-surface-border bg-surface-900 p-4">
       <h2 className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">Reboot</h2>
       <p className="mb-3 text-xs text-slate-500">
-        Restarts the router immediately. Only committed and saved configuration survives a reboot
-        - anything still sitting in the pending-changes cart is lost.
+        Restarts the router immediately. Only saved configuration survives a reboot.
       </p>
+      {unsaved > 0 && (
+        <p className="mb-3 text-xs text-warning-500">
+          {unsaved} committed change{unsaved === 1 ? " isn't" : "s aren't"} saved and will be lost.
+        </p>
+      )}
       {done ? (
         <p className="text-xs text-success-500">
           Reboot command sent - the router is restarting now. This session will disconnect
