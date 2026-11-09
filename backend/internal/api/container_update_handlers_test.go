@@ -284,6 +284,7 @@ func TestCheckContainerImageUpdate_MajorUpdate(t *testing.T) {
 	}{
 		{"16.4", `"16.4","17.0"`, true},
 		{"16.4", `"16.4","16.5"`, false},
+		{"16", `"16","17"`, true},
 	} {
 		e := newTestEnv(t)
 		e.apiServer.ContainerUpdateChecksEnabled = true
