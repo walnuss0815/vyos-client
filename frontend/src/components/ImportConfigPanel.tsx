@@ -115,7 +115,7 @@ export default function ImportConfigPanel() {
         <button
           onClick={handleKeep}
           disabled={busy}
-          className="mt-3 rounded-lg bg-success-500 px-4 py-2 text-sm font-medium text-black hover:brightness-110 disabled:opacity-60"
+          className="mt-3 rounded-lg bg-success-600 px-4 py-2 text-sm font-medium text-black hover:brightness-110 disabled:opacity-60"
         >
           Keep changes
         </button>

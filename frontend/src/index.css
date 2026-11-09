@@ -21,6 +21,7 @@
   --color-danger-500: #ef4444;
   --color-warning-500: #f59e0b;
   --color-success-500: #22c55e;
+  --color-success-600: #22c55e;
 }
 
 /*
@@ -58,16 +59,19 @@
   --color-accent-500: #2563eb;
   --color-accent-600: #2563eb;
 
+  /* Text tokens are kept at WCAG AA contrast (>= 4.5:1) on white. */
   --color-danger-500: #dc2626;
-  --color-warning-500: #d97706;
-  --color-success-500: #16a34a;
+  --color-warning-500: #b45309;
+  --color-success-500: #15803d;
+  /* Fill behind black button text; the darker text shade would drop it below AA. */
+  --color-success-600: #16a34a;
 
   --color-white: #0f172a;
   --color-slate-200: #1e293b;
   --color-slate-300: #334155;
-  --color-slate-400: #64748b;
-  --color-slate-500: #94a3b8;
-  --color-slate-600: #cbd5e1;
+  --color-slate-400: #475569;
+  --color-slate-500: #64748b;
+  --color-slate-600: #64748b;
 }
 
 .dark {
@@ -84,6 +88,7 @@
   --color-danger-500: #ef4444;
   --color-warning-500: #f59e0b;
   --color-success-500: #22c55e;
+  --color-success-600: #22c55e;
 
   --color-white: #fff;
   --color-slate-200: oklch(92.9% 0.013 255.508);

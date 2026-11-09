@@ -375,7 +375,7 @@ export default function PendingChangesBar() {
             <button
               onClick={handleKeep}
               disabled={busy}
-              className="rounded-lg bg-success-500 px-4 py-2 text-sm font-medium text-black hover:brightness-110 disabled:opacity-60"
+              className="rounded-lg bg-success-600 px-4 py-2 text-sm font-medium text-black hover:brightness-110 disabled:opacity-60"
             >
               {isRollback ? 'Keep this rollback' : 'Keep changes'}
             </button>

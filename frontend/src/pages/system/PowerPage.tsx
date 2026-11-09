@@ -204,7 +204,7 @@ function RollbackSection() {
           <button
             onClick={() => void handleKeep()}
             disabled={busy}
-            className="rounded-lg bg-success-500 px-3 py-1.5 text-xs font-medium text-black hover:brightness-110 disabled:opacity-60"
+            className="rounded-lg bg-success-600 px-3 py-1.5 text-xs font-medium text-black hover:brightness-110 disabled:opacity-60"
           >
             {busy ? 'Confirming…' : 'Keep this rollback'}
           </button>
