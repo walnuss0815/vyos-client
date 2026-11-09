@@ -113,9 +113,27 @@ func NewClient(cfg Config) *Client {
 	}
 	httpClient := cfg.HTTPClient
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: timeout}
+		httpClient = &http.Client{Timeout: timeout, CheckRedirect: refuseHTTPSDowngrade}
 	}
 	return &Client{timeout: timeout, httpClient: httpClient}
+}
+
+// maxRedirects matches net/http's own default limit.
+const maxRedirects = 10
+
+// refuseHTTPSDowngrade keeps Go's default redirect policy (which would
+// replay Authorization on a same-host https-to-http redirect) from
+// leaking registry credentials in cleartext. Redirects to other hosts
+// stay allowed: registries legitimately send blob and token requests
+// to a CDN or separate auth host.
+func refuseHTTPSDowngrade(req *http.Request, via []*http.Request) error {
+	if len(via) >= maxRedirects {
+		return fmt.Errorf("stopped after %d redirects", maxRedirects)
+	}
+	if via[len(via)-1].URL.Scheme == "https" && req.URL.Scheme != "https" {
+		return fmt.Errorf("refusing redirect from https to %s", req.URL.Scheme)
+	}
+	return nil
 }
 
 func (c *Client) httpClientFor(insecure bool) *http.Client {
@@ -126,8 +144,9 @@ func (c *Client) httpClientFor(insecure bool) *http.Client {
 	defer c.mu.Unlock()
 	if c.insecureHTTPClient == nil {
 		c.insecureHTTPClient = &http.Client{
-			Timeout:   c.timeout,
-			Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}, //nolint:gosec // deliberate, opt-in per VyOS's own `container registry <name> insecure` flag - see ListTags's doc comment.
+			Timeout:       c.timeout,
+			CheckRedirect: refuseHTTPSDowngrade,
+			Transport:     &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}, //nolint:gosec // deliberate, opt-in per VyOS's own `container registry <name> insecure` flag - see ListTags's doc comment.
 		}
 	}
 	return c.insecureHTTPClient

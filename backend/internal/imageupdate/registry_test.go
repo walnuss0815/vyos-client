@@ -130,6 +130,58 @@ func TestListTags_ExactlyMaxPagesIsNotAnError(t *testing.T) {
 	}
 }
 
+// NewClient(Config{}) can't trust an httptest TLS server's certificate,
+// so the end-to-end case goes through the insecure client (which skips
+// verification), built by the same code path as the default one.
+func TestRegistryClient_RefusesHTTPSToHTTPRedirect(t *testing.T) {
+	var plainHits int
+	plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		plainHits++
+		_, _ = w.Write([]byte(`{"name":"library/nginx","tags":["1.25.3"]}`))
+	}))
+	defer plain.Close()
+	secure := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, plain.URL+r.URL.RequestURI(), http.StatusFound)
+	}))
+	defer secure.Close()
+
+	c := NewClient(Config{})
+	ref := testRef(t, strings.TrimPrefix(secure.URL, "https://"))
+	_, err := c.ListTags(context.Background(), ref, nil, true)
+	if err == nil || !strings.Contains(err.Error(), "refusing redirect from https") {
+		t.Fatalf("expected the downgrade to be refused, got %v", err)
+	}
+	if plainHits != 0 {
+		t.Errorf("plain-HTTP server was reached %d times", plainHits)
+	}
+}
+
+func TestRefuseHTTPSDowngrade(t *testing.T) {
+	req := func(u string) *http.Request {
+		r, err := http.NewRequest(http.MethodGet, u, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	if err := refuseHTTPSDowngrade(req("https://cdn.example.com/blob"), []*http.Request{req("https://registry.example.com/v2/")}); err != nil {
+		t.Errorf("https to https (other host) = %v, want nil", err)
+	}
+	if err := refuseHTTPSDowngrade(req("http://registry.example.com/v2/"), []*http.Request{req("https://registry.example.com/v2/")}); err == nil {
+		t.Error("https to http = nil, want error")
+	}
+	if err := refuseHTTPSDowngrade(req("http://b.example.com/"), []*http.Request{req("http://a.example.com/")}); err != nil {
+		t.Errorf("http to http = %v, want nil", err)
+	}
+	via := make([]*http.Request, maxRedirects)
+	for i := range via {
+		via[i] = req("https://registry.example.com/v2/")
+	}
+	if err := refuseHTTPSDowngrade(req("https://registry.example.com/v2/"), via); err == nil {
+		t.Error("redirect past the cap = nil, want error")
+	}
+}
+
 func TestListTags_BearerChallenge(t *testing.T) {
 	var tokenRequests int
 	var tokenServer *httptest.Server
