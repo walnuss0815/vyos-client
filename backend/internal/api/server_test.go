@@ -2356,7 +2356,7 @@ func TestFiles_SendsCleanedPathToVyOS(t *testing.T) {
 }
 
 func TestFiles_AllowsOrdinaryPaths(t *testing.T) {
-	for _, p := range []string{"/var/log/messages", "/config/scripts/post-config.d/x.sh"} {
+	for _, p := range []string{"/var/log/messages", "/config/scripts/post-config.d/x.sh", "/var/log/journal/x/system@a-b.journal~"} {
 		t.Run(p, func(t *testing.T) {
 			e := newTestEnv(t)
 			e.apiServer.FileBrowserEnabled = true
