@@ -50,7 +50,7 @@ func (s *Server) handleFileBrowserRoots(w http.ResponseWriter, _ *http.Request) 
 	writeJSON(w, http.StatusOK, fileBrowserRootsResponse{Enabled: true, Roots: fileBrowserRoots})
 }
 
-var filePathPattern = regexp.MustCompile(`^/[A-Za-z0-9._/@+-]*$`)
+var filePathPattern = regexp.MustCompile(`^/[A-Za-z0-9._/@+~-]*$`)
 
 // validateFileBrowserPath reports whether p is one of fileBrowserRoots
 // or lexically nested under one of them. Uses path.Clean (not
