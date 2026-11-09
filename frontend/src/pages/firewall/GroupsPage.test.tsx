@@ -113,4 +113,31 @@ describe('GroupsPage', () => {
 
     expect(screen.getByRole('button', { name: /queue group creation/i })).toBeDisabled()
   })
+
+  it('rejects a name that already exists for this group type', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<GroupsPage />)
+    await screen.findByText('SERVERS')
+
+    await user.click(screen.getByRole('button', { name: /new group/i }))
+    await user.type(screen.getByPlaceholderText('SERVERS'), ' SERVERS ')
+    const [firstMemberInput] = screen.getAllByPlaceholderText(/10.0.0.1 or/i)
+    await user.type(firstMemberInput, '10.0.0.9')
+
+    expect(screen.getByText(/SERVERS already exists/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /queue group creation/i })).toBeDisabled()
+  })
+
+  it('allows a name that only exists for another group type', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<GroupsPage />)
+    await screen.findByText('SERVERS')
+
+    await user.click(screen.getByRole('button', { name: /new group/i }))
+    await user.type(screen.getByPlaceholderText('SERVERS'), 'WEB')
+    const [firstMemberInput] = screen.getAllByPlaceholderText(/10.0.0.1 or/i)
+    await user.type(firstMemberInput, '10.0.0.9')
+
+    expect(screen.getByRole('button', { name: /queue group creation/i })).toBeEnabled()
+  })
 })

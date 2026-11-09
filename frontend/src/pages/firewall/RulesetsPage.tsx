@@ -25,7 +25,12 @@ export default function RulesetsPage() {
         </button>
       </div>
 
-      {showCreate && <CreateRulesetForm onDone={() => setShowCreate(false)} />}
+      {showCreate && (
+        <CreateRulesetForm
+          existing={rulesets.filter((rs) => rs.kind === 'custom')}
+          onDone={() => setShowCreate(false)}
+        />
+      )}
 
       {isLoading && <p className="text-sm text-slate-400">Loading…</p>}
       {isError && <p className="text-sm text-danger-500">Failed to load firewall configuration.</p>}
@@ -76,7 +81,13 @@ export default function RulesetsPage() {
   )
 }
 
-function CreateRulesetForm({ onDone }: { onDone: () => void }) {
+function CreateRulesetForm({
+  existing,
+  onDone,
+}: {
+  existing: { id: string; family: 'ipv4' | 'ipv6' }[]
+  onDone: () => void
+}) {
   const [name, setName] = useState('')
   const [family, setFamily] = useState<'ipv4' | 'ipv6'>('ipv4')
   const [description, setDescription] = useState('')
@@ -85,19 +96,21 @@ function CreateRulesetForm({ onDone }: { onDone: () => void }) {
   const [firstRuleDescription, setFirstRuleDescription] = useState('')
   const add = usePendingChangesStore((s) => s.add)
 
-  const valid = isValidVyOSIdentifier(name)
+  const trimmedName = name.trim()
+  const nameTaken = existing.some((rs) => rs.family === family && rs.id === trimmedName)
+  const valid = isValidVyOSIdentifier(trimmedName) && !nameTaken
 
   function submit() {
     if (!valid) return
-    const ref = { id: name, kind: 'custom' as const, family }
+    const ref = { id: trimmedName, kind: 'custom' as const, family }
     add({
       op: { op: 'set', path: rulesetPath(ref, 'default-action'), value: 'drop' },
-      label: `set firewall ${family} name ${name} default-action 'drop'`,
+      label: `set firewall ${family} name ${trimmedName} default-action 'drop'`,
     })
     if (description.trim()) {
       add({
         op: { op: 'set', path: rulesetPath(ref, 'description'), value: description.trim() },
-        label: `set firewall ${family} name ${name} description '${description.trim()}'`,
+        label: `set firewall ${family} name ${trimmedName} description '${description.trim()}'`,
       })
     }
     // A ruleset commits fine with zero rules (falls through to the
@@ -138,6 +151,7 @@ function CreateRulesetForm({ onDone }: { onDone: () => void }) {
             placeholder="WAN-LAN-v4"
             className={inputClass}
           />
+          {nameTaken && <span className="text-danger-500">ruleset {trimmedName} already exists.</span>}
         </label>
         <label className={labelClass}>
           Family

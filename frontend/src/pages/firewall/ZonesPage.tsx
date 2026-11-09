@@ -56,7 +56,9 @@ export default function ZonesPage() {
         </div>
       </div>
 
-      {showCreate && <CreateZoneForm onDone={() => setShowCreate(false)} />}
+      {showCreate && (
+        <CreateZoneForm existingNames={zones.map((z) => z.name)} onDone={() => setShowCreate(false)} />
+      )}
 
       {isLoading && <p className="text-sm text-slate-400">Loading…</p>}
       {isError && <p className="text-sm text-danger-500">Failed to load firewall configuration.</p>}
@@ -77,7 +79,7 @@ export default function ZonesPage() {
   )
 }
 
-function CreateZoneForm({ onDone }: { onDone: () => void }) {
+function CreateZoneForm({ existingNames, onDone }: { existingNames: string[]; onDone: () => void }) {
   const [name, setName] = useState('')
   const [interfaces, setInterfaces] = useState('')
   const [localZone, setLocalZone] = useState(false)
@@ -90,11 +92,13 @@ function CreateZoneForm({ onDone }: { onDone: () => void }) {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean)
-  const valid = isValidVyOSIdentifier(name.trim()) && (localZone || ifaceList.length > 0)
+  const trimmedName = name.trim()
+  const nameTaken = existingNames.includes(trimmedName)
+  const valid = isValidVyOSIdentifier(trimmedName) && !nameTaken && (localZone || ifaceList.length > 0)
 
   function submit() {
     if (!valid) return
-    const zoneName = name.trim()
+    const zoneName = trimmedName
     if (localZone) {
       add({ op: { op: 'set', path: zonePath(zoneName, 'local-zone') }, label: `set zone ${zoneName} local-zone` })
     } else {
@@ -141,6 +145,7 @@ function CreateZoneForm({ onDone }: { onDone: () => void }) {
             placeholder="LAN"
             className={inputClass}
           />
+          {nameTaken && <span className="text-danger-500">zone {trimmedName} already exists.</span>}
         </label>
         <FieldLabel label="Default action" hint="drop silently discards traffic with no reply to the sender; reject discards it but sends back an ICMP/TCP-RST refusal.">
           <select

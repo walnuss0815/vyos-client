@@ -144,4 +144,46 @@ describe('RulesetsPage', () => {
 
     expect(screen.getByRole('button', { name: /queue ruleset creation/i })).toBeDisabled()
   })
+
+  it('rejects a name that already exists in the same family, after trimming', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<RulesetsPage />)
+    await screen.findByText('forward')
+
+    await user.click(screen.getByRole('button', { name: /new custom ruleset/i }))
+    await user.type(screen.getByPlaceholderText('WAN-LAN-v4'), ' WAN-LAN-v4 ')
+
+    expect(screen.getByText(/WAN-LAN-v4 already exists/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /queue ruleset creation/i })).toBeDisabled()
+  })
+
+  it('allows a name that only exists in the other family', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<RulesetsPage />)
+    await screen.findByText('forward')
+
+    await user.click(screen.getByRole('button', { name: /new custom ruleset/i }))
+    await user.type(screen.getByPlaceholderText('WAN-LAN-v4'), 'WAN-LAN-v4')
+    await user.selectOptions(screen.getByLabelText(/family/i), 'ipv6')
+
+    expect(screen.getByRole('button', { name: /queue ruleset creation/i })).toBeEnabled()
+  })
+
+  it('queues a trimmed name', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<RulesetsPage />)
+    await screen.findByText('forward')
+
+    await user.click(screen.getByRole('button', { name: /new custom ruleset/i }))
+    await user.type(screen.getByPlaceholderText('WAN-LAN-v4'), ' DMZ ')
+    await user.click(screen.getByRole('button', { name: /queue ruleset creation/i }))
+
+    expect(usePendingChangesStore.getState().changes[0].op.path).toEqual([
+      'firewall',
+      'ipv4',
+      'name',
+      'DMZ',
+      'default-action',
+    ])
+  })
 })
