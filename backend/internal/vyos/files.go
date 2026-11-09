@@ -88,6 +88,13 @@ const (
 // (otherwise present between owner and size in plain `ls -l`).
 var lsLineRE = regexp.MustCompile(`^([a-zA-Z?-]{10})[.+@]?\s+\d+\s+(\S+)\s+(\S+)\s+(\w{3})\s+(\d+)\s+([\d:]+)\s+(.+)$`)
 
+// lsDanglingLinkRE matches the row `ls -hlFGL` prints for a symlink
+// whose target is missing: the mode is `l` plus nine `?`, and the
+// link count, owner, size and date are each a lone `?` (the date is
+// one token, not month/day/time), followed by the name. -L drops the
+// "-> target" arrow for these, so there is no LinkTarget to parse.
+var lsDanglingLinkRE = regexp.MustCompile(`^(l\?{9})\s+\?\s+\?\s+(\?)\s+(\?)\s+(.+)$`)
+
 // ParseShowFile parses the raw text `show file <path>` returns into
 // either a DirectoryListing or a FileView, whichever VyOS decided the
 // path was - file.py's show_locally() branches on
@@ -153,7 +160,7 @@ func parseDirectoryListing(path, raw string) *DirectoryListing {
 func parseLsLine(line string) (FileEntry, bool) {
 	m := lsLineRE.FindStringSubmatch(line)
 	if m == nil {
-		return FileEntry{}, false
+		return parseDanglingLsLine(line)
 	}
 	perm, size, month, day, timeOrYear, name := m[1], m[3], m[4], m[5], m[6], m[7]
 
@@ -174,6 +181,19 @@ func parseLsLine(line string) (FileEntry, bool) {
 	// permission bits above instead, since that's authoritative.
 	entry.Name = strings.Clone(strings.TrimRight(name, "/*=|"))
 	return entry, true
+}
+
+func parseDanglingLsLine(line string) (FileEntry, bool) {
+	m := lsDanglingLinkRE.FindStringSubmatch(line)
+	if m == nil {
+		return FileEntry{}, false
+	}
+	return FileEntry{
+		Name:        strings.Clone(m[4]),
+		Permissions: strings.Clone(m[1]),
+		Size:        strings.Clone(m[2]),
+		Modified:    strings.Clone(m[3]),
+	}, true
 }
 
 // parseFileView parses the metadata block and content of a `show file
