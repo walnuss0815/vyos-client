@@ -1,9 +1,11 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 
@@ -375,6 +377,16 @@ func (s *Server) handleReveal(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, revealResponse{Value: value})
 }
 
+// configWriteActions are the handleVyOSError actions whose VyOS call may
+// still complete after the client gave up waiting.
+var configWriteActions = map[string]bool{
+	"applying configuration":     true,
+	"confirming configuration":   true,
+	"importing configuration":    true,
+	"rolling back configuration": true,
+	"saving configuration":       true,
+}
+
 // handleVyOSError maps a vyos.APIError to an appropriate HTTP status
 // and a message safe to show the user. A 401 from VyOS means our own
 // stored VYOS_API_KEY is wrong or was revoked — that's a deployment
@@ -384,6 +396,13 @@ func (s *Server) handleReveal(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleVyOSError(w http.ResponseWriter, action string, err error) {
 	apiErr, ok := err.(*vyos.APIError)
 	if !ok {
+		var netErr net.Error
+		timedOut := errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &netErr) && netErr.Timeout())
+		if timedOut && configWriteActions[action] {
+			s.Logger.Warn("vyos api call timed out", "action", action, "error", err)
+			writeError(w, http.StatusGatewayTimeout, "VyOS did not answer in time; the change may still have been applied. Reload before retrying, then Save.")
+			return
+		}
 		s.Logger.Error("vyos api call failed", "action", action, "error", err)
 		writeError(w, http.StatusBadGateway, "failed "+action)
 		return
