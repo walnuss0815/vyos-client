@@ -179,6 +179,19 @@ describe('ImagesPage (System)', () => {
     expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument()
   })
 
+  it('does not offer to delete the default-boot image', async () => {
+    const running = { name: '1.4.1', isDefaultBoot: false, isRunning: true }
+    const defaultBoot = { name: '1.4.0', isDefaultBoot: true, isRunning: false }
+    const other = { name: '1.3.9', isDefaultBoot: false, isRunning: false }
+    server.use(http.get('/api/system/images', () => HttpResponse.json({ images: [running, defaultBoot, other] })))
+    renderWithProviders(<ImagesPage />)
+    await screen.findByText('1.3.9')
+
+    const deleteButtons = screen.getAllByRole('button', { name: 'Delete' })
+    expect(deleteButtons).toHaveLength(1)
+    expect(deleteButtons[0].closest('tr')).toHaveTextContent('1.3.9')
+  })
+
   it('queues a "set default-boot" config op and shows "Queued" instead of the button', async () => {
     const user = userEvent.setup()
     server.use(http.get('/api/system/images', () => HttpResponse.json({ images: [RUNNING_IMAGE, OLD_IMAGE] })))

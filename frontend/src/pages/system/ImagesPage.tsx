@@ -217,7 +217,7 @@ export default function ImagesPage() {
                           Set as default boot
                         </button>
                       ))}
-                    {!image.isRunning && (
+                    {!image.isRunning && !image.isDefaultBoot && (
                       <button
                         onClick={() => void handleDelete(image.name)}
                         disabled={deletingName === image.name}
