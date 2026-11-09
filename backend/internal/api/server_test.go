@@ -1734,6 +1734,28 @@ func TestLogs_Container_DispatchesToContainerLogPath(t *testing.T) {
 	}
 }
 
+func TestLogs_Container_RejectsUnsafeName(t *testing.T) {
+	e := newTestEnv(t)
+	e.login(t)
+	e.fakeVyOS.ShowOutputs["container log web-1_a.b"] = "container line\n"
+
+	for _, name := range []string{"a\nb", "$(x)", "a;b", strings.Repeat("a", 129)} {
+		resp := e.doJSON(t, http.MethodGet, "/api/logs?source=container&container="+url.QueryEscape(name), nil)
+		status := resp.StatusCode
+		_ = resp.Body.Close()
+		if status != http.StatusBadRequest {
+			t.Errorf("container=%q: status = %d, want 400", name, status)
+		}
+	}
+
+	resp := e.doJSON(t, http.MethodGet, "/api/logs?source=container&container=web-1_a.b", nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("valid name: status=%d body=%s", resp.StatusCode, b)
+	}
+}
+
 // TestLogs_FixedSources_DispatchToTheExpectedOpModePath is a table
 // test confirming every curated fixed source (see
 // api.fixedLogSources) maps to the op-mode path this app's design
@@ -2298,6 +2320,7 @@ func TestFiles_RejectsPathsOutsideBrowsableRoots(t *testing.T) {
 		"/etc/shadow", "/config/../etc/shadow", "relative", "",
 		"/config/a b", "/config/a\tb", "/config/*", "/config/a?", "/config/[a]", "/config/scp:x",
 		"/config/config.boot", "/config/archive", "/config/archive/config.boot.1.gz", "/config/x/../archive/y",
+		"/var/log/x\ny", "/var/log/$(reboot)", "/var/log/a;b", "/var/log/`id`", "/var/log/a|b", "/var/log/a&b",
 	} {
 		resp := e.doJSON(t, http.MethodGet, "/api/files?path="+url.QueryEscape(p), nil)
 		status := resp.StatusCode
@@ -2328,6 +2351,28 @@ func TestFiles_SendsCleanedPathToVyOS(t *testing.T) {
 	last := e.fakeVyOS.Requests[len(e.fakeVyOS.Requests)-1]
 	if !strings.Contains(string(last.Data), `"/var/log"`) || strings.Contains(string(last.Data), "//") {
 		t.Errorf("request data = %s, want cleaned path /var/log", last.Data)
+	}
+}
+
+func TestFiles_AllowsOrdinaryPaths(t *testing.T) {
+	for _, p := range []string{"/var/log/messages", "/config/scripts/post-config.d/x.sh"} {
+		t.Run(p, func(t *testing.T) {
+			e := newTestEnv(t)
+			e.apiServer.FileBrowserEnabled = true
+			e.login(t)
+			e.fakeVyOS.ShowOutputs["file "+p] = "########## DIRECTORY LISTING ##########\nPath:\t " + p + "\ntotal 0\n"
+
+			resp := e.doJSON(t, http.MethodGet, "/api/files?path="+url.QueryEscape(p), nil)
+			defer func() { _ = resp.Body.Close() }()
+			if resp.StatusCode != http.StatusOK {
+				b, _ := io.ReadAll(resp.Body)
+				t.Fatalf("status=%d body=%s", resp.StatusCode, b)
+			}
+			last := e.fakeVyOS.Requests[len(e.fakeVyOS.Requests)-1]
+			if !strings.Contains(string(last.Data), `"`+p+`"`) {
+				t.Errorf("request data = %s, want path %s", last.Data, p)
+			}
+		})
 	}
 }
 
@@ -2949,6 +2994,11 @@ func TestAddSystemImage_RejectsNonHTTPURL(t *testing.T) {
 		"ftp://example.com/vyos.iso",
 		"file:///etc/passwd",
 		"/tmp/vyos.iso",
+		"http://h/$(reboot)",
+		"http://h/a;b",
+		"http://h/`id`",
+		"http://h/a\nb",
+		"http://h/a&b",
 	}
 	for _, url := range cases {
 		t.Run(url, func(t *testing.T) {

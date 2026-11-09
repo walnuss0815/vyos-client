@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"path"
+	"regexp"
 	"strings"
 )
 
@@ -49,6 +50,8 @@ func (s *Server) handleFileBrowserRoots(w http.ResponseWriter, _ *http.Request) 
 	writeJSON(w, http.StatusOK, fileBrowserRootsResponse{Enabled: true, Roots: fileBrowserRoots})
 }
 
+var filePathPattern = regexp.MustCompile(`^/[A-Za-z0-9._/@+-]*$`)
+
 // validateFileBrowserPath reports whether p is one of fileBrowserRoots
 // or lexically nested under one of them. Uses path.Clean (not
 // filepath.Clean - this is a router filesystem path, always "/"-
@@ -60,12 +63,13 @@ func (s *Server) handleFileBrowserRoots(w http.ResponseWriter, _ *http.Request) 
 // validation narrows what this app will ever ask VyOS to look at, it
 // isn't a guarantee about where VyOS's own answer came from.
 //
-// Whitespace and glob/URL characters are refused because the path is
-// handed to a VyOS op-mode command (which splits on whitespace and may
-// expand globs). config.boot and /config/archive hold unmasked
-// secrets, so they are refused too.
+// Only characters matching filePathPattern are accepted because the
+// path is handed to a VyOS op-mode command whose wrapper builds a shell
+// line: anything outside the allow-list (whitespace, globs, quotes,
+// shell metacharacters, newlines) is refused. config.boot and
+// /config/archive hold unmasked secrets, so they are refused too.
 func validateFileBrowserPath(p string) bool {
-	if p == "" || !strings.HasPrefix(p, "/") || strings.ContainsAny(p, " \t*?[:") {
+	if !filePathPattern.MatchString(p) {
 		return false
 	}
 	clean := path.Clean(p)

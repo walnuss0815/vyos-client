@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"regexp"
 	"slices"
 	"strconv"
 
@@ -30,7 +31,14 @@ var fixedLogSources = map[string][]string{
 const (
 	defaultLogLines = 500
 	maxLogLines     = 5000
+
+	maxContainerLogNameLength = 128
 )
+
+// containerLogNamePattern keeps the name passed to `show container log
+// <name>` free of shell metacharacters (the op-mode wrapper builds a
+// shell line); it covers every name podman itself accepts.
+var containerLogNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
 // handleLogs serves GET /api/logs?source=...&lines=... (plus
 // source-specific params: facility=/priority=/container=). Unlike
@@ -77,16 +85,13 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 		}
 		path = []string{"log", "priority", priority}
 	case "container":
-		// No whitelist here, unlike facility/priority above: a
-		// container's name is already entirely user-controlled
-		// through this app's own Container configuration pages, so
-		// passing the same string through to `show container log
-		// <name>` doesn't introduce any new surface - VyOS itself
-		// will error cleanly ("no such container") for a name that
-		// doesn't exist, same as any other not-found op-mode lookup.
 		container := query.Get("container")
 		if container == "" {
 			writeError(w, http.StatusBadRequest, "container is required for source=container")
+			return
+		}
+		if len(container) > maxContainerLogNameLength || !containerLogNamePattern.MatchString(container) {
+			writeError(w, http.StatusBadRequest, "invalid container name")
 			return
 		}
 		path = []string{"container", "log", container}
