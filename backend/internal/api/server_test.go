@@ -2980,6 +2980,20 @@ func TestAddSystemImage_Success(t *testing.T) {
 	}
 }
 
+func TestAddSystemImage_AcceptsIPv6Host(t *testing.T) {
+	e := newTestEnv(t)
+	e.login(t)
+	url := "http://[2001:db8::1]/vyos.iso"
+	e.fakeVyOS.SystemImageAddOutputs[url] = "Done.\n"
+
+	resp := e.doJSON(t, http.MethodPost, "/api/system/images", map[string]string{"url": url})
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status=%d body=%s", resp.StatusCode, b)
+	}
+}
+
 // TestAddSystemImage_RejectsNonHTTPURL guards the input validation
 // that stands in for VyOS's own script accepting arbitrary local
 // filesystem paths too - this app only ever offers a URL field, so

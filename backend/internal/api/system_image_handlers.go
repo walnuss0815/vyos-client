@@ -28,7 +28,7 @@ func validateSystemImageName(name string) bool {
 // input, not a precisely-sourced spec value.
 const maxSystemImageURLLength = 2048
 
-var systemImageURLPattern = regexp.MustCompile(`^https?://[A-Za-z0-9._~:@/%+=,?#-]+$`)
+var systemImageURLPattern = regexp.MustCompile(`^https?://[A-Za-z0-9._~:@/%+=,?#\[\]-]+$`)
 
 // validateSystemImageURL restricts the install URL to http(s) with a
 // host - VyOS's own CLI also accepts a local filesystem path (e.g.
@@ -47,7 +47,7 @@ func validateSystemImageURL(rawURL string) bool {
 	if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return false
 	}
-	// shortcut: URLs containing '&' are refused, a shell metacharacter in VyOS's wrapper; upgrade if a real download URL needs it
+	// shortcut: '&' and other shell metacharacters are refused as defence in depth, since it is not verified that every supported VyOS release passes the URL without a shell; upgrade if a real download URL needs '&'
 	return systemImageURLPattern.MatchString(rawURL)
 }
 
