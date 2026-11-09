@@ -192,26 +192,14 @@ func TestRedactSetCommands_KnownLimitation_EmbeddedQuoteInValue(t *testing.T) {
 	}
 }
 
-// TestRedactSetCommands_KnownLimitation_TagNodeIdentifiers documents a
-// deliberate, narrower gap than before: IsMaskedPath now catches a
-// sensitive-looking tag-node identifier when it's paired with the
-// generic "value" leaf (container/event-handler environment
-// variables, labels, sysctl parameters - see that function's own doc
-// comment), but a case where the identifier itself *is* the whole
-// secret, with no separate value leaf at all (e.g. an SNMP community
-// name used as `community <name> { ... }`), still isn't caught - that
-// shape has no "value" leaf to key the check off of, and blanket-
-// checking every tag-node identifier regardless of shape would also
-// mis-mask unrelated structural nodes (see IsMaskedPath's own doc
-// comment for why that's deliberately not done). Safe to leave
-// undetected only insofar as such cases are rare in practice; flagged
-// here so it isn't "fixed" accidentally in a way that breaks the
-// (correct, narrower) masking this now does, and so it's visible as a
-// follow-up.
-func TestRedactSetCommands_KnownLimitation_TagNodeIdentifiers(t *testing.T) {
+// TestRedactSetCommands_SNMPCommunityNameMasked pins the case where the
+// tag-node identifier is itself the secret (an SNMP community name,
+// with no separate value leaf): redactSNMPCommunityName masks it by
+// position, since IsMaskedPath has no "value" leaf to key off of.
+func TestRedactSetCommands_SNMPCommunityNameMasked(t *testing.T) {
 	line := `set snmp community 'public-ish-community-name' authorization 'ro'`
 	got := mask.RedactSetCommands(line)
-	if got != line {
-		t.Skip("tag-node-identifier secrets are a known, documented masking gap (see comment above)")
+	if got == line || strings.Contains(got, "public-ish-community-name") {
+		t.Errorf("SNMP community name leaked into output: %q", got)
 	}
 }
