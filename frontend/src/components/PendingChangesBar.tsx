@@ -113,6 +113,10 @@ export default function PendingChangesBar() {
   const queryClient = useQueryClient()
 
   const [expanded, setExpanded] = useState(false)
+  // Discard and Mark as saved can't be undone: the first click arms,
+  // the second acts, and leaving the button disarms it.
+  const [confirmDiscard, setConfirmDiscard] = useState(false)
+  const [confirmMarkSaved, setConfirmMarkSaved] = useState(false)
   // Defaults off, not on: Safe apply's whole safety property depends
   // on the operator actually being able to click "Keep changes" (or
   // the confirm window expiring and VyOS auto-reverting) - but that
@@ -439,8 +443,16 @@ export default function PendingChangesBar() {
               >
                 Rollback
               </button>
-              <button onClick={markSaved} className="text-xs text-slate-500 hover:text-slate-300">
-                Mark as saved
+              <button
+                onClick={() => {
+                  if (!confirmMarkSaved) return setConfirmMarkSaved(true)
+                  setConfirmMarkSaved(false)
+                  markSaved()
+                }}
+                onBlur={() => setConfirmMarkSaved(false)}
+                className={`text-xs hover:text-slate-300 ${confirmMarkSaved ? 'text-danger-500' : 'text-slate-500'}`}
+              >
+                {confirmMarkSaved ? 'Confirm mark as saved?' : 'Mark as saved'}
               </button>
             </div>
           </div>
@@ -487,11 +499,18 @@ export default function PendingChangesBar() {
             />
 
             <button
-              onClick={() => clear()}
+              onClick={() => {
+                if (!confirmDiscard) return setConfirmDiscard(true)
+                setConfirmDiscard(false)
+                clear()
+              }}
+              onBlur={() => setConfirmDiscard(false)}
               disabled={busy}
-              className="rounded-lg border border-surface-border px-3 py-1.5 text-sm text-slate-300 hover:bg-surface-800 disabled:opacity-60"
+              className={`rounded-lg border px-3 py-1.5 text-sm hover:bg-surface-800 disabled:opacity-60 ${
+                confirmDiscard ? 'border-danger-500 text-danger-500' : 'border-surface-border text-slate-300'
+              }`}
             >
-              Discard
+              {confirmDiscard ? `Discard all ${changes.length}?` : 'Discard'}
             </button>
             <button
               onClick={() => void runCommit(false)}
