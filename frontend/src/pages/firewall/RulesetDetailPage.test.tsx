@@ -361,5 +361,28 @@ describe('RulesetDetailPage', () => {
       path: ['firewall', 'ipv4', 'forward', 'filter', 'default-action'],
       value: 'accept',
     })
+    expect(screen.getByLabelText(/default action/i)).toHaveValue('accept')
+  })
+
+  it('shows the VyOS default when a delete of the default-action is queued', async () => {
+    usePendingChangesStore.getState().add({
+      op: { op: 'delete', path: ['firewall', 'ipv4', 'forward', 'filter', 'default-action'] },
+      label: 'x',
+    })
+    renderDetail('/firewall/rulesets/ipv4/base/forward')
+    await screen.findByText('forward')
+
+    expect(screen.getByLabelText(/default action/i)).toHaveValue('accept')
+  })
+
+  it('falls back to the committed default-action after the queue is discarded', async () => {
+    const user = userEvent.setup()
+    renderDetail('/firewall/rulesets/ipv4/base/forward')
+    await screen.findByText('forward')
+
+    await user.selectOptions(screen.getByLabelText(/default action/i), 'accept')
+    act(() => usePendingChangesStore.getState().clear())
+
+    expect(screen.getByLabelText(/default action/i)).toHaveValue('drop')
   })
 })

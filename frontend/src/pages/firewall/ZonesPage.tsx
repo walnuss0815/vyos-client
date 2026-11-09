@@ -3,7 +3,7 @@ import { zonePath } from '../../lib/firewallParse'
 import type { FirewallZone } from '../../lib/firewallTypes'
 import { noExtensionInputProps } from '../../lib/inputProtection'
 import { useFirewallConfig } from '../../hooks/useFirewallConfig'
-import { usePendingChangesStore } from '../../store/pendingChanges'
+import { pendingValue, usePendingChangesStore } from '../../store/pendingChanges'
 import { buttonClass, inputClass, labelClass } from '../../lib/formStyles'
 import { isValidVyOSIdentifier } from '../../lib/vyosIdentifier'
 import ZoneMatrix from '../../components/firewall/ZoneMatrix'
@@ -219,6 +219,7 @@ function ZoneCard({ zone }: { zone: FirewallZone }) {
   const [newFromZone, setNewFromZone] = useState('')
   const [newFromRuleset, setNewFromRuleset] = useState('')
   const add = usePendingChangesStore((s) => s.add)
+  const changes = usePendingChangesStore((s) => s.changes)
 
   function queueDeleteZone() {
     add({ op: { op: 'delete', path: zonePath(zone.name) }, label: `delete zone ${zone.name}` })
@@ -291,7 +292,7 @@ function ZoneCard({ zone }: { zone: FirewallZone }) {
         <span className="text-slate-500">Default action</span>
         <InfoTooltip text="drop silently discards traffic with no reply to the sender; reject discards it but sends back an ICMP/TCP-RST refusal." />
         <select
-          value={zone.defaultAction ?? 'drop'}
+          value={pendingValue(changes, zonePath(zone.name, 'default-action'), zone.defaultAction) ?? 'drop'}
           onChange={(e) => queueSetDefaultAction(e.target.value)}
           className={inputClass}
         >
