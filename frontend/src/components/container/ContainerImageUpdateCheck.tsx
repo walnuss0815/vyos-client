@@ -160,8 +160,8 @@ export default function ContainerImageUpdateCheck({ image, containerName }: { im
       {queued && (
         <p className="mt-1 text-success-500">
           Pulled and queued image <span className="font-mono">{result?.newImageRef}</span> - review and commit below
-          (Safe apply recommended: this change recreates the container, and Safe apply automatically reverts if the
-          new image doesn&apos;t come back up).
+          (Safe apply recommended: this change recreates the container, and Safe apply reverts the change unless you
+          click Keep before the timer ends).
         </p>
       )}
       {upgradeAlreadyQueued && !queued && (
