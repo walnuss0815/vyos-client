@@ -8,7 +8,8 @@ name: E2E (real VyOS)
 # Playwright. Deliberately NOT run on every push/PR (see ci.yml for
 # that) - booting 5 VMs is much slower than the unit/integration suite,
 # and this is meant to catch drift against real VyOS instances over
-# time, not gate every commit.
+# time, not gate every commit. Runs weekly and on demand only, not on
+# release tags: tags created with GITHUB_TOKEN do not start workflows.
 
 on:
   schedule:
@@ -19,9 +20,6 @@ on:
     # slot, regardless of this schedule.
     - cron: '0 6 * * 1'
   workflow_dispatch: {}
-  push:
-    tags:
-      - 'v*'
 
 concurrency:
   group: e2e-${{ github.workflow }}-${{ github.ref }}

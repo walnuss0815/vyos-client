@@ -32,7 +32,7 @@ validation at the time.
 
 ## Real-VyOS end-to-end testing
 
-Runs on a schedule (weekly), `workflow_dispatch`, and release tags -
+Runs on a schedule (weekly) and `workflow_dispatch` -
 see `.github/workflows/e2e.yml` - not on every push/PR, since booting a
 VM is much slower than the unit/integration suite and this is meant to
 catch drift over time, not gate every commit.
