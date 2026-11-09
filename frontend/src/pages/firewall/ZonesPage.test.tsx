@@ -152,6 +152,19 @@ describe('ZonesPage', () => {
     expect(screen.getByRole('button', { name: /queue zone creation/i })).toBeDisabled()
   })
 
+  it('rejects a zone name that already exists', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<ZonesPage />)
+    await screen.findByText('Main LAN')
+
+    await user.click(screen.getByRole('button', { name: /new zone/i }))
+    await user.type(screen.getByPlaceholderText('LAN'), 'WAN')
+    await user.click(screen.getByLabelText(/this is the local zone/i))
+
+    expect(screen.getByText(/WAN already exists/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /queue zone creation/i })).toBeDisabled()
+  })
+
   it('switches to the matrix view and back', async () => {
     const user = userEvent.setup()
     renderWithProviders(<ZonesPage />)

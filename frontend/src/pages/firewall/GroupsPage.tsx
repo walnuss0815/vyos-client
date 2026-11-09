@@ -56,7 +56,11 @@ export default function GroupsPage() {
       </div>
 
       {showCreate && (
-        <CreateGroupForm type={type} onDone={() => setShowCreate(false)} />
+        <CreateGroupForm
+          type={type}
+          existingNames={groupsOfType.map((g) => g.name)}
+          onDone={() => setShowCreate(false)}
+        />
       )}
 
       {isLoading && <p className="text-sm text-slate-400">Loading…</p>}
@@ -74,17 +78,27 @@ export default function GroupsPage() {
   )
 }
 
-function CreateGroupForm({ type, onDone }: { type: GroupType; onDone: () => void }) {
+function CreateGroupForm({
+  type,
+  existingNames,
+  onDone,
+}: {
+  type: GroupType
+  existingNames: string[]
+  onDone: () => void
+}) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [firstMember, setFirstMember] = useState('')
   const add = usePendingChangesStore((s) => s.add)
 
-  const valid = isValidVyOSIdentifier(name.trim()) && firstMember.trim() !== ''
+  const trimmedName = name.trim()
+  const nameTaken = existingNames.includes(trimmedName)
+  const valid = isValidVyOSIdentifier(trimmedName) && !nameTaken && firstMember.trim() !== ''
 
   function submit() {
     if (!valid) return
-    const groupName = name.trim()
+    const groupName = trimmedName
     const memberLeaf = GROUP_MEMBER_LEAF[type]
     add({
       op: { op: 'set', path: groupPath(type, groupName, memberLeaf), value: firstMember.trim() },
@@ -112,6 +126,7 @@ function CreateGroupForm({ type, onDone }: { type: GroupType; onDone: () => void
             placeholder="SERVERS"
             className={inputClass}
           />
+          {nameTaken && <span className="text-danger-500">group {trimmedName} already exists.</span>}
         </label>
         <label className={labelClass}>
           Description (optional)
