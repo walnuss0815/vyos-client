@@ -51,6 +51,29 @@ func TestParseShowFile_DirectoryListing(t *testing.T) {
 	}
 }
 
+func TestParseShowFile_ShowsDanglingSymlink(t *testing.T) {
+	raw := "########## DIRECTORY LISTING ##########\n" +
+		"Path:\t /config\n" +
+		"total 4\n" +
+		"l????????? ? ?         ?            ? broken\n" +
+		"-rw-r--r--  1 root  123 Jan  1 00:00 config.boot\n"
+
+	dir, _, err := vyos.ParseShowFile("/config", raw)
+	if err != nil {
+		t.Fatalf("ParseShowFile: %v", err)
+	}
+	if len(dir.Entries) != 2 {
+		t.Fatalf("len(Entries) = %d, want 2: %+v", len(dir.Entries), dir.Entries)
+	}
+	broken := dir.Entries[0]
+	if broken.Name != "broken" || broken.IsDir || broken.LinkTarget != "" {
+		t.Errorf("broken entry = %+v", broken)
+	}
+	if broken.Size != "?" || broken.Modified != "?" {
+		t.Errorf("broken entry Size/Modified = %q/%q, want \"?\"/\"?\"", broken.Size, broken.Modified)
+	}
+}
+
 func TestParseShowFile_DirectoryListing_SkipsUnparseableLines(t *testing.T) {
 	raw := "########## DIRECTORY LISTING ##########\n" +
 		"Path:\t /config\n" +
