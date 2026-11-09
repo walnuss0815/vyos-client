@@ -188,16 +188,14 @@ created container's local draft entries (typed by the user, never
 fetched from the router) are shown in the clear, since there's nothing
 server-masked to reveal.
 
-**Known gap:** the identifier-substring matching above only fires when
-there's a separate generic `value` leaf to mask. A secret that's
-structurally the tag-node identifier *itself*, with no separate value
-leaf beside it (the canonical example: an SNMP community string used as
-`community <the-secret-itself> { authorization ro }`) still isn't
-caught — the identifier is the whole secret, and neither the tree view
-nor the flat-text redaction has a generic leaf to redact in its place.
-This is documented and tested explicitly (see
-`backend/internal/mask/setcommands_test.go`) rather than silently
-missing.
+**SNMP community names:** the identifier-substring matching above only
+fires when there's a separate generic `value` leaf to mask, but an SNMP
+community name (`service snmp community <name> { authorization ro }`) is
+the tag-node identifier itself. The flat set-commands view masks it by
+position (`redactSNMPCommunityName` in
+`backend/internal/mask/setcommands.go`). The config tree view and the
+SNMP settings page deliberately show it: the name is a map key there,
+which `mask.Tree` doesn't mask, and the admin needs to see and edit it.
 
 Because masking happens server-side, sensitive fields are write-only
 by default: the config tree/set-commands views never send a real
