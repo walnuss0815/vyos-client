@@ -6,31 +6,34 @@ import (
 	"strconv"
 )
 
-// tagPattern extracts an optional leading "v", a major.minor(.patch)?
+// tagPattern extracts an optional leading "v", a major(.minor(.patch)?)?
 // numeric core, and an optional trailing suffix (e.g. "-alpine",
 // "-alpine3.19") from a container image tag. This is deliberately
 // more permissive than internal/selfupgrade's own semver comparator
 // (which only ever has to handle this project's own clean vX.Y.Z
 // release tags): real-world container tags routinely look like
-// "1.25.3", "v1.25.3", "1.25" (no patch), or "1.25.3-alpine" - all of
-// which need to compare sensibly against a registry's actual tag
-// list. The two comparators aren't merged into one shared
-// implementation: patch-optionality and suffix/flavor-awareness are
-// requirements unique to this one, and selfupgrade's is intentionally
-// kept minimal for its own narrower, already-working use case.
-var tagPattern = regexp.MustCompile(`^(v?)(\d+)\.(\d+)(?:\.(\d+))?(-.+)?$`)
+// "1.25.3", "v1.25.3", "1.25" (no patch), "16" (major only), or
+// "1.25.3-alpine" - all of which need to compare sensibly against a
+// registry's actual tag list. The two comparators aren't merged into
+// one shared implementation: patch-optionality and suffix/flavor-
+// awareness are requirements unique to this one, and selfupgrade's is
+// intentionally kept minimal for its own narrower, already-working
+// use case.
+var tagPattern = regexp.MustCompile(`^(v?)(\d+)(?:\.(\d+)(?:\.(\d+))?)?(-.+)?$`)
 
 // ParsedTag is a container image tag recognized as a version, split
 // into its comparable numeric core and its "flavor" (leading-"v"
-// style, patch-presence, and any trailing suffix). Two tags are only
-// ever compared against each other when their flavor matches exactly
-// (see sameFlavor/NewestMatching) - a "-alpine" tag is never
+// style, minor/patch-presence, and any trailing suffix). Two tags are
+// only ever compared against each other when their flavor matches
+// exactly (see sameFlavor/NewestMatching) - a "-alpine" tag is never
 // suggested as an update for a plain tag, and a patch-less "1.25" is
-// never treated as equivalent to "1.25.0".
+// never treated as equivalent to "1.25.0" (nor a major-only "16" as
+// "16.0"). Minor and Patch are -1 when absent.
 type ParsedTag struct {
 	Raw         string
 	Major       int
 	Minor       int
+	HasMinor    bool
 	Patch       int
 	HasPatch    bool
 	HasLeadingV bool
@@ -43,21 +46,30 @@ type ParsedTag struct {
 // tag.
 func ParseTag(raw string) (t ParsedTag, ok bool) {
 	m := tagPattern.FindStringSubmatch(raw)
-	if m == nil {
+	// A major-only number of 8+ digits is a date (e.g. alpine's
+	// "20250108" edge snapshots), not a version.
+	if m == nil || (m[3] == "" && len(m[2]) >= 8) {
 		return ParsedTag{}, false
 	}
 	major, err1 := strconv.Atoi(m[2])
-	minor, err2 := strconv.Atoi(m[3])
-	if err1 != nil || err2 != nil {
+	if err1 != nil {
 		return ParsedTag{}, false
 	}
 	t = ParsedTag{
 		Raw:         raw,
 		Major:       major,
-		Minor:       minor,
+		Minor:       -1,
 		Patch:       -1,
 		HasLeadingV: m[1] == "v",
 		Suffix:      m[5],
+	}
+	if m[3] != "" {
+		minor, err := strconv.Atoi(m[3])
+		if err != nil {
+			return ParsedTag{}, false
+		}
+		t.Minor = minor
+		t.HasMinor = true
 	}
 	if m[4] != "" {
 		patch, err := strconv.Atoi(m[4])
@@ -88,10 +100,11 @@ func (a ParsedTag) compare(b ParsedTag) int {
 
 // sameFlavor reports whether a and b use the same tagging convention:
 // identical leading-"v" style, identical suffix, and both either
-// having or lacking a patch component. Only tags sharing a flavor are
-// ever compared against each other - see NewestMatching.
+// having or lacking a minor and a patch component. Only tags sharing
+// a flavor are ever compared against each other - see NewestMatching.
 func sameFlavor(a, b ParsedTag) bool {
-	return a.HasLeadingV == b.HasLeadingV && a.Suffix == b.Suffix && a.HasPatch == b.HasPatch
+	return a.HasLeadingV == b.HasLeadingV && a.Suffix == b.Suffix &&
+		a.HasMinor == b.HasMinor && a.HasPatch == b.HasPatch
 }
 
 // NewestMatching returns the newest tag among candidates that is

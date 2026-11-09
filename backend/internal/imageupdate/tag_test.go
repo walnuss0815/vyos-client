@@ -8,16 +8,22 @@ func TestParseTag(t *testing.T) {
 		want ParsedTag
 		ok   bool
 	}{
-		{"1.25.3", ParsedTag{Raw: "1.25.3", Major: 1, Minor: 25, Patch: 3, HasPatch: true}, true},
-		{"v1.25.3", ParsedTag{Raw: "v1.25.3", Major: 1, Minor: 25, Patch: 3, HasPatch: true, HasLeadingV: true}, true},
-		{"1.25", ParsedTag{Raw: "1.25", Major: 1, Minor: 25, Patch: -1}, true},
-		{"1.25.3-alpine", ParsedTag{Raw: "1.25.3-alpine", Major: 1, Minor: 25, Patch: 3, HasPatch: true, Suffix: "-alpine"}, true},
-		{"1.25-alpine3.19", ParsedTag{Raw: "1.25-alpine3.19", Major: 1, Minor: 25, Patch: -1, Suffix: "-alpine3.19"}, true},
-		{"v2.0.1-rc.1", ParsedTag{Raw: "v2.0.1-rc.1", Major: 2, Minor: 0, Patch: 1, HasPatch: true, HasLeadingV: true, Suffix: "-rc.1"}, true},
+		{"1.25.3", ParsedTag{Raw: "1.25.3", Major: 1, Minor: 25, HasMinor: true, Patch: 3, HasPatch: true}, true},
+		{"v1.25.3", ParsedTag{Raw: "v1.25.3", Major: 1, Minor: 25, HasMinor: true, Patch: 3, HasPatch: true, HasLeadingV: true}, true},
+		{"1.25", ParsedTag{Raw: "1.25", Major: 1, Minor: 25, HasMinor: true, Patch: -1}, true},
+		{"1.25.3-alpine", ParsedTag{Raw: "1.25.3-alpine", Major: 1, Minor: 25, HasMinor: true, Patch: 3, HasPatch: true, Suffix: "-alpine"}, true},
+		{"1.25-alpine3.19", ParsedTag{Raw: "1.25-alpine3.19", Major: 1, Minor: 25, HasMinor: true, Patch: -1, Suffix: "-alpine3.19"}, true},
+		{"v2.0.1-rc.1", ParsedTag{Raw: "v2.0.1-rc.1", Major: 2, Minor: 0, HasMinor: true, Patch: 1, HasPatch: true, HasLeadingV: true, Suffix: "-rc.1"}, true},
 		{"latest", ParsedTag{}, false},
 		{"stable", ParsedTag{}, false},
 		{"main", ParsedTag{}, false},
-		{"22", ParsedTag{}, false},
+		// Date tags such as alpine's edge snapshots are not versions.
+		{"20250108", ParsedTag{}, false},
+		{"20240606-r1", ParsedTag{}, false},
+		{"22", ParsedTag{Raw: "22", Major: 22, Minor: -1, Patch: -1}, true},
+		{"16", ParsedTag{Raw: "16", Major: 16, Minor: -1, Patch: -1}, true},
+		{"v2", ParsedTag{Raw: "v2", Major: 2, Minor: -1, Patch: -1, HasLeadingV: true}, true},
+		{"20-alpine", ParsedTag{Raw: "20-alpine", Major: 20, Minor: -1, Patch: -1, Suffix: "-alpine"}, true},
 		{"", ParsedTag{}, false},
 	}
 	for _, tt := range tests {
@@ -85,6 +91,27 @@ func TestNewestMatching(t *testing.T) {
 		{
 			name:       "patch presence must match - bare minor tag not compared against patched ones",
 			candidates: []string{"1.26.3", "1.26"},
+			current:    "1.25",
+			wantNewest: "1.26",
+			wantOK:     true,
+		},
+		{
+			name:       "major-only tag is only compared with major-only tags of the same flavor",
+			candidates: []string{"15", "16", "17", "16.1", "17.2", "17-alpine"},
+			current:    "16",
+			wantNewest: "17",
+			wantOK:     true,
+		},
+		{
+			name:       "date tags are never offered for a major-only tag",
+			candidates: []string{"3", "3.21", "3.21.2", "20240606", "20250108", "edge"},
+			current:    "3",
+			wantNewest: "",
+			wantOK:     true,
+		},
+		{
+			name:       "major-only candidate does not affect a major.minor tag",
+			candidates: []string{"26", "1.26"},
 			current:    "1.25",
 			wantNewest: "1.26",
 			wantOK:     true,
