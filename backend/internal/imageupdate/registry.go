@@ -181,6 +181,9 @@ func (c *Client) ListTags(ctx context.Context, ref Reference, creds *Credentials
 		all = append(all, pageTags...)
 		pageURL = next
 	}
+	if pageURL != "" {
+		return nil, fmt.Errorf("tag list exceeds %d pages, refusing an incomplete result", maxTagPages)
+	}
 	return all, nil
 }
 

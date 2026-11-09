@@ -91,6 +91,45 @@ func TestListTags_Pagination(t *testing.T) {
 	}
 }
 
+func TestListTags_ErrorsWhenPageLimitReached(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Link", `</v2/library/nginx/tags/list?last=x&n=100>; rel="next"`)
+		_, _ = w.Write([]byte(`{"name":"library/nginx","tags":["1.24.0"]}`))
+	}))
+	defer server.Close()
+
+	c := NewClient(Config{HTTPClient: server.Client()})
+	ref := testRef(t, strings.TrimPrefix(server.URL, "https://"))
+	_, err := c.ListTags(context.Background(), ref, nil, false)
+	if err == nil || !strings.Contains(err.Error(), "pages") {
+		t.Fatalf("expected a page-limit error, got %v", err)
+	}
+}
+
+func TestListTags_ExactlyMaxPagesIsNotAnError(t *testing.T) {
+	var requests int
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.Header().Set("Content-Type", "application/json")
+		if requests < maxTagPages {
+			w.Header().Set("Link", `</v2/library/nginx/tags/list?last=x&n=100>; rel="next"`)
+		}
+		_, _ = w.Write([]byte(`{"name":"library/nginx","tags":["1.24.0"]}`))
+	}))
+	defer server.Close()
+
+	c := NewClient(Config{HTTPClient: server.Client()})
+	ref := testRef(t, strings.TrimPrefix(server.URL, "https://"))
+	tags, err := c.ListTags(context.Background(), ref, nil, false)
+	if err != nil {
+		t.Fatalf("ListTags: %v", err)
+	}
+	if requests != maxTagPages || len(tags) != maxTagPages {
+		t.Errorf("requests = %d, tags = %d, want %d each", requests, len(tags), maxTagPages)
+	}
+}
+
 func TestListTags_BearerChallenge(t *testing.T) {
 	var tokenRequests int
 	var tokenServer *httptest.Server
