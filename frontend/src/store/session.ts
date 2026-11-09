@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { setSessionGenerationGetter, setUnauthorizedHandler } from '../lib/api'
 import * as api from '../lib/vyosApi'
 import { usePendingChangesStore } from './pendingChanges'
+import { useUnsavedCommitStore } from './unsavedCommit'
 
 export type SessionStatus = 'unknown' | 'authenticated' | 'anonymous'
 
@@ -108,6 +109,9 @@ export const useSessionStore = create<SessionState>((set, get) => {
         // browser, or be visible to a different administrator who logs
         // in on the same tab afterward.
         usePendingChangesStore.getState().clear()
+        // Committed-but-unsaved paths and values must not show to the
+        // next user of a shared browser either.
+        useUnsavedCommitStore.getState().markSaved()
       }
     },
 

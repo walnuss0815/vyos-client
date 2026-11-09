@@ -69,4 +69,26 @@ describe('useUnsavedCommitStore', () => {
     // In-memory state is untouched - only what's WRITTEN to storage is filtered.
     expect(useUnsavedCommitStore.getState().committedChanges).toHaveLength(1)
   })
+
+  it('markCommitted keeps what another tab stored meanwhile', () => {
+    localStorage.setItem(
+      'vyos-client-unsaved-commit',
+      JSON.stringify({ state: { committedChanges: [change({ id: 'other-tab' })] }, version: 0 }),
+    )
+
+    useUnsavedCommitStore.getState().markCommitted([change({ id: 'c1' })])
+
+    expect(useUnsavedCommitStore.getState().committedChanges.map((c) => c.id)).toEqual(['other-tab', 'c1'])
+  })
+
+  it('markCommitted keeps in-memory secret entries that were never stored', () => {
+    const secret = change({
+      id: 'secret',
+      op: { op: 'set', path: ['system', 'login', 'user', 'a', 'authentication', 'plaintext-password'], value: 'x' },
+    })
+    useUnsavedCommitStore.getState().markCommitted([secret])
+    useUnsavedCommitStore.getState().markCommitted([change({ id: 'c2' })])
+
+    expect(useUnsavedCommitStore.getState().committedChanges.map((c) => c.id)).toEqual(['secret', 'c2'])
+  })
 })

@@ -58,16 +58,33 @@ interface UnsavedCommitState {
  * survive a reload or a full browser restart, not just navigation
  * within one tab.
  */
+const STORAGE_KEY = 'vyos-client-unsaved-commit'
+
+/** Entries another tab stored since this tab last read localStorage. */
+function storedChanges(): PendingChange[] {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')?.state?.committedChanges ?? []
+  } catch {
+    return []
+  }
+}
+
 export const useUnsavedCommitStore = create<UnsavedCommitState>()(
   persist(
     (set) => ({
       committedChanges: [],
+      // Merges by id instead of rehydrating: a rehydrate would drop this
+      // tab's in-memory secret entries, which partialize never stores.
       markCommitted: (changes) =>
-        set((state) => ({ committedChanges: [...state.committedChanges, ...changes] })),
+        set((state) => {
+          const known = new Set(state.committedChanges.map((c) => c.id))
+          const fromOtherTabs = storedChanges().filter((c) => !known.has(c.id))
+          return { committedChanges: [...fromOtherTabs, ...state.committedChanges, ...changes] }
+        }),
       markSaved: () => set({ committedChanges: [] }),
     }),
     {
-      name: 'vyos-client-unsaved-commit',
+      name: STORAGE_KEY,
       storage: createJSONStorage(() => localStorage),
       // Same reasoning as usePendingChangesStore's own partialize: a
       // committed change carrying a real secret value (password, PSK,

@@ -4,6 +4,7 @@ import { apiRequest } from '../lib/api'
 import { server } from '../test/mocks/server'
 import { usePendingChangesStore } from './pendingChanges'
 import { useSessionStore } from './session'
+import { useUnsavedCommitStore } from './unsavedCommit'
 
 beforeEach(() => {
   sessionStorage.clear()
@@ -78,6 +79,16 @@ describe('useSessionStore', () => {
       await useSessionStore.getState().logout()
       expect(sessionStorage.getItem('vyos-client-last-user')).toBeNull()
     })
+  })
+
+  it('clears committed-but-unsaved changes on logout', async () => {
+    useUnsavedCommitStore.setState({
+      committedChanges: [{ id: 'c1', op: { op: 'set', path: ['system', 'host-name'], value: 'r1' }, label: 'x' }],
+    })
+
+    await useSessionStore.getState().logout()
+
+    expect(useUnsavedCommitStore.getState().committedChanges).toEqual([])
   })
 
   it('does not flag sessionExpired on an ordinary logout', async () => {
