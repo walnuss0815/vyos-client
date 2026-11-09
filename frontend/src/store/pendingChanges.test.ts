@@ -3,7 +3,7 @@ import { hasPendingDelete, hasPendingSet, usePendingChangesStore, withPendingEna
 
 beforeEach(() => {
   sessionStorage.clear()
-  usePendingChangesStore.setState({ changes: [] })
+  usePendingChangesStore.setState({ changes: [], droppedSecretPaths: [] })
 })
 
 describe('usePendingChangesStore', () => {
@@ -111,8 +111,8 @@ describe('usePendingChangesStore', () => {
     // The change itself isn't just value-stripped-in-place (which
     // would produce a `set` op with the sensitive path but no value,
     // that could be misread as "clear this field" if ever rehydrated
-    // and acted on) - it's dropped from persisted state entirely.
-    expect(raw).not.toContain('plaintext-password')
+    // and acted on) - it's dropped from the persisted changes entirely.
+    expect(JSON.parse(raw ?? '{}').state.changes).toEqual([])
   })
 
   it('still persists a non-sensitive change alongside a sensitive one', () => {
@@ -137,6 +137,78 @@ describe('usePendingChangesStore', () => {
 
     const raw = sessionStorage.getItem('vyos-client-pending-changes')
     expect(raw).toContain('plaintext-password')
+  })
+
+  describe('droppedSecretPaths', () => {
+    const PW = 'system login user bob authentication plaintext-password'
+    const KEY = 'interfaces wireguard wg0 private-key'
+    const secretAt = (path: string, value = 'secret') => ({
+      op: { op: 'set' as const, path: path.split(' '), value },
+      label: `set ${path}`,
+    })
+    const hostName = { op: { op: 'set' as const, path: ['system', 'host-name'], value: 'r1' }, label: 'set host-name' }
+    const stored = () => JSON.parse(sessionStorage.getItem('vyos-client-pending-changes') ?? '{}').state
+
+    it('stores the paths of dropped secret changes, never their values, and restores them on reload', async () => {
+      usePendingChangesStore.getState().add(secretAt(PW, 'hunter2'))
+      usePendingChangesStore.getState().add(hostName)
+
+      expect(stored().droppedSecretPaths).toEqual([PW])
+      expect(stored().changes).toHaveLength(1)
+      expect(sessionStorage.getItem('vyos-client-pending-changes')).not.toContain('hunter2')
+
+      usePendingChangesStore.setState({ changes: [], droppedSecretPaths: [] }, false)
+      sessionStorage.setItem(
+        'vyos-client-pending-changes',
+        JSON.stringify({ state: { changes: [], droppedSecretPaths: [PW] }, version: 0 }),
+      )
+      await usePendingChangesStore.persist.rehydrate()
+      expect(usePendingChangesStore.getState().droppedSecretPaths).toEqual([PW])
+    })
+
+    it('keeps the paths across a later write after reload', () => {
+      usePendingChangesStore.setState({ droppedSecretPaths: [PW] })
+      usePendingChangesStore.getState().add(hostName)
+      expect(stored().droppedSecretPaths).toEqual([PW])
+    })
+
+    it('re-entering the same secret clears its path', () => {
+      usePendingChangesStore.setState({ droppedSecretPaths: [PW, KEY] })
+
+      usePendingChangesStore.getState().add(secretAt(PW))
+
+      expect(usePendingChangesStore.getState().droppedSecretPaths).toEqual([KEY])
+      // The re-entered secret is itself not stored, so a further reload
+      // loses it again.
+      expect(stored().droppedSecretPaths).toEqual([KEY, PW])
+    })
+
+    it('re-entering a different secret does not clear the notice', () => {
+      usePendingChangesStore.setState({ droppedSecretPaths: [KEY] })
+
+      usePendingChangesStore.getState().add(secretAt(PW))
+      usePendingChangesStore.getState().add(secretAt(PW, 'typo-fixed'))
+
+      expect(usePendingChangesStore.getState().droppedSecretPaths).toEqual([KEY])
+    })
+
+    it('lists a path dropped twice only once', () => {
+      usePendingChangesStore.getState().add(secretAt(PW, 'a'))
+      usePendingChangesStore.getState().add(secretAt(PW, 'b'))
+      expect(stored().droppedSecretPaths).toEqual([PW])
+    })
+
+    it('dismissDroppedSecrets clears the paths', () => {
+      usePendingChangesStore.setState({ droppedSecretPaths: [PW, KEY] })
+      usePendingChangesStore.getState().dismissDroppedSecrets()
+      expect(usePendingChangesStore.getState().droppedSecretPaths).toEqual([])
+    })
+
+    it('clear clears the paths', () => {
+      usePendingChangesStore.setState({ droppedSecretPaths: [PW, KEY] })
+      usePendingChangesStore.getState().clear()
+      expect(usePendingChangesStore.getState().droppedSecretPaths).toEqual([])
+    })
   })
 })
 

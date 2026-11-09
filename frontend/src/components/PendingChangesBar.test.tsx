@@ -9,7 +9,7 @@ import { useUnsavedCommitStore } from '../store/unsavedCommit'
 import PendingChangesBar from './PendingChangesBar'
 
 beforeEach(() => {
-  usePendingChangesStore.setState({ changes: [] })
+  usePendingChangesStore.setState({ changes: [], droppedSecretPaths: [] })
   useUnsavedCommitStore.setState({ committedChanges: [] })
   sessionStorage.clear()
   localStorage.clear()
@@ -28,6 +28,28 @@ describe('PendingChangesBar', () => {
 
     renderWithProviders(<PendingChangesBar />)
     expect(screen.getByText(/1 pending change/i)).toBeInTheDocument()
+  })
+
+  it('names the secret changes that were not restored', async () => {
+    usePendingChangesStore.setState({
+      droppedSecretPaths: ['system login user bob authentication plaintext-password', 'interfaces wireguard wg0 private-key'],
+    })
+    const user = userEvent.setup()
+    renderWithProviders(<PendingChangesBar />)
+
+    expect(screen.getByText(/2 changes with secrets were not restored/i)).toBeInTheDocument()
+    expect(screen.getByText(/re-enter them if still needed/i)).toBeInTheDocument()
+    expect(screen.getByText('system login user bob authentication plaintext-password')).toBeInTheDocument()
+    expect(screen.getByText('interfaces wireguard wg0 private-key')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /dismiss/i }))
+    expect(screen.queryByText(/with secrets were not restored/i)).not.toBeInTheDocument()
+  })
+
+  it('uses singular wording for one dropped secret change', () => {
+    usePendingChangesStore.setState({ droppedSecretPaths: ['interfaces wireguard wg0 private-key'] })
+    renderWithProviders(<PendingChangesBar />)
+    expect(screen.getByText(/1 change with secrets was not restored/i)).toBeInTheDocument()
+    expect(screen.getByText(/re-enter it if still needed/i)).toBeInTheDocument()
   })
 
   it('clears changes on Discard', async () => {

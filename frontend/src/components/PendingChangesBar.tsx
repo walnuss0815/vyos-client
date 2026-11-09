@@ -104,6 +104,8 @@ export default function PendingChangesBar() {
   const remove = usePendingChangesStore((s) => s.remove)
   const clear = usePendingChangesStore((s) => s.clear)
   const removeMany = usePendingChangesStore((s) => s.removeMany)
+  const droppedSecretPaths = usePendingChangesStore((s) => s.droppedSecretPaths)
+  const dismissDroppedSecrets = usePendingChangesStore((s) => s.dismissDroppedSecrets)
   const committedChanges = useUnsavedCommitStore((s) => s.committedChanges)
   const markCommitted = useUnsavedCommitStore((s) => s.markCommitted)
   const markSaved = useUnsavedCommitStore((s) => s.markSaved)
@@ -167,7 +169,25 @@ export default function PendingChangesBar() {
   // visible until saved (or explicitly dismissed) rather than
   // disappearing the moment the pending-changes cart happens to be
   // empty.
-  if (changes.length === 0 && !confirm.active && !error && !hasUnsavedCommit) return null
+  const dropped = droppedSecretPaths.length
+  if (changes.length === 0 && !confirm.active && !error && !hasUnsavedCommit && dropped === 0) return null
+
+  const droppedSecretsNotice = dropped > 0 && (
+    <div className="mt-2 text-sm text-warning-500">
+      <p className="flex flex-wrap items-center gap-2">
+        {dropped} change{dropped === 1 ? ' with secrets was' : 's with secrets were'} not restored after the
+        page reloaded; re-enter {dropped === 1 ? 'it' : 'them'} if still needed:
+        <button onClick={dismissDroppedSecrets} className="text-xs text-slate-500 hover:text-slate-300">
+          Dismiss
+        </button>
+      </p>
+      <ul className="mt-1 list-disc pl-5 font-mono text-xs">
+        {droppedSecretPaths.map((p) => (
+          <li key={p}>{p}</li>
+        ))}
+      </ul>
+    </div>
+  )
 
   // An invalid Safe apply value must block committing (visibly, via the
   // disabled buttons below), not silently degrade to "unsafe" - see
@@ -429,9 +449,18 @@ export default function PendingChangesBar() {
             It will be lost on reboot unless saved. Rollback discards it entirely, restoring the
             last saved configuration.
           </p>
+          {droppedSecretsNotice}
 
           {expanded && <ChangeList items={committedChanges} />}
         </div>
+      </div>
+    )
+  }
+
+  if (changes.length === 0) {
+    return (
+      <div className="fixed inset-x-0 bottom-0 z-50 border-t border-warning-500/40 bg-surface-900/95 backdrop-blur">
+        <div className="mx-auto max-w-5xl px-4 pb-3 pt-1">{droppedSecretsNotice}</div>
       </div>
     )
   }
@@ -492,6 +521,7 @@ export default function PendingChangesBar() {
           </p>
         )}
         {error && <p className="mt-2 text-sm text-danger-500">{error}</p>}
+        {droppedSecretsNotice}
 
         {expanded && <ChangeList items={changes} onRemove={remove} />}
       </div>
