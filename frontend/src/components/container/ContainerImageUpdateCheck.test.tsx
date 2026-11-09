@@ -122,7 +122,10 @@ describe('ContainerImageUpdateCheck', () => {
     expect(await screen.findByText(/update available/i)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Check for update' })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Upgrade' }))
-    await screen.findByText(/pulled and queued image/i)
+    const notice = await screen.findByText(/pulled and queued image/i)
+    // Safe apply reverts on a timer, not on container health.
+    expect(notice).toHaveTextContent(/reverts the change unless you click keep before the timer ends/i)
+    expect(notice).not.toHaveTextContent(/automatically reverts if the new image/i)
 
     const { changes } = usePendingChangesStore.getState()
     expect(changes).toHaveLength(1)
