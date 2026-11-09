@@ -400,7 +400,11 @@ func (s *Server) handleVyOSError(w http.ResponseWriter, action string, err error
 		timedOut := errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &netErr) && netErr.Timeout())
 		if timedOut && configWriteActions[action] {
 			s.Logger.Warn("vyos api call timed out", "action", action, "error", err)
-			writeError(w, http.StatusGatewayTimeout, "VyOS did not answer in time; the change may still have been applied. Reload before retrying, then Save.")
+			msg := "VyOS did not answer in time; the change may still have been applied. Reload before retrying, then Save."
+			if action == "saving configuration" {
+				msg = "VyOS did not answer in time; the configuration may still have been saved. Reload before retrying."
+			}
+			writeError(w, http.StatusGatewayTimeout, msg)
 			return
 		}
 		s.Logger.Error("vyos api call failed", "action", action, "error", err)

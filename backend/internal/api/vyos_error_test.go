@@ -29,8 +29,12 @@ func TestHandleVyOSError_TimeoutOnConfigWrite(t *testing.T) {
 		if rec.Code != http.StatusGatewayTimeout {
 			t.Errorf("%s: status = %d, want 504", action, rec.Code)
 		}
-		if !strings.Contains(rec.Body.String(), "may still have been applied") {
-			t.Errorf("%s: body = %q, want it to say the change may still have been applied", action, rec.Body.String())
+		want := "may still have been applied"
+		if action == "saving configuration" {
+			want = "may still have been saved"
+		}
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Errorf("%s: body = %q, want it to contain %q", action, rec.Body.String(), want)
 		}
 	}
 }
