@@ -60,7 +60,34 @@ describe('PendingChangesBar', () => {
     renderWithProviders(<PendingChangesBar />)
 
     await user.click(screen.getByRole('button', { name: /discard/i }))
+    await user.click(screen.getByRole('button', { name: /discard all 1\?/i }))
     expect(usePendingChangesStore.getState().changes).toHaveLength(0)
+  })
+
+  it('first click on Discard only asks for confirmation', async () => {
+    usePendingChangesStore
+      .getState()
+      .add({ op: { op: 'set', path: ['system', 'host-name'], value: 'r1' }, label: 'set host-name' })
+    const user = userEvent.setup()
+    renderWithProviders(<PendingChangesBar />)
+
+    await user.click(screen.getByRole('button', { name: /discard/i }))
+
+    expect(screen.getByRole('button', { name: /discard all 1\?/i })).toBeInTheDocument()
+    expect(usePendingChangesStore.getState().changes).toHaveLength(1)
+  })
+
+  it('Discard confirmation resets on blur', async () => {
+    usePendingChangesStore
+      .getState()
+      .add({ op: { op: 'set', path: ['system', 'host-name'], value: 'r1' }, label: 'set host-name' })
+    const user = userEvent.setup()
+    renderWithProviders(<PendingChangesBar />)
+
+    await user.click(screen.getByRole('button', { name: /discard/i }))
+    await user.click(screen.getByRole('button', { name: /^commit$/i }).parentElement as HTMLElement)
+
+    expect(screen.getByRole('button', { name: /^discard$/i })).toBeInTheDocument()
   })
 
   it('commits changes and clears the changeset on success', async () => {
@@ -515,6 +542,7 @@ describe('PendingChangesBar', () => {
 
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: /discard/i }))
+    await user.click(screen.getByRole('button', { name: /discard all/i }))
 
     expect(usePendingChangesStore.getState().changes).toHaveLength(0)
   })
@@ -633,10 +661,25 @@ describe('PendingChangesBar', () => {
       await screen.findByText(/committed but not saved/i)
 
       await user.click(screen.getByRole('button', { name: /mark as saved/i }))
+      await user.click(screen.getByRole('button', { name: /confirm mark as saved/i }))
 
       expect(screen.queryByText(/committed but not saved/i)).not.toBeInTheDocument()
       expect(useUnsavedCommitStore.getState().committedChanges).toHaveLength(0)
       expect(saveSpy).not.toHaveBeenCalled()
+    })
+
+    it('first click on Mark as saved only asks for confirmation', async () => {
+      useUnsavedCommitStore.setState({
+        committedChanges: [{ id: 'c1', op: { op: 'set', path: ['system', 'host-name'], value: 'r1' }, label: '' }],
+      })
+      const user = userEvent.setup()
+      renderWithProviders(<PendingChangesBar />)
+      await screen.findByText(/committed but not saved/i)
+
+      await user.click(screen.getByRole('button', { name: /mark as saved/i }))
+
+      expect(screen.getByRole('button', { name: /confirm mark as saved/i })).toBeInTheDocument()
+      expect(useUnsavedCommitStore.getState().committedChanges).toHaveLength(1)
     })
 
     it('keeps the flag true if Save fails after confirming a commit-confirm without "& Save"', async () => {
