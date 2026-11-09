@@ -67,13 +67,16 @@ var filePathPattern = regexp.MustCompile(`^/[A-Za-z0-9._/@+-]*$`)
 // path is handed to a VyOS op-mode command whose wrapper builds a shell
 // line: anything outside the allow-list (whitespace, globs, quotes,
 // shell metacharacters, newlines) is refused. config.boot and
-// /config/archive hold unmasked secrets, so they are refused too.
+// /config/archive hold unmasked secrets, and /config/auth holds private
+// keys, so they are refused too.
 func validateFileBrowserPath(p string) bool {
 	if !filePathPattern.MatchString(p) {
 		return false
 	}
 	clean := path.Clean(p)
-	if strings.HasSuffix(clean, ".boot") || clean == "/config/archive" || strings.HasPrefix(clean, "/config/archive/") {
+	if strings.HasSuffix(clean, ".boot") ||
+		clean == "/config/archive" || strings.HasPrefix(clean, "/config/archive/") ||
+		clean == "/config/auth" || strings.HasPrefix(clean, "/config/auth/") {
 		return false
 	}
 	for _, root := range fileBrowserRoots {
