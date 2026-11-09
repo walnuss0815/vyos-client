@@ -19,6 +19,11 @@ interface PendingChangesState {
   /** Drops just these changes, leaving anything queued since untouched. */
   removeMany: (ids: string[]) => void
   clear: () => void
+  /** Paths (space-joined, never values) of secret-carrying changes that
+   * were left out of sessionStorage (see partialize below) and so did
+   * not survive a reload. A path is cleared once it is set again. */
+  droppedSecretPaths: string[]
+  dismissDroppedSecrets: () => void
 }
 
 /**
@@ -135,12 +140,18 @@ export const usePendingChangesStore = create<PendingChangesState>()(
               return { changes: state.changes.filter((_, j) => j !== i) }
             }
           }
-          return { changes: [...state.changes, { ...change, id: crypto.randomUUID() }] }
+          const target = op.path.join(' ')
+          return {
+            changes: [...state.changes, { ...change, id: crypto.randomUUID() }],
+            droppedSecretPaths: op.value ? state.droppedSecretPaths.filter((p) => p !== target) : state.droppedSecretPaths,
+          }
         }),
       remove: (id) => set((state) => ({ changes: state.changes.filter((c) => c.id !== id) })),
       removeMany: (ids) =>
         set((state) => ({ changes: state.changes.filter((c) => !ids.includes(c.id)) })),
-      clear: () => set({ changes: [] }),
+      clear: () => set({ changes: [], droppedSecretPaths: [] }),
+      droppedSecretPaths: [],
+      dismissDroppedSecrets: () => set({ droppedSecretPaths: [] }),
     }),
     {
       name: 'vyos-client-pending-changes',
@@ -161,10 +172,15 @@ export const usePendingChangesStore = create<PendingChangesState>()(
       // rehydrating it as a fake placeholder that could later get
       // committed as-is. A sensitive-path change with no value at all
       // (e.g. deleting a password leaf) has nothing to leak, so it's
-      // kept.
-      partialize: (state) => ({
-        changes: state.changes.filter((c) => !c.op.value || !isMaskedPath(c.op.path)),
-      }),
+      // kept. The dropped paths (no values) are stored instead, so the
+      // bar can tell the user after a reload which changes need
+      // re-entering.
+      partialize: (state) => {
+        const isSecret = (c: PendingChange) => !!c.op.value && isMaskedPath(c.op.path)
+        const kept = state.changes.filter((c) => !isSecret(c))
+        const dropped = state.changes.filter(isSecret).map((c) => c.op.path.join(' '))
+        return { changes: kept, droppedSecretPaths: [...new Set([...state.droppedSecretPaths, ...dropped])] }
+      },
     },
   ),
 )
