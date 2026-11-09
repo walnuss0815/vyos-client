@@ -53,6 +53,18 @@ describe('PowerPage - reboot', () => {
 
     expect(await screen.findByText(/unreachable/i)).toBeInTheDocument()
   })
+
+  it('warns about committed changes that are not saved', () => {
+    const c = (id: string) => ({ id, op: { op: 'set' as const, path: ['system', 'host-name'], value: id }, label: id })
+    useUnsavedCommitStore.setState({ committedChanges: [c('a'), c('b')] })
+    renderWithProviders(<PowerPage />)
+    expect(screen.getByText(/2 committed changes aren't saved and will be lost/i)).toBeInTheDocument()
+  })
+
+  it('does not warn when nothing committed is unsaved', () => {
+    renderWithProviders(<PowerPage />)
+    expect(screen.queryByText(/aren't saved and will be lost|isn't saved and will be lost/i)).not.toBeInTheDocument()
+  })
 })
 
 describe('PowerPage - poweroff', () => {
